@@ -11,7 +11,7 @@ $activePage = $activePage ?? '';
 <head>
     <meta charset="utf-8">
     <meta name="viewport" content="width=device-width, initial-scale=1">
-    <meta name="theme-color" content="#001d39">
+    <meta name="theme-color" content="#080808">
     <meta name="description" content="<?= $e($pageDescription ?? 'T&Tech Consulting Group') ?>">
     <title><?= $e($pageTitle ?? 'T&Tech Consulting Group') ?> | T&amp;Tech</title>
     <link rel="icon" href="<?= $e($assetBase) ?>/ttechcg-mark.svg" type="image/svg+xml">
@@ -69,4 +69,3 @@ $activePage = $activePage ?? '';
     </footer>
 </body>
 </html>
-

@@ -70,11 +70,12 @@ $assert(str_contains($product, 'pickupsheet'), 'The Pickupsheet product page sho
 $assert(str_contains($product, 'One clear view'), 'The Pickupsheet value proposition should render.');
 
 $styles = file_get_contents(dirname(__DIR__) . '/public/assets/styles.css');
-$assert(is_string($styles) && str_contains($styles, '--navy: #001d39;'), 'T&Tech navy should be the corporate foundation.');
+$assert(is_string($styles) && str_contains($styles, '--navy: #080808;'), 'T&Tech black should be the corporate foundation.');
+$assert(is_string($styles) && str_contains($styles, '--copper: #d40511;'), 'T&Tech red should be the corporate accent.');
+$assert(is_string($styles) && str_contains($styles, '--paper: #ffffff;'), 'T&Tech white should be the corporate canvas.');
 $assert(is_string($styles) && str_contains($styles, '--dhl-yellow: #ffcc00;'), 'Pickupsheet should retain the DHL-yellow treatment.');
 
 $database = file_get_contents(dirname(__DIR__) . '/src/Shared/Infrastructure/Database.php');
 $assert(is_string($database) && str_contains($database, "extension_loaded('pdo_mysql')"), 'The application should use PDO MySQL.');
 
 echo "All application tests passed.\n";
-
