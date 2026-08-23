@@ -1,0 +1,21 @@
+services:
+  mysql:
+    image: mysql:8.4
+    environment:
+      MYSQL_DATABASE: ${DB_NAME:-ttecwymc_PS1}
+      MYSQL_USER: ${DB_USER:-ttecwymc_tt231}
+      MYSQL_PASSWORD: ${DB_PASSWORD:-local-development-password}
+      MYSQL_ROOT_PASSWORD: ${MYSQL_ROOT_PASSWORD:-local-root-password}
+    ports:
+      - "3306:3306"
+    volumes:
+      - ttechcg_mysql:/var/lib/mysql
+    healthcheck:
+      test: ["CMD-SHELL", "mysqladmin ping -h localhost -u${DB_USER:-ttecwymc_tt231} -p${DB_PASSWORD:-local-development-password}"]
+      interval: 5s
+      timeout: 5s
+      retries: 20
+
+volumes:
+  ttechcg_mysql:
+

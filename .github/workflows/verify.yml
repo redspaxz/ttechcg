@@ -1,0 +1,34 @@
+name: Verify PHP application
+
+on:
+  push:
+    branches:
+      - main
+      - "feature/**"
+      - "fix/**"
+  pull_request:
+    branches:
+      - main
+
+permissions:
+  contents: read
+
+jobs:
+  verify:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - name: Check out source
+        uses: actions/checkout@v4
+
+      - name: Lint PHP
+        shell: bash
+        run: |
+          set -euo pipefail
+          while IFS= read -r -d '' php_file; do
+            php -l "$php_file"
+          done < <(find . -type f -name '*.php' -not -path './vendor/*' -print0)
+
+      - name: Run application tests
+        run: php tests/run.php
+

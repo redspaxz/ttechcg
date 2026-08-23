@@ -1,0 +1,9 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 210 52" role="img" aria-labelledby="title">
+  <title id="title">DHL</title>
+  <g fill="#d40511">
+    <path d="M1 15h42l-3 4H1zm0 8h36l-3 4H1zm0 8h31l-3 4H1z"/>
+    <path d="M181 15h28l-3 4h-28zm-6 8h34l-3 4h-34zm-6 8h40l-3 4h-40z"/>
+    <text x="42" y="39" font-family="Arial Black,Arial,sans-serif" font-size="42" font-style="italic" font-weight="900" letter-spacing="-5">DHL</text>
+  </g>
+</svg>
+

@@ -1,0 +1,13 @@
+User-agent: *
+Allow: /
+Disallow: /bin/
+Disallow: /bootstrap/
+Disallow: /config/
+Disallow: /database/
+Disallow: /src/
+Disallow: /storage/
+Disallow: /tests/
+Disallow: /views/
+
+Sitemap: https://ttechcg.com/sitemap.xml
+
