@@ -34,7 +34,7 @@ final class ContactController
 
         return Response::html($this->view->render('contact/index', $this->viewData($request, [
             'pageTitle' => 'Start a conversation',
-            'pageDescription' => 'Tell T&Tech what you are building, improving, or untangling.',
+            'pageDescription' => 'Contact T&Tech in Bamenda or Douala, Cameroon, for network outsourcing, managed infrastructure, and technology solutions.',
             'activePage' => 'contact',
             'csrfToken' => $this->csrf->token(),
             'flash' => $flash,

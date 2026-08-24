@@ -110,8 +110,8 @@ foreach ($partnerAssets as $partnerAsset) {
 }
 $assert(!str_contains($home, 'href="/pickupsheet"'), 'Pickupsheet should not be discoverable from the public site chrome or homepage.');
 $assert(!str_contains($home, 'dhl-logo.svg'), 'The private Pickupsheet product should not be promoted on the homepage.');
-$assert(str_contains($home, 'styles.css?v=20260824-mobile'), 'The mobile optimization should use a cache-safe stylesheet version.');
-$assert(str_contains($home, 'app.js?v=20260824-mobile'), 'The mobile navigation update should use a cache-safe script version.');
+$assert(str_contains($home, 'styles.css?v=20260824-cameroon-offices'), 'The Cameroon office update should use a cache-safe stylesheet version.');
+$assert(str_contains($home, 'app.js?v=20260824-cameroon-offices'), 'The Cameroon office update should use a cache-safe script version.');
 $assert(str_contains($home, 'viewport-fit=cover'), 'The viewport should support mobile safe areas.');
 $assert(str_contains($home, 'loading="lazy" decoding="async"'), 'Below-the-fold partner logos should load efficiently on mobile.');
 $assert(str_contains($home, '<span class="company-name">T&amp;Tech Consulting Group</span>'), 'The header should render the full company name as text.');
@@ -119,6 +119,32 @@ $headerStart = strpos($home, '<header');
 $headerEnd = strpos($home, '</header>');
 $headerMarkup = $headerStart !== false && $headerEnd !== false ? substr($home, $headerStart, $headerEnd - $headerStart) : '';
 $assert(!str_contains($headerMarkup, 'ttechcg-mark.svg'), 'The header should not render the logo image.');
+
+$about = $view->render('site/about', array_merge($common, [
+    'pageTitle' => 'About T&Tech',
+    'pageDescription' => 'Test description',
+    'activePage' => 'about',
+]));
+$assert(str_contains($about, 'Headquartered in Cameroon'), 'The about page should identify Cameroon as the company headquarters.');
+$assert(str_contains($about, 'locations in Bamenda and Douala'), 'The about page should identify both Cameroon locations.');
+
+$contact = $view->render('contact/index', array_merge($common, [
+    'pageTitle' => 'Contact T&Tech',
+    'pageDescription' => 'Test description',
+    'activePage' => 'contact',
+    'csrfToken' => 'test-token',
+    'flash' => null,
+    'errors' => [],
+    'old' => [],
+    'contactOperational' => true,
+]));
+$assert(str_contains($contact, 'Commercial Avenue'), 'The contact page should show the Bamenda street location.');
+$assert(str_contains($contact, 'Bamenda, North-West Region'), 'The contact page should show the full Bamenda location.');
+$assert(str_contains($contact, 'Bonapriso'), 'The contact page should show the Douala neighbourhood.');
+$assert(str_contains($contact, 'Douala, Littoral Region'), 'The contact page should show the full Douala location.');
+$assert(str_contains($contact, 'mailto:info@ttechcg.com'), 'The contact page should provide the direct inquiry destination.');
+$assert(str_contains($contact, 'forwarded to <a href="mailto:info@ttechcg.com"'), 'The form should disclose where inquiries are forwarded.');
+$assert(str_contains($contact, 'method="post" action="/contact"'), 'The contact form should post to the inquiry controller.');
 
 $products = $view->render('site/products', array_merge($common, [
     'pageTitle' => 'Technology products for real operations',
@@ -150,6 +176,11 @@ $privacy = $view->render('site/privacy', array_merge($common, [
 ]));
 $assert(str_contains($privacy, 'Information we collect'), 'The privacy notice should explain collected information.');
 $assert(str_contains($privacy, 'We do not sell inquiry information.'), 'The privacy notice should state the use limitation.');
+$assert(str_contains($privacy, 'forwarded by email to info@ttechcg.com'), 'The privacy notice should disclose the inquiry destination.');
+
+$environmentExample = file_get_contents(dirname(__DIR__) . '/.env.example');
+$assert(is_string($environmentExample) && str_contains($environmentExample, 'APP_TIMEZONE=Africa/Douala'), 'The environment example should use Cameroon time.');
+$assert(is_string($environmentExample) && str_contains($environmentExample, 'CONTACT_EMAIL=info@ttechcg.com'), 'The environment example should route production inquiries to the company mailbox.');
 
 $styles = file_get_contents(dirname(__DIR__) . '/public/assets/styles.css');
 $assert(is_string($styles) && str_contains($styles, '--navy: #0b0b0c;'), 'T&Tech near-black should be the minimal corporate foundation.');
@@ -166,6 +197,8 @@ $assert(is_string($styles) && str_contains($styles, '.partner-logo--aws'), 'The 
 $assert(is_string($styles) && str_contains($styles, '/* Mobile experience hardening */'), 'The site should include focused mobile overrides.');
 $assert(is_string($styles) && str_contains($styles, 'height: calc(100dvh - 68px);'), 'The mobile navigation should respect the dynamic viewport height.');
 $assert(is_string($styles) && str_contains($styles, 'font-size: 16px;'), 'Mobile form controls should prevent automatic input zoom.');
+$assert(is_string($styles) && str_contains($styles, '.contact-destination'), 'The direct inquiry destination should have a responsive presentation.');
+$assert(is_string($styles) && str_contains($styles, '.office-grid'), 'The two Cameroon offices should use the responsive location layout.');
 
 $script = file_get_contents(dirname(__DIR__) . '/public/assets/app.js');
 $assert(is_string($script) && str_contains($script, "event.key === 'Escape'"), 'The mobile navigation should close with Escape.');

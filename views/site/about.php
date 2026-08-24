@@ -2,7 +2,7 @@
 <section class="page-hero about-hero">
     <div class="container page-hero-grid">
         <div data-reveal><p class="eyebrow">About T&amp;Tech</p><h1>An accountable partner for <em>connected operations.</em></h1></div>
-        <p data-reveal>T&amp;Tech is a network outsourcing and solutions provider. We manage the technology operations organisations depend on and deliver practical systems that help them work better.</p>
+        <p data-reveal>Headquartered in Cameroon, T&amp;Tech is a network outsourcing and solutions provider with locations in Bamenda and Douala. We manage the technology operations organisations depend on and deliver practical systems that help them work better.</p>
     </div>
 </section>
 

@@ -11,6 +11,8 @@ $services = [
     'btspos' => 'BTSPOS',
     'other' => 'Something else',
 ];
+$contactEmail = (string) ($config['contact_email'] ?? 'info@ttechcg.com');
+$locations = is_array($config['locations'] ?? null) ? $config['locations'] : [];
 ?>
 <section class="contact-section">
     <div class="container contact-grid">
@@ -21,6 +23,10 @@ $services = [
             <div class="contact-notes">
                 <article><span>01</span><div><strong>Tell us what depends on the technology</strong><p>Availability, users, locations, and business impact give us the right starting point.</p></div></article>
                 <article><span>02</span><div><strong>We’ll define the next practical step</strong><p>Expect a clear conversation about scope, ownership, risk, and the way forward.</p></div></article>
+            </div>
+            <div class="contact-destination">
+                <span>Direct inquiries</span>
+                <a href="mailto:<?= $e($contactEmail) ?>"><?= $e($contactEmail) ?></a>
             </div>
         </div>
 
@@ -50,8 +56,34 @@ $services = [
                 </div>
                 <label><span>What would you like to move forward?</span><textarea name="message" minlength="20" maxlength="2000" rows="7" required placeholder="A little context on the challenge, desired outcome, and timing."><?= $e($old['message'] ?? '') ?></textarea></label>
                 <button class="button button-primary button-submit" type="submit" <?= !$contactOperational ? 'disabled' : '' ?>>Send inquiry <span aria-hidden="true">↗</span></button>
-                <p class="form-note">Your details are used only to respond to this inquiry. Read our <a href="<?= $e($basePath) ?>/privacy">privacy notice</a>.</p>
+                <p class="form-note">Inquiries are securely stored and forwarded to <a href="mailto:<?= $e($contactEmail) ?>"><?= $e($contactEmail) ?></a>. Read our <a href="<?= $e($basePath) ?>/privacy">privacy notice</a>.</p>
             </form>
         </div>
+    </div>
+</section>
+
+<section class="section office-locations" aria-labelledby="office-locations-heading">
+    <div class="container office-heading" data-reveal>
+        <div>
+            <p class="eyebrow">Cameroon headquarters</p>
+            <h2 id="office-locations-heading">Two locations.<br>One accountable team.</h2>
+        </div>
+        <p>Meet or work with T&amp;Tech through our offices in Cameroon’s North-West and Littoral regions.</p>
+    </div>
+    <div class="container office-grid">
+        <?php foreach ($locations as $index => $location): ?>
+            <article class="office-card" data-reveal>
+                <span><?= $e(str_pad((string) ($index + 1), 2, '0', STR_PAD_LEFT)) ?></span>
+                <div>
+                    <p class="office-type"><?= $index === 0 ? 'North-West location' : 'Littoral location' ?></p>
+                    <h3><?= $e($location['city'] ?? '') ?></h3>
+                    <address>
+                        <?= $e($location['address'] ?? '') ?><br>
+                        <?= $e($location['city'] ?? '') ?>, <?= $e($location['region'] ?? '') ?><br>
+                        <?= $e($location['country'] ?? '') ?>
+                    </address>
+                </div>
+            </article>
+        <?php endforeach; ?>
     </div>
 </section>

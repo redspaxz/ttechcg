@@ -12,7 +12,7 @@
         <div class="legal-copy">
             <article><h2>Information we collect</h2><p>When you use the inquiry form, we collect the name, email address, company, service interest, and message you provide. The web server may also retain standard technical logs used for security and reliability.</p></article>
             <article><h2>How we use it</h2><p>We use inquiry information to understand your request, respond to you, and manage the resulting business conversation. We do not sell inquiry information.</p></article>
-            <article><h2>Storage and access</h2><p>Inquiry information is stored in the website’s secured database and may be included in an email notification to the T&amp;Tech team. Access should be limited to people who need it to respond or operate the service.</p></article>
+            <article><h2>Storage and access</h2><p>Inquiry information is stored in the website’s secured database and forwarded by email to info@ttechcg.com so the T&amp;Tech team can respond. Access should be limited to people who need it to respond or operate the service.</p></article>
             <article><h2>Retention</h2><p>We retain inquiry information only for as long as it remains useful for the conversation, legitimate business records, security, or applicable legal obligations.</p></article>
             <article><h2>Your choices</h2><p>You may ask T&amp;Tech to correct or delete information you submitted, subject to any record-keeping obligations. Use the contact page to make a privacy request.</p></article>
             <article><h2>Changes to this notice</h2><p>We may update this notice when the website or its information practices change. The effective date above identifies the current version.</p></article>

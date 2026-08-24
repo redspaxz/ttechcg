@@ -15,7 +15,7 @@ src/
 
 The site uses MySQL through `pdo_mysql`. Valid database settings enable persistent contact inquiries. When MySQL is unavailable, the public site remains reviewable with a session-backed adapter. Database migrations run idempotently on application boot, which supports cPanel accounts without terminal access.
 
-Production contact submissions require both a working MySQL connection and a valid `CONTACT_EMAIL`. Successful inquiries are stored first and then sent to that address through the hosting account's PHP mail transport. If either dependency is missing, the form is disabled and `/health` returns `503` instead of presenting a false success. Set `CONTACT_FROM_EMAIL` to a same-domain mailbox authorised by the hosting account.
+Production contact submissions require both a working MySQL connection and a valid `CONTACT_EMAIL`. Set `CONTACT_EMAIL=info@ttechcg.com` in the server-managed `.env`. Successful inquiries are stored first and then forwarded to that address through the hosting account's PHP mail transport. If either dependency is missing, the form is disabled and `/health` returns `503` instead of presenting a false success. Set `CONTACT_FROM_EMAIL` to a same-domain mailbox authorised by the hosting account.
 
 ## Local development
 

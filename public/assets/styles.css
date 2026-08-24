@@ -1063,3 +1063,116 @@ button, a, input, select, textarea { -webkit-tap-highlight-color: transparent; }
     .circle-link:hover,
     .service-card:hover { transform: none; }
 }
+
+/* Cameroon office locations */
+.contact-destination {
+    display: grid;
+    gap: 7px;
+    margin-top: 28px;
+}
+.contact-destination span {
+    color: var(--muted);
+    font-size: 0.66rem;
+    font-weight: 750;
+    letter-spacing: 0.1em;
+    text-transform: uppercase;
+}
+.contact-destination a {
+    width: fit-content;
+    color: var(--copper);
+    font-size: 1.02rem;
+    font-weight: 720;
+    text-decoration: none;
+    overflow-wrap: anywhere;
+}
+.contact-destination a:hover { text-decoration: underline; text-underline-offset: 4px; }
+
+.office-locations {
+    border-top: 1px solid var(--line);
+    background: var(--paper);
+}
+.office-heading {
+    display: grid;
+    grid-template-columns: 1fr 0.58fr;
+    gap: 80px;
+    align-items: end;
+    margin-bottom: 44px;
+}
+.office-heading h2 {
+    margin: 0;
+    color: var(--ink);
+    font-size: clamp(2.35rem, 4.3vw, 4.25rem);
+    font-weight: 700;
+    letter-spacing: -0.055em;
+    line-height: 1;
+}
+.office-heading > p {
+    max-width: 500px;
+    margin: 0 0 4px;
+    color: var(--muted);
+    line-height: 1.7;
+}
+.office-grid {
+    display: grid;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    border-top: 1px solid var(--line);
+    border-left: 1px solid var(--line);
+}
+.office-card {
+    display: grid;
+    grid-template-columns: 56px minmax(0, 1fr);
+    gap: 22px;
+    min-height: 260px;
+    padding: 30px;
+    border-right: 1px solid var(--line);
+    border-bottom: 1px solid var(--line);
+    background: var(--cream);
+}
+.office-card > span {
+    color: var(--copper);
+    font-size: 0.68rem;
+    font-weight: 800;
+    letter-spacing: 0.1em;
+}
+.office-card > div { align-self: end; }
+.office-type {
+    margin: 0 0 12px;
+    color: var(--muted);
+    font-size: 0.66rem;
+    font-weight: 750;
+    letter-spacing: 0.1em;
+    text-transform: uppercase;
+}
+.office-card h3 {
+    margin: 0 0 18px;
+    color: var(--ink);
+    font-size: clamp(1.8rem, 3vw, 2.7rem);
+    letter-spacing: -0.05em;
+}
+.office-card address {
+    color: var(--muted);
+    font-size: 0.9rem;
+    font-style: normal;
+    line-height: 1.7;
+}
+
+@media (max-width: 820px) {
+    .office-heading { grid-template-columns: 1fr; gap: 24px; margin-bottom: 32px; }
+    .office-heading h2 { font-size: clamp(2.2rem, 9.5vw, 3.35rem); }
+    .office-grid { grid-template-columns: 1fr; }
+    .office-card { min-height: 220px; }
+}
+
+@media (max-width: 580px) {
+    .contact-destination { margin-top: 24px; }
+    .office-heading h2 { font-size: clamp(2.05rem, 10vw, 2.8rem); }
+    .office-grid { border-left: 0; }
+    .office-card {
+        grid-template-columns: 38px minmax(0, 1fr);
+        gap: 12px;
+        min-height: 0;
+        padding: 24px 20px;
+        border-left: 1px solid var(--line);
+    }
+    .office-card h3 { font-size: 2rem; }
+}

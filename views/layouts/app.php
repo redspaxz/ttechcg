@@ -17,8 +17,8 @@ $pageRobots = $pageRobots ?? 'index, follow';
     <meta name="robots" content="<?= $e($pageRobots) ?>">
     <title><?= $e($pageTitle ?? 'T&Tech Consulting Group') ?> | T&amp;Tech</title>
     <link rel="icon" href="<?= $e($assetBase) ?>/ttechcg-mark.svg" type="image/svg+xml">
-    <link rel="stylesheet" href="<?= $e($assetBase) ?>/styles.css?v=20260824-mobile">
-    <script src="<?= $e($assetBase) ?>/app.js?v=20260824-mobile" defer></script>
+    <link rel="stylesheet" href="<?= $e($assetBase) ?>/styles.css?v=20260824-cameroon-offices">
+    <script src="<?= $e($assetBase) ?>/app.js?v=20260824-cameroon-offices" defer></script>
 </head>
 <body>
     <a class="skip-link" href="#main-content">Skip to content</a>
