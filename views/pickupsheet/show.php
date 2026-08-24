@@ -11,14 +11,11 @@ $csrfToken = (string) ($csrfToken ?? '');
 $captcha = is_array($captcha ?? null) ? $captcha : [];
 $flash = $flash ?? null;
 $errors = is_array($errors ?? null) ? $errors : [];
-$operatorName = (string) ($operatorName ?? '');
-$operatorUsername = (string) ($operatorUsername ?? '');
-
 $field = static function (mixed $row, string $name) use ($e): string {
     return $e(is_array($row) ? ($row[$name] ?? '') : '');
 };
 
-$renderShipmentRow = static function (int|string $index, mixed $row = []) use ($field, $e, $operatorName): void {
+$renderShipmentRow = static function (int|string $index, mixed $row = []) use ($field): void {
     $rowNumber = is_int($index) ? (string) ($index + 1) : '__NUMBER__';
     ?>
     <tr class="shipment-row" data-shipment-row>
@@ -30,7 +27,7 @@ $renderShipmentRow = static function (int|string $index, mixed $row = []) use ($
         <td data-label="Pieces"><label class="sr-only" data-row-label>Shipment <?= $rowNumber ?> pieces</label><input data-field="pieces" name="shipments[<?= $index ?>][pieces]" value="<?= $field($row, 'pieces') ?>" type="number" inputmode="numeric" min="1" max="999" step="1" required autocomplete="off" placeholder="1"></td>
         <td data-label="Weight (kg)"><label class="sr-only" data-row-label>Shipment <?= $rowNumber ?> weight in kilograms</label><input data-field="weight_kg" name="shipments[<?= $index ?>][weight_kg]" value="<?= $field($row, 'weight_kg') ?>" type="number" inputmode="decimal" min="0.001" max="9999.999" step="0.001" required autocomplete="off" placeholder="0.500"></td>
         <td data-label="Time collected"><label class="sr-only" data-row-label>Shipment <?= $rowNumber ?> collection time</label><input data-field="collection_time" name="shipments[<?= $index ?>][collection_time]" value="<?= $field($row, 'collection_time') ?>" type="time" required autocomplete="off"></td>
-        <td data-label="Checked by"><span class="pickup-checked-by" title="Set by the signed-in account"><?= $e($operatorName) ?></span></td>
+        <td data-label="Checked by"><label class="sr-only" data-row-label>Shipment <?= $rowNumber ?> checked by</label><input data-field="checked_by" name="shipments[<?= $index ?>][checked_by]" value="<?= $field($row, 'checked_by') ?>" maxlength="100" required autocomplete="off" placeholder="Checker name"></td>
         <td class="shipment-row-action" data-label="Row action"><button type="button" data-remove-shipment aria-label="Remove shipment <?= $rowNumber ?>">Remove</button></td>
     </tr>
     <?php
@@ -43,13 +40,8 @@ $renderShipmentRow = static function (int|string $index, mixed $row = []) use ($
             <span aria-hidden="true">—</span><strong>pickupsheet</strong>
         </div>
         <div class="pickup-header-links">
-            <span class="pickup-operator-identity">Signed in as <strong><?= $e($operatorName) ?></strong><small>@<?= $e($operatorUsername) ?></small></span>
             <a class="pickup-back" href="<?= $e($basePath) ?>/pickupsheet/submissions">Submitted sheets <span aria-hidden="true">↗</span></a>
             <a class="pickup-back" href="<?= $e($basePath . '/') ?>">T&amp;Tech home <span aria-hidden="true">↗</span></a>
-            <form class="pickup-logout-form" method="post" action="<?= $e($basePath) ?>/pickupsheet/logout">
-                <input type="hidden" name="_token" value="<?= $e($csrfToken) ?>">
-                <button class="pickup-logout" type="submit">Sign out</button>
-            </form>
         </div>
     </div>
 
@@ -132,7 +124,7 @@ $renderShipmentRow = static function (int|string $index, mixed $row = []) use ($
                 </fieldset>
                 <label class="consent-field pickup-consent">
                     <input type="checkbox" name="privacy_consent" value="1" required <?= ($old['privacy_consent'] ?? '') === '1' ? 'checked' : '' ?>>
-                    <span>I consent to T&amp;Tech processing the agent, consignor, shipment, and signed-in checker information recorded here to operate the pickup-sheet service, as described in the <a href="<?= $e($basePath) ?>/privacy" target="_blank" rel="noopener">privacy notice</a>.</span>
+                    <span>I consent to T&amp;Tech processing the agent, consignor, shipment, and checker information entered here to operate the pickup-sheet service, as described in the <a href="<?= $e($basePath) ?>/privacy" target="_blank" rel="noopener">privacy notice</a>.</span>
                 </label>
             </div>
 

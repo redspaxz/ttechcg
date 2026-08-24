@@ -15,8 +15,6 @@ use App\Modules\Pickupsheet\UI\PickupsheetController;
 use App\Shared\Http\Request;
 use App\Shared\Security\Captcha;
 use App\Shared\Security\Csrf;
-use App\Shared\Security\IdentityProvider;
-use App\Shared\Security\JumpCloudOidcProvider;
 use App\Shared\View\View;
 
 require dirname(__DIR__) . '/bootstrap/autoload.php';
@@ -152,7 +150,7 @@ $assert($pickupSheet->totalCashReceivedXaf === 115700, 'The XAF total should be 
 $assert($pickupSheet->shipments[0]->destination === 'DCA', 'Destination codes should be normalized to uppercase.');
 $assert($pickupSheet->shipments[0]->weightKg === '0.500', 'Shipment weight should be normalized for MySQL decimals.');
 $assert($pickupSheet->privacyConsentAt !== '', 'Pickup-sheet consent should retain a timestamp.');
-$assert(($pickupService->recent(1)[0]->referenceNumber ?? '') === $pickupSheet->referenceNumber, 'Recent pickup sheets should be available to the protected query view.');
+$assert(($pickupService->recent(1)[0]->referenceNumber ?? '') === $pickupSheet->referenceNumber, 'Recent pickup sheets should be available to the submissions view.');
 $assert($pickupService->findByReference($pickupSheet->referenceNumber)?->agentName === 'Edmund Ngochi', 'A pickup sheet should be retrievable by its reference number.');
 $assert($pickupService->findByReference('invalid-reference') === null, 'Invalid pickup-sheet references should not reach persistence.');
 
@@ -196,85 +194,6 @@ $assert($request->path === '/products', 'Request should retain the routed path.'
 $arrayRequest = new Request('POST', '/pickupsheet', [], ['shipments' => [['awb_number' => '1234567890']]], '');
 $assert(($arrayRequest->arrayInput('shipments')[0]['awb_number'] ?? '') === '1234567890', 'Request should expose nested shipment arrays.');
 
-$base64Url = static fn (string $value): string => rtrim(strtr(base64_encode($value), '+/', '-_'), '=');
-$oidcNonce = str_repeat('n', 43);
-$oidcVerifier = str_repeat('v', 64);
-$oidcKeyOptions = [
-    'config' => __DIR__ . '/fixtures/openssl-test.cnf',
-    'private_key_bits' => 2048,
-    'private_key_type' => OPENSSL_KEYTYPE_RSA,
-];
-$oidcKey = openssl_pkey_new($oidcKeyOptions);
-$assert($oidcKey !== false, 'The OIDC test should generate an RSA signing key.');
-$oidcKeyDetails = openssl_pkey_get_details($oidcKey);
-$assert(is_array($oidcKeyDetails) && is_array($oidcKeyDetails['rsa'] ?? null), 'The OIDC test should expose RSA key details.');
-$oidcJwk = [
-    'kty' => 'RSA',
-    'kid' => 'test-signing-key',
-    'use' => 'sig',
-    'alg' => 'RS256',
-    'n' => $base64Url($oidcKeyDetails['rsa']['n']),
-    'e' => $base64Url($oidcKeyDetails['rsa']['e']),
-];
-$oidcHeader = $base64Url((string) json_encode(['alg' => 'RS256', 'typ' => 'JWT', 'kid' => 'test-signing-key']));
-$oidcPayload = $base64Url((string) json_encode([
-    'iss' => 'https://oauth.id.jumpcloud.com/',
-    'aud' => 'test-client-id-2026',
-    'sub' => 'jumpcloud-user-123',
-    'nonce' => $oidcNonce,
-    'iat' => time(),
-    'exp' => time() + 3600,
-]));
-$oidcSigningInput = $oidcHeader . '.' . $oidcPayload;
-$oidcSignature = '';
-$assert(openssl_sign($oidcSigningInput, $oidcSignature, $oidcKey, OPENSSL_ALGO_SHA256), 'The OIDC test token should be signed.');
-$oidcIdToken = $oidcSigningInput . '.' . $base64Url($oidcSignature);
-$oidcRequests = [];
-$oidcTransport = static function (string $method, string $url, array $form, array $headers) use (&$oidcRequests, $oidcIdToken, $oidcJwk): array {
-    $oidcRequests[] = compact('method', 'url', 'form', 'headers');
-    if (str_ends_with($url, '/oauth2/token')) {
-        return ['access_token' => 'opaque-access-token', 'id_token' => $oidcIdToken, 'token_type' => 'Bearer'];
-    }
-    if (str_ends_with($url, '/userinfo')) {
-        return [
-            'sub' => 'jumpcloud-user-123',
-            'name' => 'JumpCloud Test Operator',
-            'preferred_username' => 'jumpcloud.operator',
-            'email' => 'operator@example.com',
-        ];
-    }
-    if (str_ends_with($url, '/.well-known/jwks.json')) {
-        return ['keys' => [$oidcJwk]];
-    }
-    throw new RuntimeException('Unexpected OIDC test request.');
-};
-$jumpCloudProvider = new JumpCloudOidcProvider([
-    'jumpcloud_oidc_issuer' => 'https://oauth.id.jumpcloud.com/',
-    'jumpcloud_oidc_client_id' => 'test-client-id-2026',
-    'jumpcloud_oidc_client_secret' => 'test-client-secret-2026',
-    'jumpcloud_oidc_redirect_uri' => 'https://ttechcg.com/pickupsheet/login/callback',
-], $oidcTransport);
-$assert($jumpCloudProvider->configured(), 'A complete JumpCloud OIDC configuration should be operational.');
-$oidcAuthorizationUrl = $jumpCloudProvider->authorizationUrl(
-    str_repeat('s', 43),
-    $oidcNonce,
-    rtrim(strtr(base64_encode(hash('sha256', $oidcVerifier, true)), '+/', '-_'), '='),
-);
-$assert(str_contains($oidcAuthorizationUrl, 'response_type=code'), 'JumpCloud should use the authorization-code flow.');
-$assert(str_contains($oidcAuthorizationUrl, 'scope=openid%20profile%20email'), 'JumpCloud should request the required OIDC identity scopes.');
-$assert(str_contains($oidcAuthorizationUrl, 'code_challenge_method=S256'), 'JumpCloud should use PKCE S256.');
-$oidcIdentity = $jumpCloudProvider->authenticate('test-authorization-code', $oidcVerifier, $oidcNonce);
-$assert($oidcIdentity['name'] === 'JumpCloud Test Operator', 'The verified JumpCloud display name should become the operator identity.');
-$assert($oidcIdentity['username'] === 'jumpcloud.operator', 'The verified JumpCloud username should be retained.');
-$assert(count($oidcRequests) === 3, 'JumpCloud authentication should exchange the code, verify JWKS, and confirm UserInfo.');
-$oidcNonceRejected = false;
-try {
-    $jumpCloudProvider->authenticate('test-authorization-code', $oidcVerifier, str_repeat('x', 43));
-} catch (RuntimeException) {
-    $oidcNonceRejected = true;
-}
-$assert($oidcNonceRejected, 'A JumpCloud ID token with a mismatched nonce should be rejected.');
-
 $config = require dirname(__DIR__) . '/config/app.php';
 $view = new View(dirname(__DIR__) . '/views');
 $common = [
@@ -315,98 +234,28 @@ $assert(str_contains((string) ($_SESSION['_errors'][0] ?? ''), 'human verificati
 $_SESSION = [];
 $pickupCsrf = new Csrf();
 $pickupCaptcha = new Captcha('pickupsheet-test');
-$pickupConfig = array_merge($config, [
-    'jumpcloud_oidc_issuer' => 'https://oauth.id.jumpcloud.com/',
-    'jumpcloud_oidc_client_id' => 'test-client-id-2026',
-    'jumpcloud_oidc_client_secret' => 'test-client-secret-2026',
-    'jumpcloud_oidc_redirect_uri' => 'https://ttechcg.com/pickupsheet/login/callback',
-]);
-$fakeIdentityProvider = new class implements IdentityProvider {
-    public bool $authenticated = false;
-
-    public function configured(): bool
-    {
-        return true;
-    }
-
-    public function fingerprint(): string
-    {
-        return hash('sha256', 'test-jumpcloud-provider');
-    }
-
-    public function authorizationUrl(string $state, string $nonce, string $codeChallenge): string
-    {
-        return 'https://oauth.id.jumpcloud.com/oauth2/auth?' . http_build_query([
-            'state' => $state,
-            'nonce' => $nonce,
-            'code_challenge' => $codeChallenge,
-            'code_challenge_method' => 'S256',
-        ]);
-    }
-
-    public function authenticate(string $code, string $codeVerifier, string $nonce): array
-    {
-        if ($code !== 'jumpcloud-test-code'
-            || !preg_match('/^[A-Za-z0-9_-]{43,128}$/', $codeVerifier)
-            || !preg_match('/^[A-Za-z0-9_-]{32,200}$/', $nonce)
-        ) {
-            throw new RuntimeException('Invalid fake JumpCloud transaction.');
-        }
-        $this->authenticated = true;
-
-        return [
-            'sub' => 'jumpcloud-user-123',
-            'name' => 'Edmund Operator',
-            'username' => 'edmund.operator',
-            'email' => 'edmund@example.com',
-            'expires_at' => time() + 3600,
-        ];
-    }
-};
 $pickupController = new PickupsheetController(
     new PickupSheetService(new DemoPickupSheetRepository()),
     $view,
     $pickupCsrf,
     $pickupCaptcha,
-    $fakeIdentityProvider,
-    $pickupConfig,
+    $config,
     'Demo workspace',
     true,
 );
 
-$lockedPickup = $pickupController->index(new Request('GET', '/pickupsheet', [], [], ''));
-$assert($lockedPickup->status() === 200, 'The private Pickupsheet route should render its login portal.');
-$assert(str_contains($lockedPickup->body(), 'Operator login'), 'The private Pickupsheet route should identify the operator portal.');
-$assert(str_contains($lockedPickup->body(), 'Continue with JumpCloud'), 'The operator portal should delegate authentication to JumpCloud.');
-$assert(!str_contains($lockedPickup->body(), 'name="username"'), 'The application should not collect a JumpCloud username.');
-$assert(!str_contains($lockedPickup->body(), 'name="password"'), 'The application should never collect a JumpCloud password.');
-$assert(!str_contains($lockedPickup->body(), 'data-pickup-form'), 'The pickup form should remain hidden before authentication.');
-$assert(($lockedPickup->headers()['Cache-Control'] ?? '') === 'private, no-store, max-age=0', 'The operator login should not be cached.');
+$openPickup = $pickupController->index(new Request('GET', '/pickupsheet', [], [], ''));
+$assert($openPickup->status() === 200, 'The direct Pickupsheet route should render without authentication.');
+$assert(str_contains($openPickup->body(), 'data-pickup-form'), 'The pickup form should be immediately available.');
+$assert(str_contains($openPickup->body(), 'name="shipments[0][checked_by]"'), 'The checker identity should be an editable shipment field.');
+$assert(!str_contains($openPickup->body(), 'Operator login'), 'The pickup form should not show an authentication portal.');
+$assert(($openPickup->headers()['Cache-Control'] ?? '') === 'private, no-store, max-age=0', 'The open pickup form should not be cached.');
 
-$unauthorizedSubmissions = $pickupController->submissions(new Request('GET', '/pickupsheet/submissions', [], [], ''));
-$assert($unauthorizedSubmissions->status() === 303, 'Submitted sheets should redirect to the operator login before authentication.');
-$unauthorizedExport = $pickupController->export(new Request('GET', '/pickupsheet/submissions/export', ['reference' => 'PS-20260729-AAAAAAAAAAAAAAAA'], [], ''));
-$assert($unauthorizedExport->status() === 303, 'An unauthorised spreadsheet export should return to the operator login.');
-
-$pickupLoginResponse = $pickupController->login(new Request('POST', '/pickupsheet/login', [], [
-    '_token' => $pickupCsrf->token(),
-], ''));
-$assert($pickupLoginResponse->status() === 303, 'Starting login should redirect to JumpCloud.');
-$authorizationLocation = (string) ($pickupLoginResponse->headers()['Location'] ?? '');
-$assert(str_starts_with($authorizationLocation, 'https://oauth.id.jumpcloud.com/oauth2/auth?'), 'The login redirect should target JumpCloud.');
-parse_str((string) parse_url($authorizationLocation, PHP_URL_QUERY), $authorizationQuery);
-$assert(($authorizationQuery['code_challenge_method'] ?? '') === 'S256', 'JumpCloud login should use PKCE S256.');
-$assert(is_string($authorizationQuery['state'] ?? null) && $authorizationQuery['state'] !== '', 'JumpCloud login should include a random state value.');
-$pickupCallbackResponse = $pickupController->loginCallback(new Request('GET', '/pickupsheet/login/callback', [
-    'code' => 'jumpcloud-test-code',
-    'state' => (string) $authorizationQuery['state'],
-], [], ''));
-$assert($pickupCallbackResponse->status() === 303, 'A verified JumpCloud callback should establish the protected session.');
-$assert($fakeIdentityProvider->authenticated, 'The callback should verify the authorization code through JumpCloud.');
-$unlockedPickup = $pickupController->index(new Request('GET', '/pickupsheet', [], [], ''));
-$assert(str_contains($unlockedPickup->body(), 'data-pickup-form'), 'The pickup form should render after operator authentication.');
-$assert(str_contains($unlockedPickup->body(), 'Edmund Operator'), 'The authenticated page should identify the signed-in operator.');
-$assert(!str_contains($unlockedPickup->body(), 'name="shipments[0][checked_by]"'), 'The checker identity must not be editable or submitted by the browser.');
+$openEmptySubmissions = $pickupController->submissions(new Request('GET', '/pickupsheet/submissions', [], [], ''));
+$assert($openEmptySubmissions->status() === 200, 'Submitted sheets should be directly accessible without authentication.');
+$assert(str_contains($openEmptySubmissions->body(), 'No submitted sheets yet.'), 'The open submissions view should show its empty state.');
+$missingExport = $pickupController->export(new Request('GET', '/pickupsheet/submissions/export', ['reference' => 'PS-20260729-AAAAAAAAAAAAAAAA'], [], ''));
+$assert($missingExport->status() === 404, 'An unknown direct spreadsheet export should return not found.');
 
 $pickupChallenge = $pickupCaptcha->issue();
 $pickupParts = preg_split('/\s+/', $pickupChallenge['question']);
@@ -429,7 +278,7 @@ $pickupControllerResponse = $pickupController->store(new Request('POST', '/picku
         'pieces' => '2',
         'weight_kg' => '1.25',
         'collection_time' => '11:40',
-        'checked_by' => 'Spoofed Checker',
+        'checked_by' => 'Controller Checker',
     ]],
 ], ''));
 $assert($pickupControllerResponse->status() === 303, 'A valid pickup sheet should redirect after saving.');
@@ -437,34 +286,26 @@ $assert(str_contains((string) ($_SESSION['_pickup_flash'] ?? ''), 'PS-20260729-'
 $assert(str_contains((string) ($_SESSION['_pickup_flash'] ?? ''), '12,000 XAF'), 'The pickup controller should confirm the server-calculated total.');
 $savedControllerSheet = $_SESSION['_demo_pickup_sheets'][0] ?? null;
 $assert($savedControllerSheet instanceof App\Modules\Pickupsheet\Domain\PickupSheet, 'The controller should persist a pickup-sheet aggregate.');
-$assert(($savedControllerSheet->shipments[0]->checkedBy ?? '') === 'Edmund Operator', 'The server should replace a spoofed checker value with the logged-in operator name.');
+$assert(($savedControllerSheet->shipments[0]->checkedBy ?? '') === 'Controller Checker', 'The server should retain the validated checker entered with the shipment.');
 $savedReference = $savedControllerSheet->referenceNumber;
 
-$authorizedSubmissions = $pickupController->submissions(new Request('GET', '/pickupsheet/submissions', [], [], ''));
-$assert(str_contains($authorizedSubmissions->body(), $savedReference), 'The protected table should show each sheet reference.');
-$assert(str_contains($authorizedSubmissions->body(), 'Controller Client'), 'The protected table should show shipment rows after authorization.');
-$assert(str_contains($authorizedSubmissions->body(), 'Print / PDF'), 'Each submitted sheet should provide a print-to-PDF action.');
-$assert(str_contains($authorizedSubmissions->body(), 'Export Excel'), 'Each submitted sheet should provide an Excel export action.');
-$assert(($authorizedSubmissions->headers()['Cache-Control'] ?? '') === 'private, no-store, max-age=0', 'Protected records should not be cached.');
+$openSubmissions = $pickupController->submissions(new Request('GET', '/pickupsheet/submissions', [], [], ''));
+$assert(str_contains($openSubmissions->body(), $savedReference), 'The direct table should show each sheet reference.');
+$assert(str_contains($openSubmissions->body(), 'Controller Client'), 'The direct table should show shipment rows.');
+$assert(str_contains($openSubmissions->body(), 'Print / PDF'), 'Each submitted sheet should provide a print-to-PDF action.');
+$assert(str_contains($openSubmissions->body(), 'Export Excel'), 'Each submitted sheet should provide an Excel export action.');
+$assert(($openSubmissions->headers()['Cache-Control'] ?? '') === 'private, no-store, max-age=0', 'Submitted records should not be cached.');
 
 $printResponse = $pickupController->print(new Request('GET', '/pickupsheet/submissions/print', ['reference' => $savedReference], [], ''));
-$assert($printResponse->status() === 200, 'An authorized pickup sheet should render for printing.');
+$assert($printResponse->status() === 200, 'A direct pickup sheet should render for printing.');
 $assert(str_contains($printResponse->body(), 'window.print()'), 'The print view should invoke the browser PDF/print workflow.');
 $assert(str_contains($printResponse->body(), $savedReference), 'The printable sheet should display its reference number.');
 $exportResponse = $pickupController->export(new Request('GET', '/pickupsheet/submissions/export', ['reference' => $savedReference], [], ''));
-$assert($exportResponse->status() === 200, 'An authorized pickup sheet should export successfully.');
+$assert($exportResponse->status() === 200, 'A direct pickup sheet should export successfully.');
 $assert(str_starts_with($exportResponse->body(), "\xEF\xBB\xBF"), 'The Excel-compatible CSV should include a UTF-8 byte-order mark.');
 $assert(str_contains($exportResponse->body(), 'Controller Client'), 'The spreadsheet export should contain shipment data.');
 $assert(str_contains($exportResponse->body(), '"Total cash received",12000,XAF'), 'The spreadsheet export should contain the server-calculated total.');
 $assert(($exportResponse->headers()['Content-Disposition'] ?? '') === 'attachment; filename="' . $savedReference . '.csv"', 'The Excel export should use the pickup reference as its filename.');
-
-$pickupLogoutResponse = $pickupController->logout(new Request('POST', '/pickupsheet/logout', [], [
-    '_token' => $pickupCsrf->token(),
-], ''));
-$assert($pickupLogoutResponse->status() === 303, 'Signing out should return to the operator portal.');
-$relockedPickup = $pickupController->index(new Request('GET', '/pickupsheet', [], [], ''));
-$assert(str_contains($relockedPickup->body(), 'Operator login'), 'Signing out should lock the Pickupsheet workspace.');
-$assert(!str_contains($relockedPickup->body(), 'data-pickup-form'), 'The form should be inaccessible after sign-out.');
 
 $home = $view->render('site/home', array_merge($common, [
     'pageTitle' => 'Network outsourcing and managed solutions',
@@ -497,8 +338,8 @@ $assert(is_string($dhlAsset) && !str_contains($dhlAsset, '<text'), 'The disquali
 $partnerSources = file_get_contents(dirname(__DIR__) . '/public/assets/partners/README.md');
 $assert(is_string($partnerSources) && str_contains($partnerSources, 'www.dhl.com/content/dam/dhl/global/core/images/logos/dhl-logo.svg'), 'The official DHL artwork source should be documented.');
 $assert(!str_contains($home, 'href="/pickupsheet"'), 'Pickupsheet should not be discoverable from the public site chrome or homepage.');
-$assert(str_contains($home, 'styles.css?v=20260824-jumpcloud-sso'), 'The JumpCloud SSO update should use a cache-safe stylesheet version.');
-$assert(str_contains($home, 'app.js?v=20260824-jumpcloud-sso'), 'The JumpCloud SSO update should use a cache-safe application script version.');
+$assert(str_contains($home, 'styles.css?v=20260824-open-pickupsheet'), 'The open Pickupsheet update should use a cache-safe stylesheet version.');
+$assert(str_contains($home, 'app.js?v=20260824-open-pickupsheet'), 'The open Pickupsheet update should use a cache-safe application script version.');
 $assert(str_contains($home, 'analytics.js?v=20260824-analytics-consent'), 'The consent-aware Google Analytics loader should render on every page.');
 $assert(str_contains($home, 'data-analytics-accept'), 'The site should offer an explicit analytics acceptance control.');
 $assert(str_contains($home, 'data-analytics-decline'), 'The site should offer an explicit analytics decline control.');
@@ -574,8 +415,6 @@ $product = $view->render('pickupsheet/show', array_merge($common, [
     'errors' => [],
     'old' => [],
     'pickupOperational' => true,
-    'operatorName' => 'Test Operator',
-    'operatorUsername' => 'test.operator',
 ]));
 $assert(str_contains($product, 'pickupsheet'), 'The Pickupsheet product page should render.');
 $assert(str_contains($product, 'Cash shipments'), 'The PDF cash-shipment section should render.');
@@ -583,7 +422,7 @@ $assert(str_contains($product, 'name="agent_name"'), 'The pickup form should col
 $assert(str_contains($product, 'name="collection_date"'), 'The pickup form should collect the sheet date.');
 $assert(str_contains($product, 'Reference number'), 'The pickup form should disclose its automatic reference number.');
 $assert(str_contains($product, 'Assigned when saved'), 'Operators should know when the reference number is generated.');
-$assert(str_contains($product, 'href="/pickupsheet/submissions"'), 'The private entry screen should link to the protected submissions table.');
+$assert(str_contains($product, 'href="/pickupsheet/submissions"'), 'The direct entry screen should link to the submissions table.');
 $assert(str_contains($product, 'shipments[0][consignor]'), 'The pickup form should collect a consignor for each row.');
 $assert(str_contains($product, 'shipments[0][awb_number]'), 'The pickup form should collect the AWB number from the PDF.');
 $assert(str_contains($product, 'shipments[0][destination]'), 'The pickup form should collect the destination code from the PDF.');
@@ -591,10 +430,9 @@ $assert(str_contains($product, 'shipments[0][amount]'), 'The pickup form should 
 $assert(str_contains($product, 'shipments[0][pieces]'), 'The pickup form should collect piece counts from the PDF.');
 $assert(str_contains($product, 'shipments[0][weight_kg]'), 'The pickup form should collect shipment weight from the PDF.');
 $assert(str_contains($product, 'shipments[0][collection_time]'), 'The pickup form should collect the collection time from the PDF.');
-$assert(str_contains($product, 'pickup-checked-by'), 'The pickup form should display the authenticated checker identity.');
-$assert(str_contains($product, 'Test Operator'), 'The pickup form should show the signed-in operator as the checker.');
-$assert(!str_contains($product, 'shipments[0][checked_by]'), 'The pickup form should not expose an editable checker field.');
-$assert(str_contains($product, 'action="/pickupsheet/logout"'), 'The private workspace should provide a CSRF-protected sign-out action.');
+$assert(str_contains($product, 'shipments[0][checked_by]'), 'The pickup form should collect the checker for each shipment.');
+$assert(str_contains($product, 'placeholder="Checker name"'), 'The checker field should clearly describe the expected value.');
+$assert(!str_contains($product, 'action="/pickupsheet/logout"'), 'The direct workspace should not provide an authentication action.');
 $assert(str_contains($product, 'data-shipment-count'), 'The pickup form should calculate shipments collected.');
 $assert(str_contains($product, 'data-shipment-total'), 'The pickup form should calculate total cash received.');
 $assert(str_contains($product, 'name="captcha_nonce" value="pickup-captcha-nonce"'), 'The pickup form should include first-party human verification.');
@@ -613,9 +451,9 @@ $privacy = $view->render('site/privacy', array_merge($common, [
 $assert(str_contains($privacy, 'Information we collect'), 'The privacy notice should explain collected information.');
 $assert(str_contains($privacy, 'agent name, collection date, consignor, AWB number'), 'The privacy notice should disclose pickup-sheet fields.');
 $assert(str_contains($privacy, 'record and reconcile cash shipment collections'), 'The privacy notice should state the pickup-sheet processing purpose.');
-$assert(str_contains($privacy, 'requires a JumpCloud-authorised operator and protected session'), 'The privacy notice should explain protected sheet access.');
-$assert(str_contains($privacy, 'checker identity is assigned from the verified JumpCloud account'), 'The privacy notice should explain the authenticated checker identity.');
-$assert(str_contains($privacy, 'never receives the operator’s JumpCloud password'), 'The privacy notice should explain that JumpCloud credentials are not collected by this site.');
+$assert(str_contains($privacy, 'checker identity entered for each shipment'), 'The privacy notice should explain the entered checker identity.');
+$assert(str_contains($privacy, 'Pickupsheet routes do not require an account'), 'The privacy notice should disclose open Pickupsheet access.');
+$assert(str_contains($privacy, 'Anyone with the direct submissions URL can view, print, or export'), 'The privacy notice should disclose direct record access.');
 $assert(str_contains($privacy, 'inquiry and pickup-sheet forms require an explicit, unchecked opt-in'), 'Both personal-data forms should require explicit consent.');
 $assert(str_contains($privacy, 'T&amp;Tech Consulting Group'), 'The privacy notice should identify the data controller.');
 $assert(str_contains($privacy, 'We do not sell inquiry information.'), 'The privacy notice should state the use limitation.');
@@ -632,10 +470,7 @@ $assert(str_contains($privacy, 'Cookie settings'), 'The privacy notice should ex
 $environmentExample = file_get_contents(dirname(__DIR__) . '/.env.example');
 $assert(is_string($environmentExample) && str_contains($environmentExample, 'APP_TIMEZONE=Africa/Douala'), 'The environment example should use Cameroon time.');
 $assert(is_string($environmentExample) && str_contains($environmentExample, 'CONTACT_EMAIL=info@ttechcg.com'), 'The environment example should route production inquiries to the company mailbox.');
-$assert(is_string($environmentExample) && str_contains($environmentExample, 'JUMPCLOUD_OIDC_ISSUER='), 'The environment example should document the JumpCloud region issuer.');
-$assert(is_string($environmentExample) && str_contains($environmentExample, 'JUMPCLOUD_OIDC_CLIENT_ID='), 'The environment example should document the JumpCloud client ID.');
-$assert(is_string($environmentExample) && str_contains($environmentExample, 'JUMPCLOUD_OIDC_CLIENT_SECRET='), 'The environment example should document the JumpCloud client secret.');
-$assert(is_string($environmentExample) && str_contains($environmentExample, 'JUMPCLOUD_OIDC_REDIRECT_URI='), 'The environment example should document the JumpCloud callback URI.');
+$assert(is_string($environmentExample) && !str_contains($environmentExample, 'JUMPCLOUD_'), 'The environment example should not require identity-provider configuration.');
 
 $styles = file_get_contents(dirname(__DIR__) . '/public/assets/styles.css');
 $assert(is_string($styles) && str_contains($styles, '--navy: #0b0b0c;'), 'T&Tech near-black should be the minimal corporate foundation.');
@@ -666,11 +501,8 @@ $assert(is_string($styles) && str_contains($styles, '.pickup-workspace') && str_
 $assert(is_string($styles) && str_contains($styles, 'background: #ffffff;'), 'The pickup-sheet data-entry card should use a white form area.');
 $assert(is_string($styles) && str_contains($styles, '.shipment-row'), 'Shipment rows should have responsive form styling.');
 $assert(is_string($styles) && str_contains($styles, 'content: attr(data-label);'), 'Shipment rows should expose their field labels in the mobile card layout.');
-$assert(is_string($styles) && str_contains($styles, '/* Protected pickup-sheet records */'), 'Submitted pickup sheets should have a dedicated protected table layout.');
+$assert(is_string($styles) && str_contains($styles, '/* Pickup-sheet records */'), 'Submitted pickup sheets should have a dedicated table layout.');
 $assert(is_string($styles) && str_contains($styles, '.pickup-record-actions'), 'Each submitted sheet should style its print and spreadsheet actions.');
-$assert(is_string($styles) && str_contains($styles, '.pickup-checked-by'), 'The authenticated checker identity should have a non-editable presentation.');
-$assert(is_string($styles) && str_contains($styles, '.pickup-operator-identity'), 'The private workspace should identify the logged-in operator.');
-$assert(is_string($styles) && str_contains($styles, '.pickup-idp-note'), 'The JumpCloud login portal should explain its delegated authentication flow.');
 
 $script = file_get_contents(dirname(__DIR__) . '/public/assets/app.js');
 $assert(is_string($script) && str_contains($script, "event.key === 'Escape'"), 'The mobile navigation should close with Escape.');
@@ -712,7 +544,7 @@ $assert(is_string($pickupMysqlRepository) && str_contains($pickupMysqlRepository
 $bootstrap = file_get_contents(dirname(__DIR__) . '/bootstrap/app.php');
 $assert(is_string($bootstrap) && str_contains($bootstrap, "'httponly' => true"), 'The security session cookie should be inaccessible to client-side scripts.');
 $assert(is_string($bootstrap) && str_contains($bootstrap, "'samesite' => 'Lax'"), 'The security session cookie should use a SameSite policy.');
-$assert(is_string($bootstrap) && str_contains($bootstrap, 'new JumpCloudOidcProvider($config)'), 'Pickupsheet should use JumpCloud as its identity provider.');
-$assert(is_string($bootstrap) && str_contains($bootstrap, "'/pickupsheet/login/callback'"), 'The JumpCloud OIDC callback should be routed explicitly.');
+$assert(is_string($bootstrap) && !str_contains($bootstrap, 'JumpCloudOidcProvider'), 'Pickupsheet should not require an identity provider.');
+$assert(is_string($bootstrap) && !str_contains($bootstrap, "'/pickupsheet/login'"), 'Pickupsheet authentication routes should be removed.');
 
 echo "All application tests passed.\n";

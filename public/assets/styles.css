@@ -1340,18 +1340,6 @@ button, a, input, select, textarea { -webkit-tap-highlight-color: transparent; }
     border-bottom: 1px solid rgba(75, 55, 0, 0.26);
 }
 .pickup-header-links { display: flex; align-items: center; justify-content: flex-end; gap: 18px; }
-.pickup-operator-identity {
-    display: inline-flex;
-    align-items: baseline;
-    gap: 6px;
-    color: #655000;
-    font-size: 0.65rem;
-    font-weight: 700;
-    letter-spacing: 0.03em;
-}
-.pickup-operator-identity strong { color: #241b00; font-size: 0.72rem; }
-.pickup-operator-identity small { font-size: 0.62rem; }
-.pickup-logout-form { margin: 0; }
 .pickup-form-shell { padding-top: 54px; }
 .pickup-form-heading {
     display: grid;
@@ -1545,17 +1533,6 @@ button, a, input, select, textarea { -webkit-tap-highlight-color: transparent; }
 .shipment-table tbody tr:last-child td,
 .shipment-table tbody tr:last-child th { border-bottom: 0; }
 .shipment-table input { min-height: 42px; padding: 9px; background: rgba(255, 255, 255, 0.56); }
-.pickup-checked-by {
-    display: flex;
-    min-height: 42px;
-    align-items: center;
-    padding: 9px;
-    background: #fff7d1;
-    color: #493800;
-    font-size: 0.72rem;
-    font-weight: 800;
-    overflow-wrap: anywhere;
-}
 .pickup-code-input { text-transform: uppercase; }
 .shipment-row-action button { width: 100%; min-height: 42px; padding: 7px; font-size: 0.62rem; }
 .pickup-summary {
@@ -1695,7 +1672,7 @@ button, a, input, select, textarea { -webkit-tap-highlight-color: transparent; }
     .pickup-submit { width: 100%; min-width: 0; }
 }
 
-/* Protected pickup-sheet records */
+/* Pickup-sheet records */
 .pickup-view-workspace {
     min-height: 100vh;
     padding: 34px 0 92px;
@@ -1703,15 +1680,6 @@ button, a, input, select, textarea { -webkit-tap-highlight-color: transparent; }
     color: #241b00;
 }
 .pickup-submissions-shell { padding-top: 54px; }
-.pickup-access-card {
-    width: min(620px, 100%);
-    margin: 0 auto;
-    padding: clamp(28px, 5vw, 54px);
-    border: 1px solid rgba(75, 55, 0, 0.3);
-    background: #fff;
-    box-shadow: 0 28px 80px rgba(95, 67, 0, 0.16);
-}
-.pickup-access-card h1,
 .pickup-submissions-heading h1 {
     margin: 0;
     color: #241b00;
@@ -1719,38 +1687,6 @@ button, a, input, select, textarea { -webkit-tap-highlight-color: transparent; }
     font-weight: 780;
     letter-spacing: -0.07em;
     line-height: 0.94;
-}
-.pickup-access-card > p:not(.eyebrow) { margin: 22px 0 28px; color: #655000; line-height: 1.7; }
-.pickup-access-card code { overflow-wrap: anywhere; }
-.pickup-access-card .notice { margin-top: 22px; }
-.pickup-access-form { display: grid; gap: 18px; margin-top: 24px; }
-.pickup-access-form label { display: grid; gap: 9px; }
-.pickup-access-form label span {
-    color: #493800;
-    font-size: 0.68rem;
-    font-weight: 800;
-    letter-spacing: 0.08em;
-    text-transform: uppercase;
-}
-.pickup-access-form input {
-    min-height: 50px;
-    padding: 12px 14px;
-    border: 1px solid rgba(69, 50, 0, 0.34);
-    border-radius: 0;
-    outline: none;
-    background: #fff;
-    color: #241b00;
-    font: inherit;
-    font-size: 1rem;
-}
-.pickup-access-form input:focus { border-color: var(--dhl-red); box-shadow: 0 0 0 3px rgba(212, 5, 17, 0.13); }
-.pickup-access-form .button { width: 100%; justify-content: space-between; }
-.pickup-idp-note {
-    margin: 0;
-    color: #655000;
-    font-size: 0.72rem;
-    line-height: 1.6;
-    text-align: center;
 }
 .pickup-submissions-heading {
     display: flex;
@@ -1760,19 +1696,6 @@ button, a, input, select, textarea { -webkit-tap-highlight-color: transparent; }
     margin-bottom: 34px;
 }
 .pickup-submissions-heading > div > p:last-child { max-width: 680px; margin: 20px 0 0; color: #655000; line-height: 1.65; }
-.pickup-submissions-heading .pickup-operator-identity { margin-top: 14px; }
-.pickup-logout {
-    min-height: 44px;
-    padding: 11px 16px;
-    border: 1px solid rgba(69, 50, 0, 0.42);
-    background: transparent;
-    color: #392b00;
-    font: inherit;
-    font-size: 0.7rem;
-    font-weight: 800;
-    cursor: pointer;
-}
-.pickup-logout:hover { border-color: var(--dhl-red); color: var(--dhl-red); }
 .pickup-view-summary {
     display: grid;
     grid-template-columns: repeat(2, minmax(0, 1fr));

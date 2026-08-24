@@ -21,29 +21,7 @@ The contact workflow uses CSRF validation, a honeypot, session rate limiting, a 
 
 The unlisted `/pickupsheet/` route captures the supplied paper pickup-sheet structure: agent, date, and repeatable cash-shipment rows containing consignor, AWB, destination, amount, pieces, weight, collection time, and checker. Every saved sheet receives a unique `PS-YYYYMMDD-XXXXXXXXXXXXXXXX` reference. Shipment count and total XAF are calculated in the browser for immediate feedback and recalculated on the server before the aggregate and its line items are committed together. CSRF, CAPTCHA, honeypot, rate limiting, field validation, and a recorded privacy opt-in protect submissions.
 
-All Pickupsheet routes use JumpCloud as their OpenID Connect identity provider. The application uses Authorization Code with PKCE, validates state and nonce, verifies the RS256 ID-token signature and issuer/audience/expiry claims, confirms the subject through JumpCloud UserInfo, and keeps only a short-lived protected application session. JumpCloud application assignments determine who may sign in. The Check by value is not editable or accepted from the browser: it is assigned on the server from the verified JumpCloud display name. `/pickupsheet/submissions` is a no-store view of the 100 most recent sheets. Authenticated operators can expand each reference, print or save an A4 landscape sheet as PDF, or download an Excel-compatible UTF-8 CSV.
-
-### JumpCloud OIDC setup
-
-Create a **Custom OIDC App** in JumpCloud under **Access > SSO Applications** and use:
-
-- Grant type: **Authorization Code**
-- Client authentication: **Client Secret POST**
-- Redirect URI: `https://ttechcg.com/pickupsheet/login/callback`
-- Login URL: `https://ttechcg.com/pickupsheet/`
-- Standard scopes: **Email** and **Profile** (`openid` is requested automatically by the application)
-- Subject claim: **JumpCloud User ID**
-
-Assign the application to the users or user groups allowed to operate Pickupsheet. Store the generated client values only in the production `.env`:
-
-```env
-JUMPCLOUD_OIDC_ISSUER=https://oauth.id.jumpcloud.com/
-JUMPCLOUD_OIDC_CLIENT_ID=your-client-id
-JUMPCLOUD_OIDC_CLIENT_SECRET=your-client-secret
-JUMPCLOUD_OIDC_REDIRECT_URI=https://ttechcg.com/pickupsheet/login/callback
-```
-
-Use `https://oauth.id.eu.jumpcloud.com/` or `https://oauth.id.in.jumpcloud.com/` as the issuer when the JumpCloud organisation is hosted in the EU or India region. The production PHP runtime requires the cURL and OpenSSL extensions.
+The direct, unlisted Pickupsheet routes do not require authentication. “Checked by” is a required field entered with each shipment. `/pickupsheet/submissions` is a no-store view of the 100 most recent sheets, where anyone with the direct URL can expand each reference, print or save an A4 landscape sheet as PDF, or download an Excel-compatible UTF-8 CSV. Because these records contain operational and cash-shipment information, deploy this open-access mode only when the direct URL is intended to be available without identity verification.
 
 Google Analytics measurement ID `G-WVFXFB5H3M` is integrated using Basic Consent Mode. The Google tag is not requested until a visitor explicitly accepts analytics cookies, advertising consent remains denied, and visitors can reopen their choice from the footer.
 

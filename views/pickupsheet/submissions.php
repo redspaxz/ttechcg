@@ -6,8 +6,6 @@ $e = static fn (mixed $value): string => htmlspecialchars((string) $value, ENT_Q
 $pickupSheets = is_array($pickupSheets ?? null) ? $pickupSheets : [];
 $errors = is_array($errors ?? null) ? $errors : [];
 $pickupOperational = (bool) ($pickupOperational ?? false);
-$operatorName = (string) ($operatorName ?? '');
-$csrfToken = (string) ($csrfToken ?? '');
 $totalXaf = array_reduce(
     $pickupSheets,
     static fn (int $total, mixed $sheet): int => $total + (int) ($sheet->totalCashReceivedXaf ?? 0),
@@ -26,15 +24,10 @@ $totalXaf = array_reduce(
     <div class="container pickup-submissions-shell">
         <header class="pickup-submissions-heading">
             <div>
-                <p class="eyebrow eyebrow-red">Protected records</p>
+                <p class="eyebrow eyebrow-red">Pickup records</p>
                 <h1>Submitted sheets</h1>
                 <p>The most recent 100 sheets are shown. Expand a reference to review its shipment table.</p>
-                <span class="pickup-operator-identity">Signed in as <strong><?= $e($operatorName) ?></strong></span>
             </div>
-            <form class="pickup-logout-form" method="post" action="<?= $e($basePath) ?>/pickupsheet/logout">
-                <input type="hidden" name="_token" value="<?= $e($csrfToken) ?>">
-                <button class="pickup-logout" type="submit">Sign out</button>
-            </form>
         </header>
 
         <?php if (!$pickupOperational): ?>

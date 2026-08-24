@@ -10,7 +10,6 @@ use App\Shared\Http\Request;
 use App\Shared\Http\Response;
 use App\Shared\Security\Captcha;
 use App\Shared\Security\Csrf;
-use App\Shared\Security\IdentityProvider;
 use App\Shared\View\View;
 use InvalidArgumentException;
 use RuntimeException;
@@ -23,7 +22,6 @@ final class PickupsheetController
         private readonly View $view,
         private readonly Csrf $csrf,
         private readonly Captcha $captcha,
-        private readonly IdentityProvider $identityProvider,
         private readonly array $config,
         private readonly string $storageMode,
         private readonly bool $pickupOperational,
@@ -32,11 +30,6 @@ final class PickupsheetController
 
     public function index(Request $request): Response
     {
-        $operator = $this->currentOperator();
-        if ($operator === null) {
-            return $this->loginPortal($request);
-        }
-
         $flash = $_SESSION['_pickup_flash'] ?? null;
         $errors = $_SESSION['_pickup_errors'] ?? [];
         $old = $_SESSION['_pickup_old'] ?? [];
@@ -57,8 +50,6 @@ final class PickupsheetController
             'errors' => is_array($errors) ? $errors : [],
             'old' => is_array($old) ? $old : [],
             'pickupOperational' => $this->pickupOperational,
-            'operatorName' => $operator['name'],
-            'operatorUsername' => $operator['username'],
         ]);
 
         return Response::html($body, 200, $this->privateHeaders());
@@ -66,27 +57,14 @@ final class PickupsheetController
 
     public function store(Request $request): Response
     {
-        $operator = $this->currentOperator();
-        if ($operator === null) {
-            return Response::redirect($request->basePath . '/pickupsheet/');
-        }
-
         if (!$this->csrf->validate($request->input('_token'))) {
             return Response::html('Invalid or expired form token.', 419);
-        }
-
-        $shipments = $request->arrayInput('shipments');
-        foreach ($shipments as $index => $shipment) {
-            if (is_array($shipment)) {
-                $shipment['checked_by'] = $operator['name'];
-                $shipments[$index] = $shipment;
-            }
         }
 
         $input = [
             'agent_name' => $request->input('agent_name'),
             'collection_date' => $request->input('collection_date'),
-            'shipments' => $shipments,
+            'shipments' => $request->arrayInput('shipments'),
             'privacy_consent' => $request->input('privacy_consent'),
         ];
 
@@ -138,11 +116,6 @@ final class PickupsheetController
 
     public function submissions(Request $request): Response
     {
-        $operator = $this->currentOperator();
-        if ($operator === null) {
-            return Response::redirect($request->basePath . '/pickupsheet/');
-        }
-
         $errors = [];
         $pickupSheets = [];
         if ($this->pickupOperational) {
@@ -156,124 +129,23 @@ final class PickupsheetController
 
         $body = $this->view->render('pickupsheet/submissions', [
             'pageTitle' => 'Submitted pickup sheets',
-            'pageDescription' => 'Protected pickup-sheet records and shipment exports.',
+            'pageDescription' => 'Pickup-sheet records and shipment exports.',
             'pageRobots' => 'noindex, nofollow',
             'activePage' => 'pickupsheet',
             'basePath' => $request->basePath,
             'assetBase' => $request->basePath . '/public/assets',
             'config' => $this->config,
             'storageMode' => $this->storageMode,
-            'csrfToken' => $this->csrf->token(),
             'pickupOperational' => $this->pickupOperational,
             'pickupSheets' => $pickupSheets,
             'errors' => $errors,
-            'operatorName' => $operator['name'],
         ]);
 
         return Response::html($body, 200, $this->privateHeaders());
     }
 
-    public function login(Request $request): Response
-    {
-        if (!$this->csrf->validate($request->input('_token'))) {
-            return Response::html('Invalid or expired form token.', 419);
-        }
-
-        if (!$this->identityProvider->configured()) {
-            $_SESSION['_pickup_login_errors'] = ['JumpCloud sign-in is not configured on this server.'];
-            return Response::redirect($request->basePath . '/pickupsheet/');
-        }
-
-        $state = $this->randomBase64Url(32);
-        $nonce = $this->randomBase64Url(32);
-        $codeVerifier = $this->randomBase64Url(64);
-        $codeChallenge = rtrim(strtr(base64_encode(hash('sha256', $codeVerifier, true)), '+/', '-_'), '=');
-        $_SESSION['_pickup_oidc_transaction'] = [
-            'state_hash' => hash('sha256', $state),
-            'nonce' => $nonce,
-            'code_verifier' => $codeVerifier,
-            'created_at' => time(),
-        ];
-
-        try {
-            return Response::redirect($this->identityProvider->authorizationUrl($state, $nonce, $codeChallenge));
-        } catch (RuntimeException $exception) {
-            unset($_SESSION['_pickup_oidc_transaction']);
-            error_log($exception->__toString());
-            $_SESSION['_pickup_login_errors'] = ['JumpCloud sign-in could not be started. Please try again.'];
-            return Response::redirect($request->basePath . '/pickupsheet/');
-        }
-    }
-
-    public function loginCallback(Request $request): Response
-    {
-        $transaction = $_SESSION['_pickup_oidc_transaction'] ?? null;
-        unset($_SESSION['_pickup_oidc_transaction']);
-
-        $state = $request->queryString('state');
-        if (!is_array($transaction)
-            || !is_string($transaction['state_hash'] ?? null)
-            || !is_string($transaction['nonce'] ?? null)
-            || !is_string($transaction['code_verifier'] ?? null)
-            || !is_int($transaction['created_at'] ?? null)
-            || $transaction['created_at'] > time() + 60
-            || time() - $transaction['created_at'] > 600
-            || $state === ''
-            || !hash_equals($transaction['state_hash'], hash('sha256', $state))
-        ) {
-            $_SESSION['_pickup_login_errors'] = ['The JumpCloud login transaction is invalid or expired. Please try again.'];
-            return Response::redirect($request->basePath . '/pickupsheet/');
-        }
-
-        if ($request->queryString('error') !== '') {
-            $_SESSION['_pickup_login_errors'] = ['JumpCloud sign-in was not completed.'];
-            return Response::redirect($request->basePath . '/pickupsheet/');
-        }
-
-        try {
-            $identity = $this->identityProvider->authenticate(
-                $request->queryString('code'),
-                $transaction['code_verifier'],
-                $transaction['nonce'],
-            );
-        } catch (RuntimeException $exception) {
-            error_log($exception->__toString());
-            $_SESSION['_pickup_login_errors'] = ['JumpCloud could not verify your identity. Please try again or contact an administrator.'];
-            return Response::redirect($request->basePath . '/pickupsheet/');
-        }
-
-        session_regenerate_id(true);
-        $_SESSION['_pickup_operator'] = [
-            'sub' => $identity['sub'],
-            'username' => $identity['username'],
-            'name' => $identity['name'],
-            'email' => $identity['email'],
-            'expires_at' => $identity['expires_at'],
-            'fingerprint' => $this->identityProvider->fingerprint(),
-        ];
-        unset($_SESSION['_pickup_login_errors']);
-
-        return Response::redirect($request->basePath . '/pickupsheet/');
-    }
-
-    public function logout(Request $request): Response
-    {
-        if (!$this->csrf->validate($request->input('_token'))) {
-            return Response::html('Invalid or expired form token.', 419);
-        }
-
-        unset($_SESSION['_pickup_operator'], $_SESSION['_pickup_oidc_transaction']);
-        session_regenerate_id(true);
-
-        return Response::redirect($request->basePath . '/pickupsheet/');
-    }
-
     public function print(Request $request): Response
     {
-        if ($this->currentOperator() === null) {
-            return Response::redirect($request->basePath . '/pickupsheet/');
-        }
-
         $pickupSheet = $this->service->findByReference($request->queryString('reference'));
         if ($pickupSheet === null) {
             return Response::html('Pickup sheet not found.', 404, ['X-Robots-Tag' => 'noindex, nofollow']);
@@ -291,10 +163,6 @@ final class PickupsheetController
 
     public function export(Request $request): Response
     {
-        if ($this->currentOperator() === null) {
-            return Response::redirect($request->basePath . '/pickupsheet/');
-        }
-
         $pickupSheet = $this->service->findByReference($request->queryString('reference'));
         if ($pickupSheet === null) {
             return Response::html('Pickup sheet not found.', 404, ['X-Robots-Tag' => 'noindex, nofollow']);
@@ -307,49 +175,6 @@ final class PickupsheetController
         );
     }
 
-    /** @return array{username: string, name: string}|null */
-    private function currentOperator(): ?array
-    {
-        $sessionOperator = $_SESSION['_pickup_operator'] ?? null;
-        if (!$this->identityProvider->configured()
-            || !is_array($sessionOperator)
-            || !is_string($sessionOperator['sub'] ?? null)
-            || !is_string($sessionOperator['username'] ?? null)
-            || !is_string($sessionOperator['name'] ?? null)
-            || !is_string($sessionOperator['fingerprint'] ?? null)
-            || !is_int($sessionOperator['expires_at'] ?? null)
-            || $sessionOperator['expires_at'] <= time()
-            || !hash_equals($this->identityProvider->fingerprint(), $sessionOperator['fingerprint'])
-        ) {
-            unset($_SESSION['_pickup_operator']);
-            return null;
-        }
-
-        return ['username' => $sessionOperator['username'], 'name' => $sessionOperator['name']];
-    }
-
-    private function loginPortal(Request $request): Response
-    {
-        $errors = $_SESSION['_pickup_login_errors'] ?? [];
-        unset($_SESSION['_pickup_login_errors']);
-
-        $body = $this->view->render('pickupsheet/login', [
-            'pageTitle' => 'Pickupsheet operator login',
-            'pageDescription' => 'Secure operator access to Pickupsheet.',
-            'pageRobots' => 'noindex, nofollow',
-            'activePage' => 'pickupsheet',
-            'basePath' => $request->basePath,
-            'assetBase' => $request->basePath . '/public/assets',
-            'config' => $this->config,
-            'storageMode' => $this->storageMode,
-            'csrfToken' => $this->csrf->token(),
-            'loginConfigured' => $this->identityProvider->configured(),
-            'errors' => is_array($errors) ? $errors : [],
-        ]);
-
-        return Response::html($body, 200, $this->privateHeaders());
-    }
-
     /** @return array<string, string> */
     private function privateHeaders(): array
     {
@@ -357,11 +182,6 @@ final class PickupsheetController
             'Cache-Control' => 'private, no-store, max-age=0',
             'X-Robots-Tag' => 'noindex, nofollow',
         ];
-    }
-
-    private function randomBase64Url(int $bytes): string
-    {
-        return rtrim(strtr(base64_encode(random_bytes($bytes)), '+/', '-_'), '=');
     }
 
     private function excelCsv(PickupSheet $pickupSheet): string
