@@ -36,11 +36,20 @@
         <p>Our partnerships strengthen the infrastructure, cloud, automation, and enterprise solutions we deliver and support.</p>
     </div>
     <div class="container partner-list" data-reveal>
-        <span>Amazon Web Services <small>AWS</small></span>
-        <span>Microsoft</span>
-        <span>IBM</span>
-        <span>Red Hat</span>
+        <a class="partner-logo partner-logo--aws" href="https://aws.amazon.com/" aria-label="Visit Amazon Web Services">
+            <img src="<?= htmlspecialchars($assetBase . '/partners/aws.png', ENT_QUOTES, 'UTF-8') ?>" alt="Amazon Web Services (AWS) logo" width="1200" height="630">
+        </a>
+        <a class="partner-logo partner-logo--microsoft" href="https://www.microsoft.com/" aria-label="Visit Microsoft">
+            <img src="<?= htmlspecialchars($assetBase . '/partners/microsoft.png', ENT_QUOTES, 'UTF-8') ?>" alt="Microsoft logo" width="216" height="46">
+        </a>
+        <a class="partner-logo partner-logo--ibm" href="https://www.ibm.com/" aria-label="Visit IBM">
+            <img src="<?= htmlspecialchars($assetBase . '/partners/ibm.svg', ENT_QUOTES, 'UTF-8') ?>" alt="IBM logo" width="1075" height="401">
+        </a>
+        <a class="partner-logo partner-logo--red-hat" href="https://www.redhat.com/" aria-label="Visit Red Hat">
+            <img src="<?= htmlspecialchars($assetBase . '/partners/red-hat.svg', ENT_QUOTES, 'UTF-8') ?>" alt="Red Hat logo" width="360" height="180">
+        </a>
     </div>
+    <p class="container partner-trademark-note">Amazon Web Services and AWS are trademarks of Amazon.com, Inc. or its affiliates. Microsoft is a trademark of the Microsoft group of companies. IBM and the IBM logo are trademarks of IBM Corp. Red Hat and the Red Hat logo are trademarks of Red Hat, Inc.</p>
 </section>
 
 <section class="section section-services">

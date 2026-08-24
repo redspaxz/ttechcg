@@ -99,9 +99,18 @@ $assert(str_contains($home, 'Amazon Web Services'), 'The AWS partnership should 
 $assert(str_contains($home, 'Microsoft'), 'The Microsoft partnership should be presented on the home page.');
 $assert(str_contains($home, 'IBM'), 'The IBM partnership should be presented on the home page.');
 $assert(str_contains($home, 'Red Hat'), 'The Red Hat partnership should be presented on the home page.');
+$assert(str_contains($home, '/partners/aws.png'), 'The AWS partner mark should render from a local asset.');
+$assert(str_contains($home, '/partners/microsoft.png'), 'The Microsoft partner mark should render from a local asset.');
+$assert(str_contains($home, '/partners/ibm.svg'), 'The IBM partner mark should render from a local asset.');
+$assert(str_contains($home, '/partners/red-hat.svg'), 'The Red Hat partner mark should render from a local asset.');
+$partnerAssets = ['aws.png', 'microsoft.png', 'ibm.svg', 'red-hat.svg'];
+foreach ($partnerAssets as $partnerAsset) {
+    $partnerAssetPath = dirname(__DIR__) . '/public/assets/partners/' . $partnerAsset;
+    $assert(is_file($partnerAssetPath) && filesize($partnerAssetPath) > 1000, $partnerAsset . ' should be a non-empty local partner asset.');
+}
 $assert(!str_contains($home, 'href="/pickupsheet"'), 'Pickupsheet should not be discoverable from the public site chrome or homepage.');
 $assert(!str_contains($home, 'dhl-logo.svg'), 'The private Pickupsheet product should not be promoted on the homepage.');
-$assert(str_contains($home, 'styles.css?v=20260824-technology-partners'), 'The technology partner update should use a cache-safe stylesheet version.');
+$assert(str_contains($home, 'styles.css?v=20260824-partner-logos'), 'The partner logo update should use a cache-safe stylesheet version.');
 $assert(str_contains($home, '<span class="company-name">T&amp;Tech Consulting Group</span>'), 'The header should render the full company name as text.');
 $headerStart = strpos($home, '<header');
 $headerEnd = strpos($home, '</header>');
@@ -150,6 +159,7 @@ $assert(is_string($styles) && str_contains($styles, '--paper: #0b0b0c;'), 'The c
 $assert(is_string($styles) && str_contains($styles, '--ink: #f5f5f3;'), 'The inverted interface should use light text.');
 $assert(is_string($styles) && str_contains($styles, '.site-logo .company-name { color: var(--copper); }'), 'The text-only company wordmark should use the matching red accent.');
 $assert(is_string($styles) && str_contains($styles, '.product-card-heading'), 'The public product catalogue should have a responsive product layout.');
+$assert(is_string($styles) && str_contains($styles, '.partner-logo--aws'), 'The partner logo wall should preserve the AWS dark logo treatment.');
 
 $database = file_get_contents(dirname(__DIR__) . '/src/Shared/Infrastructure/Database.php');
 $assert(is_string($database) && str_contains($database, "extension_loaded('pdo_mysql')"), 'The application should use PDO MySQL.');
