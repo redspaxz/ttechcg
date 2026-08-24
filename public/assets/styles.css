@@ -1339,6 +1339,12 @@ button, a, input, select, textarea { -webkit-tap-highlight-color: transparent; }
     justify-content: space-between;
     border-bottom: 1px solid rgba(75, 55, 0, 0.26);
 }
+.pickup-wordmark {
+    color: #241b00;
+    font-size: clamp(1.35rem, 3vw, 1.85rem);
+    font-weight: 850;
+    letter-spacing: -0.055em;
+}
 .pickup-header-links { display: flex; align-items: center; justify-content: flex-end; gap: 18px; }
 .pickup-form-shell { padding-top: 54px; }
 .pickup-form-heading {

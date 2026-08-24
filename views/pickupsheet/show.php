@@ -35,10 +35,7 @@ $renderShipmentRow = static function (int|string $index, mixed $row = []) use ($
 ?>
 <section class="pickup-workspace">
     <div class="container pickup-workspace-header">
-        <div class="product-brand product-brand-large">
-            <img src="<?= $e($assetBase . '/dhl-logo.svg') ?>" alt="DHL">
-            <span aria-hidden="true">—</span><strong>pickupsheet</strong>
-        </div>
+        <strong class="pickup-wordmark">Pickupsheet</strong>
         <div class="pickup-header-links">
             <a class="pickup-back" href="<?= $e($basePath) ?>/pickupsheet/submissions">Submitted sheets <span aria-hidden="true">↗</span></a>
             <a class="pickup-back" href="<?= $e($basePath . '/') ?>">T&amp;Tech home <span aria-hidden="true">↗</span></a>

@@ -14,10 +14,7 @@ $totalXaf = array_reduce(
 ?>
 <section class="pickup-view-workspace">
     <div class="container pickup-workspace-header">
-        <div class="product-brand product-brand-large">
-            <img src="<?= $e($assetBase . '/dhl-logo.svg') ?>" alt="DHL">
-            <span aria-hidden="true">—</span><strong>pickupsheet</strong>
-        </div>
+        <strong class="pickup-wordmark">Pickupsheet</strong>
         <a class="pickup-back" href="<?= $e($basePath) ?>/pickupsheet/">New pickup sheet <span aria-hidden="true">↗</span></a>
     </div>
 

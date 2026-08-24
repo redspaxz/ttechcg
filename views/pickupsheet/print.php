@@ -3,39 +3,77 @@
 declare(strict_types=1);
 
 $e = static fn (mixed $value): string => htmlspecialchars((string) $value, ENT_QUOTES, 'UTF-8');
+$date = DateTimeImmutable::createFromFormat('!Y-m-d', $pickupSheet->collectionDate);
+$collectionDate = $date instanceof DateTimeImmutable ? $date->format('d/m/Y') : $pickupSheet->collectionDate;
+$minimumRows = 22;
+$blankRows = max(0, $minimumRows - $pickupSheet->shipmentCount());
 ?>
 <div class="print-actions">
     <button type="button" onclick="window.print()">Print / Save as PDF</button>
     <a href="<?= $e($basePath) ?>/pickupsheet/submissions">Back to submitted sheets</a>
 </div>
+
 <article class="print-sheet">
-    <header class="print-heading">
-        <div class="print-brand"><img src="<?= $e($assetBase . '/dhl-logo.svg') ?>" alt="DHL"><span aria-hidden="true">—</span><span>Pickupsheet</span></div>
-        <div class="print-reference"><span>Reference number</span><strong><?= $e($pickupSheet->referenceNumber) ?></strong></div>
+    <header class="paper-header">
+        <div class="paper-identity">
+            <h1>Pick-up sheet</h1>
+            <div class="paper-field"><strong>Agent name :</strong><span><?= $e($pickupSheet->agentName) ?></span></div>
+        </div>
+        <div class="paper-document-meta">
+            <div class="paper-field"><strong>Date:</strong><span><?= $e($collectionDate) ?></span></div>
+            <div class="paper-reference"><strong>Reference:</strong><span><?= $e($pickupSheet->referenceNumber) ?></span></div>
+        </div>
     </header>
-    <div class="print-meta">
-        <div><span>Agent name</span><strong><?= $e($pickupSheet->agentName) ?></strong></div>
-        <div><span>Collection date</span><strong><?= $e($pickupSheet->collectionDate) ?></strong></div>
-    </div>
-    <h1>Cash shipments (clients cash)</h1>
-    <table>
-        <thead><tr><th>#</th><th>Consignor</th><th>AWB number</th><th>Dest</th><th>Amount</th><th>Pces</th><th>Wgt</th><th>Time coll</th><th>Check by</th></tr></thead>
+
+    <h2>Cash shipments (clients cash)</h2>
+
+    <table class="paper-shipment-table">
+        <colgroup>
+            <col class="paper-col-consignor">
+            <col class="paper-col-awb">
+            <col class="paper-col-destination">
+            <col class="paper-col-amount">
+            <col class="paper-col-pieces">
+            <col class="paper-col-weight">
+            <col class="paper-col-time">
+            <col class="paper-col-checker">
+        </colgroup>
+        <thead>
+            <tr>
+                <th>Consignor</th>
+                <th>AWB. number</th>
+                <th>Dest</th>
+                <th>Amount</th>
+                <th>Pces</th>
+                <th>Wgt</th>
+                <th>Time<br>coll</th>
+                <th>Check by</th>
+            </tr>
+        </thead>
         <tbody>
         <?php foreach ($pickupSheet->shipments as $shipment): ?>
             <tr>
-                <td><?= $e($shipment->lineNumber) ?></td>
                 <td><?= $e($shipment->consignor) ?></td>
                 <td><?= $e($shipment->awbNumber) ?></td>
                 <td><?= $e($shipment->destination) ?></td>
                 <td><?= $e(number_format($shipment->amountXaf)) ?></td>
                 <td><?= $e($shipment->pieces) ?></td>
-                <td><?= $e(rtrim(rtrim($shipment->weightKg, '0'), '.')) ?> kg</td>
+                <td><?= $e(rtrim(rtrim($shipment->weightKg, '0'), '.')) ?>KG</td>
                 <td><?= $e($shipment->collectionTime) ?></td>
                 <td><?= $e($shipment->checkedBy) ?></td>
             </tr>
         <?php endforeach; ?>
+        <?php for ($row = 0; $row < $blankRows; $row++): ?>
+            <tr class="paper-empty-row" aria-hidden="true">
+                <td>&nbsp;</td><td>&nbsp;</td><td>&nbsp;</td><td>&nbsp;</td>
+                <td>&nbsp;</td><td>&nbsp;</td><td>&nbsp;</td><td>&nbsp;</td>
+            </tr>
+        <?php endfor; ?>
         </tbody>
-        <tfoot><tr><th colspan="4">Total cash received</th><th><?= $e(number_format($pickupSheet->totalCashReceivedXaf)) ?> XAF</th><th colspan="4"><?= $e($pickupSheet->shipmentCount()) ?> shipment<?= $pickupSheet->shipmentCount() === 1 ? '' : 's' ?> collected</th></tr></tfoot>
     </table>
-    <div class="print-totals"><span>Shipments collected: <strong><?= $e($pickupSheet->shipmentCount()) ?></strong></span><span>Total cash received: <strong><?= $e(number_format($pickupSheet->totalCashReceivedXaf)) ?> XAF</strong></span></div>
+
+    <footer class="paper-totals">
+        <div><strong>Shipments collected:</strong><span><?= $e($pickupSheet->shipmentCount()) ?></span></div>
+        <div><strong>Total cash received</strong><span><?= $e(number_format($pickupSheet->totalCashReceivedXaf)) ?>XAF</span></div>
+    </footer>
 </article>
