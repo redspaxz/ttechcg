@@ -5,6 +5,7 @@ declare(strict_types=1);
 namespace App\Modules\Pickupsheet\UI;
 
 use App\Modules\Pickupsheet\Application\PickupSheetService;
+use App\Modules\Pickupsheet\Domain\PickupSheet;
 use App\Shared\Http\Request;
 use App\Shared\Http\Response;
 use App\Shared\Security\Captcha;
@@ -109,5 +110,196 @@ final class PickupsheetController
         }
 
         return Response::redirect($request->basePath . '/pickupsheet/');
+    }
+
+    public function submissions(Request $request): Response
+    {
+        $authorized = $this->viewerAuthorized();
+        $errors = $_SESSION['_pickup_view_errors'] ?? [];
+        unset($_SESSION['_pickup_view_errors']);
+        $pickupSheets = [];
+
+        if ($authorized && $this->pickupOperational) {
+            try {
+                $pickupSheets = $this->service->recent();
+            } catch (RuntimeException $exception) {
+                error_log($exception->__toString());
+                $errors = ['Submitted pickup sheets could not be loaded. Please try again later.'];
+            }
+        }
+
+        $body = $this->view->render('pickupsheet/submissions', [
+            'pageTitle' => 'Submitted pickup sheets',
+            'pageDescription' => 'Protected pickup-sheet records and shipment exports.',
+            'pageRobots' => 'noindex, nofollow',
+            'activePage' => 'pickupsheet',
+            'basePath' => $request->basePath,
+            'assetBase' => $request->basePath . '/public/assets',
+            'config' => $this->config,
+            'storageMode' => $this->storageMode,
+            'csrfToken' => $this->csrf->token(),
+            'authorized' => $authorized,
+            'viewKeyConfigured' => $this->viewKey() !== '',
+            'pickupOperational' => $this->pickupOperational,
+            'pickupSheets' => $pickupSheets,
+            'errors' => is_array($errors) ? $errors : [],
+        ]);
+
+        return Response::html($body, 200, [
+            'Cache-Control' => 'private, no-store, max-age=0',
+            'X-Robots-Tag' => 'noindex, nofollow',
+        ]);
+    }
+
+    public function login(Request $request): Response
+    {
+        if (!$this->csrf->validate($request->input('_token'))) {
+            return Response::html('Invalid or expired form token.', 419);
+        }
+
+        $viewKey = $this->viewKey();
+        if ($viewKey === '') {
+            $_SESSION['_pickup_view_errors'] = ['Submitted-sheet access is not configured on this server.'];
+            return Response::redirect($request->basePath . '/pickupsheet/submissions');
+        }
+
+        $attempts = $_SESSION['_pickup_view_attempts'] ?? ['count' => 0, 'last_at' => 0];
+        $count = is_array($attempts) ? (int) ($attempts['count'] ?? 0) : 0;
+        $lastAt = is_array($attempts) ? (int) ($attempts['last_at'] ?? 0) : 0;
+        if ($count >= 5 && time() - $lastAt < 300) {
+            $_SESSION['_pickup_view_errors'] = ['Too many access attempts. Please wait five minutes and try again.'];
+            return Response::redirect($request->basePath . '/pickupsheet/submissions');
+        }
+        if ($lastAt > 0 && time() - $lastAt >= 300) {
+            $count = 0;
+        }
+
+        if (!hash_equals($viewKey, $request->input('access_key'))) {
+            $_SESSION['_pickup_view_attempts'] = ['count' => $count + 1, 'last_at' => time()];
+            $_SESSION['_pickup_view_errors'] = ['The submitted-sheet access key is incorrect.'];
+            return Response::redirect($request->basePath . '/pickupsheet/submissions');
+        }
+
+        session_regenerate_id(true);
+        $_SESSION['_pickup_view_authorization'] = hash('sha256', $viewKey);
+        unset($_SESSION['_pickup_view_attempts']);
+
+        return Response::redirect($request->basePath . '/pickupsheet/submissions');
+    }
+
+    public function logout(Request $request): Response
+    {
+        if (!$this->csrf->validate($request->input('_token'))) {
+            return Response::html('Invalid or expired form token.', 419);
+        }
+
+        unset($_SESSION['_pickup_view_authorization']);
+        session_regenerate_id(true);
+
+        return Response::redirect($request->basePath . '/pickupsheet/submissions');
+    }
+
+    public function print(Request $request): Response
+    {
+        if (!$this->viewerAuthorized()) {
+            return Response::redirect($request->basePath . '/pickupsheet/submissions');
+        }
+
+        $pickupSheet = $this->service->findByReference($request->queryString('reference'));
+        if ($pickupSheet === null) {
+            return Response::html('Pickup sheet not found.', 404, ['X-Robots-Tag' => 'noindex, nofollow']);
+        }
+
+        $body = $this->view->render('pickupsheet/print', [
+            'pageTitle' => $pickupSheet->referenceNumber,
+            'basePath' => $request->basePath,
+            'assetBase' => $request->basePath . '/public/assets',
+            'pickupSheet' => $pickupSheet,
+        ], 'layouts/print');
+
+        return Response::html($body, 200, [
+            'Cache-Control' => 'private, no-store, max-age=0',
+            'X-Robots-Tag' => 'noindex, nofollow',
+        ]);
+    }
+
+    public function export(Request $request): Response
+    {
+        if (!$this->viewerAuthorized()) {
+            return Response::redirect($request->basePath . '/pickupsheet/submissions');
+        }
+
+        $pickupSheet = $this->service->findByReference($request->queryString('reference'));
+        if ($pickupSheet === null) {
+            return Response::html('Pickup sheet not found.', 404, ['X-Robots-Tag' => 'noindex, nofollow']);
+        }
+
+        return Response::download(
+            $this->excelCsv($pickupSheet),
+            'text/csv; charset=UTF-8',
+            $pickupSheet->referenceNumber . '.csv',
+        );
+    }
+
+    private function viewerAuthorized(): bool
+    {
+        $viewKey = $this->viewKey();
+        $authorization = $_SESSION['_pickup_view_authorization'] ?? '';
+
+        return $viewKey !== ''
+            && is_string($authorization)
+            && hash_equals(hash('sha256', $viewKey), $authorization);
+    }
+
+    private function viewKey(): string
+    {
+        $viewKey = trim((string) ($this->config['pickup_view_key'] ?? ''));
+        return strlen($viewKey) >= 16 ? $viewKey : '';
+    }
+
+    private function excelCsv(PickupSheet $pickupSheet): string
+    {
+        $stream = fopen('php://temp', 'w+');
+        if ($stream === false) {
+            throw new RuntimeException('Unable to prepare the pickup-sheet export.');
+        }
+
+        fwrite($stream, "\xEF\xBB\xBF");
+        fputcsv($stream, ['Reference number', $pickupSheet->referenceNumber]);
+        fputcsv($stream, ['Agent name', $this->safeSpreadsheetText($pickupSheet->agentName)]);
+        fputcsv($stream, ['Collection date', $pickupSheet->collectionDate]);
+        fputcsv($stream, ['Shipments collected', $pickupSheet->shipmentCount()]);
+        fputcsv($stream, ['Total cash received', $pickupSheet->totalCashReceivedXaf, 'XAF']);
+        fputcsv($stream, []);
+        fputcsv($stream, ['#', 'Consignor', 'AWB number', 'Destination', 'Amount (XAF)', 'Pieces', 'Weight (kg)', 'Time collected', 'Checked by']);
+
+        foreach ($pickupSheet->shipments as $shipment) {
+            fputcsv($stream, [
+                $shipment->lineNumber,
+                $this->safeSpreadsheetText($shipment->consignor),
+                '="' . $shipment->awbNumber . '"',
+                $shipment->destination,
+                $shipment->amountXaf,
+                $shipment->pieces,
+                $shipment->weightKg,
+                $shipment->collectionTime,
+                $this->safeSpreadsheetText($shipment->checkedBy),
+            ]);
+        }
+
+        rewind($stream);
+        $contents = stream_get_contents($stream);
+        fclose($stream);
+
+        if (!is_string($contents)) {
+            throw new RuntimeException('Unable to read the pickup-sheet export.');
+        }
+
+        return $contents;
+    }
+
+    private function safeSpreadsheetText(string $value): string
+    {
+        return preg_match('/^[=+\-@\t\r]/u', $value) ? "'" . $value : $value;
     }
 }

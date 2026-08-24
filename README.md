@@ -21,6 +21,8 @@ The contact workflow uses CSRF validation, a honeypot, session rate limiting, a 
 
 The unlisted `/pickupsheet/` route captures the supplied paper pickup-sheet structure: agent, date, and repeatable cash-shipment rows containing consignor, AWB, destination, amount, pieces, weight, collection time, and checker. Every saved sheet receives a unique `PS-YYYYMMDD-XXXXXXXXXXXXXXXX` reference. Shipment count and total XAF are calculated in the browser for immediate feedback and recalculated on the server before the aggregate and its line items are committed together. CSRF, CAPTCHA, honeypot, rate limiting, field validation, and a recorded privacy opt-in protect submissions.
 
+`/pickupsheet/submissions` is a protected, no-store view of the 100 most recent sheets. Set a unique `PICKUPSHEET_VIEW_KEY` of at least 16 characters in the server-managed `.env`; the key is never committed. After session authentication, operators can expand each reference, print or save an A4 landscape sheet as PDF, or download an Excel-compatible UTF-8 CSV. Print and export routes enforce the same protected session and query a single validated reference.
+
 Google Analytics measurement ID `G-WVFXFB5H3M` is integrated using Basic Consent Mode. The Google tag is not requested until a visitor explicitly accepts analytics cookies, advertising consent remains denied, and visitors can reopen their choice from the footer.
 
 ## Local development

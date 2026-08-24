@@ -40,7 +40,10 @@ $renderShipmentRow = static function (int|string $index, mixed $row = []) use ($
             <img src="<?= $e($assetBase . '/dhl-logo.svg') ?>" alt="DHL">
             <span aria-hidden="true">—</span><strong>pickupsheet</strong>
         </div>
-        <a class="pickup-back" href="<?= $e($basePath . '/') ?>">T&amp;Tech home <span aria-hidden="true">↗</span></a>
+        <div class="pickup-header-links">
+            <a class="pickup-back" href="<?= $e($basePath) ?>/pickupsheet/submissions">Submitted sheets <span aria-hidden="true">↗</span></a>
+            <a class="pickup-back" href="<?= $e($basePath . '/') ?>">T&amp;Tech home <span aria-hidden="true">↗</span></a>
+        </div>
     </div>
 
     <div class="container pickup-form-shell">

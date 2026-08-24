@@ -150,6 +150,9 @@ $assert($pickupSheet->totalCashReceivedXaf === 115700, 'The XAF total should be 
 $assert($pickupSheet->shipments[0]->destination === 'DCA', 'Destination codes should be normalized to uppercase.');
 $assert($pickupSheet->shipments[0]->weightKg === '0.500', 'Shipment weight should be normalized for MySQL decimals.');
 $assert($pickupSheet->privacyConsentAt !== '', 'Pickup-sheet consent should retain a timestamp.');
+$assert(($pickupService->recent(1)[0]->referenceNumber ?? '') === $pickupSheet->referenceNumber, 'Recent pickup sheets should be available to the protected query view.');
+$assert($pickupService->findByReference($pickupSheet->referenceNumber)?->agentName === 'Edmund Ngochi', 'A pickup sheet should be retrievable by its reference number.');
+$assert($pickupService->findByReference('invalid-reference') === null, 'Invalid pickup-sheet references should not reach persistence.');
 
 $pickupConsentFailed = false;
 try {
@@ -231,12 +234,13 @@ $assert(str_contains((string) ($_SESSION['_errors'][0] ?? ''), 'human verificati
 $_SESSION = [];
 $pickupCsrf = new Csrf();
 $pickupCaptcha = new Captcha('pickupsheet-test');
+$pickupConfig = array_merge($config, ['pickup_view_key' => 'test-pickup-view-key-2026']);
 $pickupController = new PickupsheetController(
     new PickupSheetService(new DemoPickupSheetRepository()),
     $view,
     $pickupCsrf,
     $pickupCaptcha,
-    $config,
+    $pickupConfig,
     'Demo workspace',
     true,
 );
@@ -267,6 +271,39 @@ $pickupControllerResponse = $pickupController->store(new Request('POST', '/picku
 $assert($pickupControllerResponse->status() === 303, 'A valid pickup sheet should redirect after saving.');
 $assert(str_contains((string) ($_SESSION['_pickup_flash'] ?? ''), 'PS-20260729-'), 'The saved-sheet confirmation should display its reference number.');
 $assert(str_contains((string) ($_SESSION['_pickup_flash'] ?? ''), '12,000 XAF'), 'The pickup controller should confirm the server-calculated total.');
+$savedControllerSheet = $_SESSION['_demo_pickup_sheets'][0] ?? null;
+$assert($savedControllerSheet instanceof App\Modules\Pickupsheet\Domain\PickupSheet, 'The controller should persist a pickup-sheet aggregate.');
+$savedReference = $savedControllerSheet->referenceNumber;
+
+$unauthorizedSubmissions = $pickupController->submissions(new Request('GET', '/pickupsheet/submissions', [], [], ''));
+$assert($unauthorizedSubmissions->status() === 200, 'The protected submissions login should render.');
+$assert(str_contains($unauthorizedSubmissions->body(), 'name="access_key"'), 'Submitted sheets should require the configured access key.');
+$assert(!str_contains($unauthorizedSubmissions->body(), 'Controller Client'), 'Shipment records should not render before authorization.');
+$unauthorizedExport = $pickupController->export(new Request('GET', '/pickupsheet/submissions/export', ['reference' => $savedReference], [], ''));
+$assert($unauthorizedExport->status() === 303, 'An unauthorised spreadsheet export should return to the protected login.');
+
+$pickupLoginResponse = $pickupController->login(new Request('POST', '/pickupsheet/submissions/login', [], [
+    '_token' => $pickupCsrf->token(),
+    'access_key' => 'test-pickup-view-key-2026',
+], ''));
+$assert($pickupLoginResponse->status() === 303, 'A valid submissions access key should establish the protected session.');
+$authorizedSubmissions = $pickupController->submissions(new Request('GET', '/pickupsheet/submissions', [], [], ''));
+$assert(str_contains($authorizedSubmissions->body(), $savedReference), 'The protected table should show each sheet reference.');
+$assert(str_contains($authorizedSubmissions->body(), 'Controller Client'), 'The protected table should show shipment rows after authorization.');
+$assert(str_contains($authorizedSubmissions->body(), 'Print / PDF'), 'Each submitted sheet should provide a print-to-PDF action.');
+$assert(str_contains($authorizedSubmissions->body(), 'Export Excel'), 'Each submitted sheet should provide an Excel export action.');
+$assert(($authorizedSubmissions->headers()['Cache-Control'] ?? '') === 'private, no-store, max-age=0', 'Protected records should not be cached.');
+
+$printResponse = $pickupController->print(new Request('GET', '/pickupsheet/submissions/print', ['reference' => $savedReference], [], ''));
+$assert($printResponse->status() === 200, 'An authorized pickup sheet should render for printing.');
+$assert(str_contains($printResponse->body(), 'window.print()'), 'The print view should invoke the browser PDF/print workflow.');
+$assert(str_contains($printResponse->body(), $savedReference), 'The printable sheet should display its reference number.');
+$exportResponse = $pickupController->export(new Request('GET', '/pickupsheet/submissions/export', ['reference' => $savedReference], [], ''));
+$assert($exportResponse->status() === 200, 'An authorized pickup sheet should export successfully.');
+$assert(str_starts_with($exportResponse->body(), "\xEF\xBB\xBF"), 'The Excel-compatible CSV should include a UTF-8 byte-order mark.');
+$assert(str_contains($exportResponse->body(), 'Controller Client'), 'The spreadsheet export should contain shipment data.');
+$assert(str_contains($exportResponse->body(), '"Total cash received",12000,XAF'), 'The spreadsheet export should contain the server-calculated total.');
+$assert(($exportResponse->headers()['Content-Disposition'] ?? '') === 'attachment; filename="' . $savedReference . '.csv"', 'The Excel export should use the pickup reference as its filename.');
 
 $home = $view->render('site/home', array_merge($common, [
     'pageTitle' => 'Network outsourcing and managed solutions',
@@ -299,8 +336,8 @@ $assert(is_string($dhlAsset) && !str_contains($dhlAsset, '<text'), 'The disquali
 $partnerSources = file_get_contents(dirname(__DIR__) . '/public/assets/partners/README.md');
 $assert(is_string($partnerSources) && str_contains($partnerSources, 'www.dhl.com/content/dam/dhl/global/core/images/logos/dhl-logo.svg'), 'The official DHL artwork source should be documented.');
 $assert(!str_contains($home, 'href="/pickupsheet"'), 'Pickupsheet should not be discoverable from the public site chrome or homepage.');
-$assert(str_contains($home, 'styles.css?v=20260824-pickup-reference'), 'The pickup reference update should use a cache-safe stylesheet version.');
-$assert(str_contains($home, 'app.js?v=20260824-pickup-reference'), 'The pickup reference update should use a cache-safe application script version.');
+$assert(str_contains($home, 'styles.css?v=20260824-pickup-submissions'), 'The submissions update should use a cache-safe stylesheet version.');
+$assert(str_contains($home, 'app.js?v=20260824-pickup-submissions'), 'The submissions update should use a cache-safe application script version.');
 $assert(str_contains($home, 'analytics.js?v=20260824-analytics-consent'), 'The consent-aware Google Analytics loader should render on every page.');
 $assert(str_contains($home, 'data-analytics-accept'), 'The site should offer an explicit analytics acceptance control.');
 $assert(str_contains($home, 'data-analytics-decline'), 'The site should offer an explicit analytics decline control.');
@@ -383,6 +420,7 @@ $assert(str_contains($product, 'name="agent_name"'), 'The pickup form should col
 $assert(str_contains($product, 'name="collection_date"'), 'The pickup form should collect the sheet date.');
 $assert(str_contains($product, 'Reference number'), 'The pickup form should disclose its automatic reference number.');
 $assert(str_contains($product, 'Assigned when saved'), 'Operators should know when the reference number is generated.');
+$assert(str_contains($product, 'href="/pickupsheet/submissions"'), 'The private entry screen should link to the protected submissions table.');
 $assert(str_contains($product, 'shipments[0][consignor]'), 'The pickup form should collect a consignor for each row.');
 $assert(str_contains($product, 'shipments[0][awb_number]'), 'The pickup form should collect the AWB number from the PDF.');
 $assert(str_contains($product, 'shipments[0][destination]'), 'The pickup form should collect the destination code from the PDF.');
@@ -409,6 +447,7 @@ $privacy = $view->render('site/privacy', array_merge($common, [
 $assert(str_contains($privacy, 'Information we collect'), 'The privacy notice should explain collected information.');
 $assert(str_contains($privacy, 'agent name, collection date, consignor, AWB number'), 'The privacy notice should disclose pickup-sheet fields.');
 $assert(str_contains($privacy, 'record and reconcile cash shipment collections'), 'The privacy notice should state the pickup-sheet processing purpose.');
+$assert(str_contains($privacy, 'spreadsheet exports are restricted behind a server-managed access key'), 'The privacy notice should explain protected sheet exports.');
 $assert(str_contains($privacy, 'inquiry and pickup-sheet forms require an explicit, unchecked opt-in'), 'Both personal-data forms should require explicit consent.');
 $assert(str_contains($privacy, 'T&amp;Tech Consulting Group'), 'The privacy notice should identify the data controller.');
 $assert(str_contains($privacy, 'We do not sell inquiry information.'), 'The privacy notice should state the use limitation.');
@@ -425,6 +464,7 @@ $assert(str_contains($privacy, 'Cookie settings'), 'The privacy notice should ex
 $environmentExample = file_get_contents(dirname(__DIR__) . '/.env.example');
 $assert(is_string($environmentExample) && str_contains($environmentExample, 'APP_TIMEZONE=Africa/Douala'), 'The environment example should use Cameroon time.');
 $assert(is_string($environmentExample) && str_contains($environmentExample, 'CONTACT_EMAIL=info@ttechcg.com'), 'The environment example should route production inquiries to the company mailbox.');
+$assert(is_string($environmentExample) && str_contains($environmentExample, 'PICKUPSHEET_VIEW_KEY='), 'The environment example should document the private submissions access key.');
 
 $styles = file_get_contents(dirname(__DIR__) . '/public/assets/styles.css');
 $assert(is_string($styles) && str_contains($styles, '--navy: #0b0b0c;'), 'T&Tech near-black should be the minimal corporate foundation.');
@@ -455,6 +495,8 @@ $assert(is_string($styles) && str_contains($styles, '.pickup-workspace') && str_
 $assert(is_string($styles) && str_contains($styles, 'background: #ffffff;'), 'The pickup-sheet data-entry card should use a white form area.');
 $assert(is_string($styles) && str_contains($styles, '.shipment-row'), 'Shipment rows should have responsive form styling.');
 $assert(is_string($styles) && str_contains($styles, 'content: attr(data-label);'), 'Shipment rows should expose their field labels in the mobile card layout.');
+$assert(is_string($styles) && str_contains($styles, '/* Protected pickup-sheet records */'), 'Submitted pickup sheets should have a dedicated protected table layout.');
+$assert(is_string($styles) && str_contains($styles, '.pickup-record-actions'), 'Each submitted sheet should style its print and spreadsheet actions.');
 
 $script = file_get_contents(dirname(__DIR__) . '/public/assets/app.js');
 $assert(is_string($script) && str_contains($script, "event.key === 'Escape'"), 'The mobile navigation should close with Escape.');
@@ -492,6 +534,7 @@ $pickupMysqlRepository = file_get_contents(dirname(__DIR__) . '/src/Modules/Pick
 $assert(is_string($pickupMysqlRepository) && str_contains($pickupMysqlRepository, 'beginTransaction()'), 'Pickup-sheet headers and rows should save transactionally.');
 $assert(is_string($pickupMysqlRepository) && str_contains($pickupMysqlRepository, ':reference_number'), 'MySQL persistence should store the generated pickup-sheet reference.');
 $assert(is_string($pickupMysqlRepository) && str_contains($pickupMysqlRepository, ':total_cash_received_xaf'), 'MySQL persistence should store the server-calculated XAF total.');
+$assert(is_string($pickupMysqlRepository) && str_contains($pickupMysqlRepository, 'findByReference'), 'MySQL persistence should support reference-scoped print and export queries.');
 $bootstrap = file_get_contents(dirname(__DIR__) . '/bootstrap/app.php');
 $assert(is_string($bootstrap) && str_contains($bootstrap, "'httponly' => true"), 'The security session cookie should be inaccessible to client-side scripts.');
 $assert(is_string($bootstrap) && str_contains($bootstrap, "'samesite' => 'Lax'"), 'The security session cookie should use a SameSite policy.');

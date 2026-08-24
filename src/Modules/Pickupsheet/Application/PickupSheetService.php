@@ -20,6 +20,22 @@ final class PickupSheetService
     {
     }
 
+    /** @return list<PickupSheet> */
+    public function recent(int $limit = 100): array
+    {
+        return $this->repository->recent(max(1, min($limit, 100)));
+    }
+
+    public function findByReference(string $referenceNumber): ?PickupSheet
+    {
+        $referenceNumber = strtoupper(trim($referenceNumber));
+        if (!preg_match('/^PS-[0-9]{8}-(?:[A-F0-9]{16}|LEGACY-[0-9]+)$/', $referenceNumber)) {
+            return null;
+        }
+
+        return $this->repository->findByReference($referenceNumber);
+    }
+
     /** @param array<string, mixed> $input */
     public function submit(array $input): PickupSheet
     {

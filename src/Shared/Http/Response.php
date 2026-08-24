@@ -14,9 +14,22 @@ final class Response
     ) {
     }
 
-    public static function html(string $body, int $status = 200): self
+    /** @param array<string, string> $headers */
+    public static function html(string $body, int $status = 200, array $headers = []): self
     {
-        return new self($body, $status, ['Content-Type' => 'text/html; charset=UTF-8']);
+        return new self($body, $status, array_merge(['Content-Type' => 'text/html; charset=UTF-8'], $headers));
+    }
+
+    public static function download(string $body, string $contentType, string $filename): self
+    {
+        $safeFilename = preg_replace('/[^A-Za-z0-9._-]/', '-', $filename) ?: 'download';
+
+        return new self($body, 200, [
+            'Content-Type' => $contentType,
+            'Content-Disposition' => 'attachment; filename="' . $safeFilename . '"',
+            'Cache-Control' => 'private, no-store, max-age=0',
+            'X-Content-Type-Options' => 'nosniff',
+        ]);
     }
 
     /** @param array<string, mixed> $data */
@@ -51,6 +64,12 @@ final class Response
     public function status(): int
     {
         return $this->status;
+    }
+
+    /** @return array<string, string> */
+    public function headers(): array
+    {
+        return $this->headers;
     }
 }
 
