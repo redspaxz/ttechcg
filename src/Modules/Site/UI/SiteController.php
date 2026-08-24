@@ -22,7 +22,7 @@ final class SiteController
     public function home(Request $request): Response
     {
         return $this->page($request, 'site/home', 'Network outsourcing and managed solutions', 'home',
-            'T&Tech keeps organisations connected and productive through network outsourcing, managed infrastructure, cloud security, and practical business solutions.');
+            'T&Tech keeps organisations connected through network outsourcing and managed solutions, backed by partnerships with AWS, Microsoft, IBM, and Red Hat.');
     }
 
     public function services(Request $request): Response
@@ -40,7 +40,7 @@ final class SiteController
     public function about(Request $request): Response
     {
         return $this->page($request, 'site/about', 'An accountable technology operations partner', 'about',
-            'T&Tech combines managed network operations and solution delivery to keep organisations connected, resilient, and ready to grow.');
+            'T&Tech combines managed network operations, solution delivery, and partnerships with AWS, Microsoft, IBM, and Red Hat.');
     }
 
     public function privacy(Request $request): Response

@@ -27,6 +27,22 @@
     </div>
 </section>
 
+<section class="technology-partners" aria-labelledby="technology-partners-heading">
+    <div class="container partner-intro" data-reveal>
+        <div>
+            <p class="eyebrow">Technology partners</p>
+            <h2 id="technology-partners-heading">Connected to the platforms enterprises trust.</h2>
+        </div>
+        <p>Our partnerships strengthen the infrastructure, cloud, automation, and enterprise solutions we deliver and support.</p>
+    </div>
+    <div class="container partner-list" data-reveal>
+        <span>Amazon Web Services <small>AWS</small></span>
+        <span>Microsoft</span>
+        <span>IBM</span>
+        <span>Red Hat</span>
+    </div>
+</section>
+
 <section class="section section-services">
     <div class="container">
         <div class="section-heading split-heading" data-reveal>

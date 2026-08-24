@@ -95,9 +95,13 @@ $home = $view->render('site/home', array_merge($common, [
 $assert(str_contains($home, 'T&amp;Tech'), 'Corporate brand should render.');
 $assert(str_contains($home, 'Network outsourcing'), 'Network outsourcing should lead the home page positioning.');
 $assert(str_contains($home, 'href="/products"'), 'The public product catalogue should be linked in the site navigation.');
+$assert(str_contains($home, 'Amazon Web Services'), 'The AWS partnership should be presented on the home page.');
+$assert(str_contains($home, 'Microsoft'), 'The Microsoft partnership should be presented on the home page.');
+$assert(str_contains($home, 'IBM'), 'The IBM partnership should be presented on the home page.');
+$assert(str_contains($home, 'Red Hat'), 'The Red Hat partnership should be presented on the home page.');
 $assert(!str_contains($home, 'href="/pickupsheet"'), 'Pickupsheet should not be discoverable from the public site chrome or homepage.');
 $assert(!str_contains($home, 'dhl-logo.svg'), 'The private Pickupsheet product should not be promoted on the homepage.');
-$assert(str_contains($home, 'styles.css?v=20260824-network-products'), 'The repositioned site stylesheet should use a cache-safe version.');
+$assert(str_contains($home, 'styles.css?v=20260824-technology-partners'), 'The technology partner update should use a cache-safe stylesheet version.');
 $assert(str_contains($home, '<span class="company-name">T&amp;Tech Consulting Group</span>'), 'The header should render the full company name as text.');
 $headerStart = strpos($home, '<header');
 $headerEnd = strpos($home, '</header>');
