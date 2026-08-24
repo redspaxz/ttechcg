@@ -17,6 +17,8 @@ The site uses MySQL through `pdo_mysql`. Valid database settings enable persiste
 
 Production contact submissions require both a working MySQL connection and a valid `CONTACT_EMAIL`. Set `CONTACT_EMAIL=info@ttechcg.com` in the server-managed `.env`. Successful inquiries are stored first and then forwarded to that address through the hosting account's PHP mail transport. If either dependency is missing, the form is disabled and `/health` returns `503` instead of presenting a false success. Set `CONTACT_FROM_EMAIL` to a same-domain mailbox authorised by the hosting account.
 
+The contact workflow uses CSRF validation, a honeypot, session rate limiting, and a first-party arithmetic CAPTCHA. The CAPTCHA requires no external keys or tracking service and expires after 15 minutes.
+
 ## Local development
 
 1. Copy `.env.example` to `.env` and adjust the values.

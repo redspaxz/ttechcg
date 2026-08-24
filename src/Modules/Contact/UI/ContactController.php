@@ -7,6 +7,7 @@ namespace App\Modules\Contact\UI;
 use App\Modules\Contact\Application\InquiryService;
 use App\Shared\Http\Request;
 use App\Shared\Http\Response;
+use App\Shared\Security\Captcha;
 use App\Shared\Security\Csrf;
 use App\Shared\View\View;
 use InvalidArgumentException;
@@ -19,6 +20,7 @@ final class ContactController
         private readonly InquiryService $service,
         private readonly View $view,
         private readonly Csrf $csrf,
+        private readonly Captcha $captcha,
         private readonly array $config,
         private readonly string $storageMode,
         private readonly bool $contactOperational,
@@ -37,6 +39,7 @@ final class ContactController
             'pageDescription' => 'Contact T&Tech in Bamenda or Douala, Cameroon, for network outsourcing, managed infrastructure, and technology solutions.',
             'activePage' => 'contact',
             'csrfToken' => $this->csrf->token(),
+            'captcha' => $this->captcha->issue(),
             'flash' => $flash,
             'errors' => is_array($errors) ? $errors : [],
             'old' => is_array($old) ? $old : [],
@@ -66,6 +69,12 @@ final class ContactController
 
         if ($request->input('website') !== '') {
             $_SESSION['_flash'] = 'Thanks. Your message has been received.';
+            return Response::redirect($request->basePath . '/contact');
+        }
+
+        if (!$this->captcha->validate($request->input('captcha_nonce'), $request->input('captcha_answer'))) {
+            $_SESSION['_errors'] = ['Please complete the human verification with the correct answer.'];
+            $_SESSION['_old'] = $input;
             return Response::redirect($request->basePath . '/contact');
         }
 

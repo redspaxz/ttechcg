@@ -55,6 +55,15 @@ $locations = is_array($config['locations'] ?? null) ? $config['locations'] : [];
                     <label><span>Area of interest</span><select name="service" required><option value="">Select one</option><?php foreach ($services as $value => $label): ?><option value="<?= $e($value) ?>" <?= ($old['service'] ?? '') === $value ? 'selected' : '' ?>><?= $e($label) ?></option><?php endforeach; ?></select></label>
                 </div>
                 <label><span>What would you like to move forward?</span><textarea name="message" minlength="20" maxlength="2000" rows="7" required placeholder="A little context on the challenge, desired outcome, and timing."><?= $e($old['message'] ?? '') ?></textarea></label>
+                <fieldset class="captcha-fieldset">
+                    <legend>Human verification</legend>
+                    <input type="hidden" name="captcha_nonce" value="<?= $e($captcha['nonce'] ?? '') ?>">
+                    <label for="captcha-answer">
+                        <span>What is <?= $e($captcha['question'] ?? '') ?>?</span>
+                        <input id="captcha-answer" name="captcha_answer" type="text" inputmode="numeric" pattern="[0-9]+" maxlength="2" required autocomplete="off" aria-describedby="captcha-help">
+                    </label>
+                    <p id="captcha-help">Answer this short calculation to confirm you are human.</p>
+                </fieldset>
                 <button class="button button-primary button-submit" type="submit" <?= !$contactOperational ? 'disabled' : '' ?>>Send inquiry <span aria-hidden="true">↗</span></button>
                 <p class="form-note">Inquiries are securely stored and forwarded to <a href="mailto:<?= $e($contactEmail) ?>"><?= $e($contactEmail) ?></a>. Read our <a href="<?= $e($basePath) ?>/privacy">privacy notice</a>.</p>
             </form>

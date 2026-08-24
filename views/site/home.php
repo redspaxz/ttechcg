@@ -30,10 +30,10 @@
 <section class="technology-partners" aria-labelledby="technology-partners-heading">
     <div class="container partner-intro" data-reveal>
         <div>
-            <p class="eyebrow">Technology partners</p>
-            <h2 id="technology-partners-heading">Connected to the platforms enterprises trust.</h2>
+            <p class="eyebrow">Strategic partners</p>
+            <h2 id="technology-partners-heading">Connected to the platforms and operators enterprises trust.</h2>
         </div>
-        <p>Our partnerships strengthen the infrastructure, cloud, automation, and enterprise solutions we deliver and support.</p>
+        <p>Our partner ecosystem strengthens the infrastructure, cloud, automation, enterprise solutions, and logistics operations we deliver and support.</p>
     </div>
     <div class="container partner-list" data-reveal>
         <a class="partner-logo partner-logo--aws" href="https://aws.amazon.com/" aria-label="Visit Amazon Web Services">
@@ -48,8 +48,11 @@
         <a class="partner-logo partner-logo--red-hat" href="https://www.redhat.com/" aria-label="Visit Red Hat">
             <img src="<?= htmlspecialchars($assetBase . '/partners/red-hat.svg', ENT_QUOTES, 'UTF-8') ?>" alt="Red Hat logo" width="360" height="180" loading="lazy" decoding="async">
         </a>
+        <a class="partner-logo partner-logo--dhl" href="https://www.dhl.com/" aria-label="Visit DHL">
+            <img src="<?= htmlspecialchars($assetBase . '/dhl-logo.svg', ENT_QUOTES, 'UTF-8') ?>" alt="DHL logo" width="287" height="40" loading="lazy" decoding="async">
+        </a>
     </div>
-    <p class="container partner-trademark-note">Amazon Web Services and AWS are trademarks of Amazon.com, Inc. or its affiliates. Microsoft is a trademark of the Microsoft group of companies. IBM and the IBM logo are trademarks of IBM Corp. Red Hat and the Red Hat logo are trademarks of Red Hat, Inc.</p>
+    <p class="container partner-trademark-note">Amazon Web Services and AWS are trademarks of Amazon.com, Inc. or its affiliates. Microsoft is a trademark of the Microsoft group of companies. IBM and the IBM logo are trademarks of IBM Corp. Red Hat and the Red Hat logo are trademarks of Red Hat, Inc. DHL and the DHL logo are trademarks of DHL International GmbH or another DHL Group company.</p>
 </section>
 
 <section class="section section-services">

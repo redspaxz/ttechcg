@@ -7,7 +7,10 @@ use App\Modules\Contact\Domain\Inquiry;
 use App\Modules\Contact\Domain\InquiryNotifier;
 use App\Modules\Contact\Infrastructure\DemoInquiryRepository;
 use App\Modules\Contact\Infrastructure\UnavailableInquiryRepository;
+use App\Modules\Contact\UI\ContactController;
 use App\Shared\Http\Request;
+use App\Shared\Security\Captcha;
+use App\Shared\Security\Csrf;
 use App\Shared\View\View;
 
 require dirname(__DIR__) . '/bootstrap/autoload.php';
@@ -24,6 +27,18 @@ $assert = static function (bool $condition, string $message): void {
 };
 
 $_SESSION = [];
+$captchaService = new Captcha();
+$captchaChallenge = $captchaService->issue();
+$captchaParts = preg_split('/\s+/', $captchaChallenge['question']);
+$assert(is_array($captchaParts) && count($captchaParts) === 3, 'CAPTCHA should issue a readable arithmetic challenge.');
+$captchaAnswer = $captchaParts[1] === '+'
+    ? (string) ((int) $captchaParts[0] + (int) $captchaParts[2])
+    : (string) ((int) $captchaParts[0] - (int) $captchaParts[2]);
+$assert($captchaService->validate($captchaChallenge['nonce'], $captchaAnswer), 'A correct CAPTCHA response should validate.');
+$assert(!$captchaService->validate($captchaChallenge['nonce'], $captchaAnswer), 'A CAPTCHA challenge should not be reusable.');
+$wrongChallenge = $captchaService->issue();
+$assert(!$captchaService->validate($wrongChallenge['nonce'], '99'), 'An incorrect CAPTCHA response should fail.');
+
 $service = new InquiryService(new DemoInquiryRepository());
 $inquiry = $service->submit([
     'name' => 'Test Operator',
@@ -87,6 +102,34 @@ $common = [
     'config' => $config,
     'storageMode' => 'Demo workspace',
 ];
+
+$_SESSION = [];
+$csrfService = new Csrf();
+$captchaService = new Captcha();
+$controller = new ContactController(
+    new InquiryService(new DemoInquiryRepository()),
+    $view,
+    $csrfService,
+    $captchaService,
+    $config,
+    'Demo workspace',
+    true,
+);
+$controllerChallenge = $captchaService->issue();
+$controllerResponse = $controller->store(new Request('POST', '/contact', [], [
+    '_token' => $csrfService->token(),
+    'captcha_nonce' => $controllerChallenge['nonce'],
+    'captcha_answer' => '99',
+    'website' => '',
+    'name' => 'CAPTCHA Test',
+    'email' => 'captcha@example.com',
+    'company' => '',
+    'service' => 'network-outsourcing',
+    'message' => 'This valid inquiry should be rejected by the incorrect CAPTCHA answer.',
+], ''));
+$assert($controllerResponse->status() === 303, 'An incorrect CAPTCHA should return to the contact form.');
+$assert(str_contains((string) ($_SESSION['_errors'][0] ?? ''), 'human verification'), 'An incorrect CAPTCHA should produce a useful form error.');
+
 $home = $view->render('site/home', array_merge($common, [
     'pageTitle' => 'Network outsourcing and managed solutions',
     'pageDescription' => 'Test description',
@@ -99,19 +142,27 @@ $assert(str_contains($home, 'Amazon Web Services'), 'The AWS partnership should 
 $assert(str_contains($home, 'Microsoft'), 'The Microsoft partnership should be presented on the home page.');
 $assert(str_contains($home, 'IBM'), 'The IBM partnership should be presented on the home page.');
 $assert(str_contains($home, 'Red Hat'), 'The Red Hat partnership should be presented on the home page.');
+$assert(str_contains($home, 'DHL'), 'The DHL partnership should be presented on the home page.');
 $assert(str_contains($home, '/partners/aws.png'), 'The AWS partner mark should render from a local asset.');
 $assert(str_contains($home, '/partners/microsoft.png'), 'The Microsoft partner mark should render from a local asset.');
 $assert(str_contains($home, '/partners/ibm.svg'), 'The IBM partner mark should render from a local asset.');
 $assert(str_contains($home, '/partners/red-hat.svg'), 'The Red Hat partner mark should render from a local asset.');
+$assert(str_contains($home, '/dhl-logo.svg'), 'The DHL partner mark should render from a local asset.');
 $partnerAssets = ['aws.png', 'microsoft.png', 'ibm.svg', 'red-hat.svg'];
 foreach ($partnerAssets as $partnerAsset) {
     $partnerAssetPath = dirname(__DIR__) . '/public/assets/partners/' . $partnerAsset;
     $assert(is_file($partnerAssetPath) && filesize($partnerAssetPath) > 1000, $partnerAsset . ' should be a non-empty local partner asset.');
 }
+$dhlAssetPath = dirname(__DIR__) . '/public/assets/dhl-logo.svg';
+$assert(is_file($dhlAssetPath) && filesize($dhlAssetPath) > 100, 'The DHL logo should be a non-empty local partner asset.');
+$dhlAsset = file_get_contents($dhlAssetPath);
+$assert(is_string($dhlAsset) && str_contains($dhlAsset, 'viewBox="0 0 143.5 20"'), 'The DHL mark should use the official DHL-hosted artwork geometry.');
+$assert(is_string($dhlAsset) && !str_contains($dhlAsset, '<text'), 'The disqualified font-rendered DHL artwork should not remain.');
+$partnerSources = file_get_contents(dirname(__DIR__) . '/public/assets/partners/README.md');
+$assert(is_string($partnerSources) && str_contains($partnerSources, 'www.dhl.com/content/dam/dhl/global/core/images/logos/dhl-logo.svg'), 'The official DHL artwork source should be documented.');
 $assert(!str_contains($home, 'href="/pickupsheet"'), 'Pickupsheet should not be discoverable from the public site chrome or homepage.');
-$assert(!str_contains($home, 'dhl-logo.svg'), 'The private Pickupsheet product should not be promoted on the homepage.');
-$assert(str_contains($home, 'styles.css?v=20260824-cameroon-offices'), 'The Cameroon office update should use a cache-safe stylesheet version.');
-$assert(str_contains($home, 'app.js?v=20260824-cameroon-offices'), 'The Cameroon office update should use a cache-safe script version.');
+$assert(str_contains($home, 'styles.css?v=20260824-dhl-captcha'), 'The DHL and CAPTCHA update should use a cache-safe stylesheet version.');
+$assert(str_contains($home, 'app.js?v=20260824-dhl-captcha'), 'The DHL and CAPTCHA update should use a cache-safe script version.');
 $assert(str_contains($home, 'viewport-fit=cover'), 'The viewport should support mobile safe areas.');
 $assert(str_contains($home, 'loading="lazy" decoding="async"'), 'Below-the-fold partner logos should load efficiently on mobile.');
 $assert(str_contains($home, '<span class="company-name">T&amp;Tech Consulting Group</span>'), 'The header should render the full company name as text.');
@@ -133,6 +184,7 @@ $contact = $view->render('contact/index', array_merge($common, [
     'pageDescription' => 'Test description',
     'activePage' => 'contact',
     'csrfToken' => 'test-token',
+    'captcha' => ['question' => '7 + 4', 'nonce' => 'test-captcha-nonce'],
     'flash' => null,
     'errors' => [],
     'old' => [],
@@ -145,6 +197,9 @@ $assert(str_contains($contact, 'Douala, Littoral Region'), 'The contact page sho
 $assert(str_contains($contact, 'mailto:info@ttechcg.com'), 'The contact page should provide the direct inquiry destination.');
 $assert(str_contains($contact, 'forwarded to <a href="mailto:info@ttechcg.com"'), 'The form should disclose where inquiries are forwarded.');
 $assert(str_contains($contact, 'method="post" action="/contact"'), 'The contact form should post to the inquiry controller.');
+$assert(str_contains($contact, 'name="captcha_nonce" value="test-captcha-nonce"'), 'The contact form should include the server-issued CAPTCHA nonce.');
+$assert(str_contains($contact, 'What is 7 + 4?'), 'The contact form should present the CAPTCHA challenge.');
+$assert(str_contains($contact, 'name="captcha_answer"'), 'The contact form should require a CAPTCHA answer.');
 
 $products = $view->render('site/products', array_merge($common, [
     'pageTitle' => 'Technology products for real operations',
@@ -194,11 +249,13 @@ $assert(is_string($styles) && str_contains($styles, '--ink: #f5f5f3;'), 'The inv
 $assert(is_string($styles) && str_contains($styles, '.site-logo .company-name { color: var(--copper); }'), 'The text-only company wordmark should use the matching red accent.');
 $assert(is_string($styles) && str_contains($styles, '.product-card-heading'), 'The public product catalogue should have a responsive product layout.');
 $assert(is_string($styles) && str_contains($styles, '.partner-logo--aws'), 'The partner logo wall should preserve the AWS dark logo treatment.');
+$assert(is_string($styles) && str_contains($styles, '.partner-logo--dhl'), 'The partner logo wall should include the DHL-yellow logo treatment.');
 $assert(is_string($styles) && str_contains($styles, '/* Mobile experience hardening */'), 'The site should include focused mobile overrides.');
 $assert(is_string($styles) && str_contains($styles, 'height: calc(100dvh - 68px);'), 'The mobile navigation should respect the dynamic viewport height.');
 $assert(is_string($styles) && str_contains($styles, 'font-size: 16px;'), 'Mobile form controls should prevent automatic input zoom.');
 $assert(is_string($styles) && str_contains($styles, '.contact-destination'), 'The direct inquiry destination should have a responsive presentation.');
 $assert(is_string($styles) && str_contains($styles, '.office-grid'), 'The two Cameroon offices should use the responsive location layout.');
+$assert(is_string($styles) && str_contains($styles, '.captcha-fieldset'), 'The human verification control should have responsive form styling.');
 
 $script = file_get_contents(dirname(__DIR__) . '/public/assets/app.js');
 $assert(is_string($script) && str_contains($script, "event.key === 'Escape'"), 'The mobile navigation should close with Escape.');

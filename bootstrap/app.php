@@ -17,6 +17,7 @@ use App\Shared\Http\Router;
 use App\Shared\Infrastructure\Database;
 use App\Shared\Infrastructure\Environment;
 use App\Shared\Infrastructure\MigrationRunner;
+use App\Shared\Security\Captcha;
 use App\Shared\Security\Csrf;
 use App\Shared\View\View;
 
@@ -57,11 +58,13 @@ $contactOperational = !$isProduction || ($connection !== null && $notifier !== n
 
 $view = new View($root . '/views');
 $csrf = new Csrf();
+$captcha = new Captcha();
 $siteController = new SiteController($view, $config, $storageMode, $contactOperational);
 $contactController = new ContactController(
     new InquiryService($inquiryRepository, $notifier),
     $view,
     $csrf,
+    $captcha,
     $config,
     $storageMode,
     $contactOperational,
