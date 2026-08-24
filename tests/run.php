@@ -96,7 +96,7 @@ $assert(str_contains($home, 'T&amp;Tech'), 'Corporate brand should render.');
 $assert(str_contains($home, 'Digital product engineering'), 'Services should render on the home page.');
 $assert(!str_contains($home, 'href="/pickupsheet"'), 'Pickupsheet should not be discoverable from the public site chrome or homepage.');
 $assert(!str_contains($home, 'dhl-logo.svg'), 'The private Pickupsheet product should not be promoted on the homepage.');
-$assert(str_contains($home, 'styles.css?v=20260824-wordmark'), 'The wordmark design stylesheet should use a cache-safe version.');
+$assert(str_contains($home, 'styles.css?v=20260824-dark'), 'The dark design stylesheet should use a cache-safe version.');
 $assert(str_contains($home, '<span class="company-name">T&amp;Tech Consulting Group</span>'), 'The header should render the full company name as text.');
 $headerStart = strpos($home, '<header');
 $headerEnd = strpos($home, '</header>');
@@ -130,6 +130,8 @@ $assert(is_string($styles) && str_contains($styles, '--paper: #ffffff;'), 'T&Tec
 $assert(is_string($styles) && str_contains($styles, '--dhl-yellow: #ffcc00;'), 'Pickupsheet should retain the DHL-yellow treatment.');
 $assert(is_string($styles) && str_contains($styles, '--container: 1180px;'), 'The minimal layout should use the restrained content width.');
 $assert(is_string($styles) && str_contains($styles, '.signal-orbit { display: none; }'), 'Decorative hero orbits should remain removed.');
+$assert(is_string($styles) && str_contains($styles, '--paper: #0b0b0c;'), 'The corporate canvas should use the inverted black background.');
+$assert(is_string($styles) && str_contains($styles, '--ink: #f5f5f3;'), 'The inverted interface should use light text.');
 
 $database = file_get_contents(dirname(__DIR__) . '/src/Shared/Infrastructure/Database.php');
 $assert(is_string($database) && str_contains($database, "extension_loaded('pdo_mysql')"), 'The application should use PDO MySQL.');
