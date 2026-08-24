@@ -81,6 +81,10 @@ $renderShipmentRow = static function (int|string $index, mixed $row = []) use ($
                     <span>Date</span>
                     <input type="date" name="collection_date" value="<?= $e($old['collection_date'] ?? date('Y-m-d')) ?>" required>
                 </label>
+                <div class="pickup-reference-field">
+                    <span>Reference number</span>
+                    <strong>Assigned when saved</strong>
+                </div>
             </fieldset>
 
             <section class="shipment-editor" aria-labelledby="shipment-editor-title">

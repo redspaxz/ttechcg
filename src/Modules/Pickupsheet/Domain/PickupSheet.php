@@ -9,6 +9,7 @@ final class PickupSheet
     /** @param list<PickupShipment> $shipments */
     public function __construct(
         public readonly ?int $id,
+        public readonly string $referenceNumber,
         public readonly string $agentName,
         public readonly string $collectionDate,
         public readonly array $shipments,

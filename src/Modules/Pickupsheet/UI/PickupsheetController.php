@@ -92,8 +92,8 @@ final class PickupsheetController
         try {
             $pickupSheet = $this->service->submit($input);
             $_SESSION['_pickup_flash'] = sprintf(
-                'Pickup sheet #%d saved with %d shipment%s and a total of %s XAF.',
-                $pickupSheet->id,
+                'Pickup sheet %s saved with %d shipment%s and a total of %s XAF.',
+                $pickupSheet->referenceNumber,
                 $pickupSheet->shipmentCount(),
                 $pickupSheet->shipmentCount() === 1 ? '' : 's',
                 number_format($pickupSheet->totalCashReceivedXaf),

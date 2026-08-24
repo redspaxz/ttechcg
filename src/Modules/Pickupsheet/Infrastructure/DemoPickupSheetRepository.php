@@ -16,6 +16,7 @@ final class DemoPickupSheetRepository implements PickupSheetRepository
         $sheets = $_SESSION[self::SESSION_KEY] ?? [];
         $created = new PickupSheet(
             count($sheets) + 1,
+            $pickupSheet->referenceNumber,
             $pickupSheet->agentName,
             $pickupSheet->collectionDate,
             $pickupSheet->shipments,

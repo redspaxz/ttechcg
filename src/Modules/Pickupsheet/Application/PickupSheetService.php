@@ -99,6 +99,7 @@ final class PickupSheetService
 
         return $this->repository->create(new PickupSheet(
             null,
+            $this->generateReferenceNumber($collectionDate),
             $agentName,
             $collectionDate,
             $shipments,
@@ -107,6 +108,15 @@ final class PickupSheetService
             self::PRIVACY_NOTICE_VERSION,
             $submittedAt,
         ));
+    }
+
+    private function generateReferenceNumber(string $collectionDate): string
+    {
+        return sprintf(
+            'PS-%s-%s',
+            str_replace('-', '', $collectionDate),
+            strtoupper(bin2hex(random_bytes(8))),
+        );
     }
 
     /** @param array<string, string> $row */

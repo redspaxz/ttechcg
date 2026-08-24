@@ -144,6 +144,7 @@ $pickupSheet = $pickupService->submit([
     ],
 ]);
 $assert($pickupSheet->id === 1, 'A pickup sheet should receive a repository ID.');
+$assert((bool) preg_match('/^PS-20260729-[A-F0-9]{16}$/', $pickupSheet->referenceNumber), 'A pickup sheet should receive a date-based unique reference number.');
 $assert($pickupSheet->shipmentCount() === 2, 'All completed shipment rows should be collected.');
 $assert($pickupSheet->totalCashReceivedXaf === 115700, 'The XAF total should be recalculated from shipment rows.');
 $assert($pickupSheet->shipments[0]->destination === 'DCA', 'Destination codes should be normalized to uppercase.');
@@ -264,6 +265,7 @@ $pickupControllerResponse = $pickupController->store(new Request('POST', '/picku
     ]],
 ], ''));
 $assert($pickupControllerResponse->status() === 303, 'A valid pickup sheet should redirect after saving.');
+$assert(str_contains((string) ($_SESSION['_pickup_flash'] ?? ''), 'PS-20260729-'), 'The saved-sheet confirmation should display its reference number.');
 $assert(str_contains((string) ($_SESSION['_pickup_flash'] ?? ''), '12,000 XAF'), 'The pickup controller should confirm the server-calculated total.');
 
 $home = $view->render('site/home', array_merge($common, [
@@ -297,8 +299,8 @@ $assert(is_string($dhlAsset) && !str_contains($dhlAsset, '<text'), 'The disquali
 $partnerSources = file_get_contents(dirname(__DIR__) . '/public/assets/partners/README.md');
 $assert(is_string($partnerSources) && str_contains($partnerSources, 'www.dhl.com/content/dam/dhl/global/core/images/logos/dhl-logo.svg'), 'The official DHL artwork source should be documented.');
 $assert(!str_contains($home, 'href="/pickupsheet"'), 'Pickupsheet should not be discoverable from the public site chrome or homepage.');
-$assert(str_contains($home, 'styles.css?v=20260824-pickup-form'), 'The pickup form update should use a cache-safe stylesheet version.');
-$assert(str_contains($home, 'app.js?v=20260824-pickup-form'), 'The pickup form update should use a cache-safe application script version.');
+$assert(str_contains($home, 'styles.css?v=20260824-pickup-reference'), 'The pickup reference update should use a cache-safe stylesheet version.');
+$assert(str_contains($home, 'app.js?v=20260824-pickup-reference'), 'The pickup reference update should use a cache-safe application script version.');
 $assert(str_contains($home, 'analytics.js?v=20260824-analytics-consent'), 'The consent-aware Google Analytics loader should render on every page.');
 $assert(str_contains($home, 'data-analytics-accept'), 'The site should offer an explicit analytics acceptance control.');
 $assert(str_contains($home, 'data-analytics-decline'), 'The site should offer an explicit analytics decline control.');
@@ -379,6 +381,8 @@ $assert(str_contains($product, 'pickupsheet'), 'The Pickupsheet product page sho
 $assert(str_contains($product, 'Cash shipments'), 'The PDF cash-shipment section should render.');
 $assert(str_contains($product, 'name="agent_name"'), 'The pickup form should collect the agent name.');
 $assert(str_contains($product, 'name="collection_date"'), 'The pickup form should collect the sheet date.');
+$assert(str_contains($product, 'Reference number'), 'The pickup form should disclose its automatic reference number.');
+$assert(str_contains($product, 'Assigned when saved'), 'Operators should know when the reference number is generated.');
 $assert(str_contains($product, 'shipments[0][consignor]'), 'The pickup form should collect a consignor for each row.');
 $assert(str_contains($product, 'shipments[0][awb_number]'), 'The pickup form should collect the AWB number from the PDF.');
 $assert(str_contains($product, 'shipments[0][destination]'), 'The pickup form should collect the destination code from the PDF.');
@@ -447,6 +451,8 @@ $assert(is_string($styles) && str_contains($styles, 'object-fit: cover;'), 'The 
 $assert(is_string($styles) && str_contains($styles, '.consent-field'), 'The required privacy opt-in should have accessible responsive styling.');
 $assert(is_string($styles) && str_contains($styles, '.analytics-consent'), 'The analytics preference panel should have responsive styling.');
 $assert(is_string($styles) && str_contains($styles, '/* Pickupsheet cash-shipment entry */'), 'The pickup-sheet form should have a dedicated visual system.');
+$assert(is_string($styles) && str_contains($styles, '.pickup-workspace') && str_contains($styles, 'background: var(--dhl-yellow);'), 'The pickup-sheet page should retain its DHL-yellow background.');
+$assert(is_string($styles) && str_contains($styles, 'background: #ffffff;'), 'The pickup-sheet data-entry card should use a white form area.');
 $assert(is_string($styles) && str_contains($styles, '.shipment-row'), 'Shipment rows should have responsive form styling.');
 $assert(is_string($styles) && str_contains($styles, 'content: attr(data-label);'), 'Shipment rows should expose their field labels in the mobile card layout.');
 
@@ -478,8 +484,13 @@ $pickupMigration = file_get_contents(dirname(__DIR__) . '/database/migrations/00
 $assert(is_string($pickupMigration) && str_contains($pickupMigration, 'CREATE TABLE IF NOT EXISTS pickup_sheets'), 'The database should store pickup-sheet headers.');
 $assert(is_string($pickupMigration) && str_contains($pickupMigration, 'CREATE TABLE IF NOT EXISTS pickup_shipments'), 'The database should store repeatable shipment rows.');
 $assert(is_string($pickupMigration) && str_contains($pickupMigration, 'ON DELETE CASCADE'), 'Shipment rows should remain part of the pickup-sheet aggregate.');
+$pickupReferenceMigration = file_get_contents(dirname(__DIR__) . '/database/migrations/004_add_pickup_sheet_reference.sql');
+$assert(is_string($pickupReferenceMigration) && str_contains($pickupReferenceMigration, 'reference_number VARCHAR(48)'), 'The database should store a pickup-sheet reference number.');
+$assert(is_string($pickupReferenceMigration) && str_contains($pickupReferenceMigration, 'UNIQUE INDEX pickup_sheets_reference_idx'), 'Pickup-sheet reference numbers should be unique.');
+$assert(is_string($pickupReferenceMigration) && str_contains($pickupReferenceMigration, '-LEGACY-'), 'Existing pickup sheets should receive a migration-safe reference.');
 $pickupMysqlRepository = file_get_contents(dirname(__DIR__) . '/src/Modules/Pickupsheet/Infrastructure/MysqlPickupSheetRepository.php');
 $assert(is_string($pickupMysqlRepository) && str_contains($pickupMysqlRepository, 'beginTransaction()'), 'Pickup-sheet headers and rows should save transactionally.');
+$assert(is_string($pickupMysqlRepository) && str_contains($pickupMysqlRepository, ':reference_number'), 'MySQL persistence should store the generated pickup-sheet reference.');
 $assert(is_string($pickupMysqlRepository) && str_contains($pickupMysqlRepository, ':total_cash_received_xaf'), 'MySQL persistence should store the server-calculated XAF total.');
 $bootstrap = file_get_contents(dirname(__DIR__) . '/bootstrap/app.php');
 $assert(is_string($bootstrap) && str_contains($bootstrap, "'httponly' => true"), 'The security session cookie should be inaccessible to client-side scripts.');

@@ -24,11 +24,12 @@ final class MysqlPickupSheetRepository implements PickupSheetRepository
         try {
             $sheetStatement = $this->connection->prepare(
                 'INSERT INTO pickup_sheets
-                    (agent_name, collection_date, shipment_count, total_cash_received_xaf, currency, privacy_consent_at, privacy_notice_version, created_at)
+                    (reference_number, agent_name, collection_date, shipment_count, total_cash_received_xaf, currency, privacy_consent_at, privacy_notice_version, created_at)
                  VALUES
-                    (:agent_name, :collection_date, :shipment_count, :total_cash_received_xaf, :currency, :privacy_consent_at, :privacy_notice_version, :created_at)',
+                    (:reference_number, :agent_name, :collection_date, :shipment_count, :total_cash_received_xaf, :currency, :privacy_consent_at, :privacy_notice_version, :created_at)',
             );
             $sheetStatement->execute([
+                'reference_number' => $pickupSheet->referenceNumber,
                 'agent_name' => $pickupSheet->agentName,
                 'collection_date' => $pickupSheet->collectionDate,
                 'shipment_count' => $pickupSheet->shipmentCount(),
@@ -67,6 +68,7 @@ final class MysqlPickupSheetRepository implements PickupSheetRepository
 
             return new PickupSheet(
                 $pickupSheetId,
+                $pickupSheet->referenceNumber,
                 $pickupSheet->agentName,
                 $pickupSheet->collectionDate,
                 $pickupSheet->shipments,
