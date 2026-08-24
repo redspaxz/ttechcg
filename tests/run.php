@@ -8,6 +8,10 @@ use App\Modules\Contact\Domain\InquiryNotifier;
 use App\Modules\Contact\Infrastructure\DemoInquiryRepository;
 use App\Modules\Contact\Infrastructure\UnavailableInquiryRepository;
 use App\Modules\Contact\UI\ContactController;
+use App\Modules\Pickupsheet\Application\PickupSheetService;
+use App\Modules\Pickupsheet\Infrastructure\DemoPickupSheetRepository;
+use App\Modules\Pickupsheet\Infrastructure\UnavailablePickupSheetRepository;
+use App\Modules\Pickupsheet\UI\PickupsheetController;
 use App\Shared\Http\Request;
 use App\Shared\Security\Captcha;
 use App\Shared\Security\Csrf;
@@ -111,8 +115,80 @@ try {
 }
 $assert($consentFailed, 'An inquiry without explicit privacy consent should be rejected server-side.');
 
+$pickupService = new PickupSheetService(new DemoPickupSheetRepository());
+$pickupSheet = $pickupService->submit([
+    'agent_name' => 'Edmund Ngochi',
+    'collection_date' => '2026-07-29',
+    'privacy_consent' => '1',
+    'shipments' => [
+        [
+            'consignor' => 'Nekeziah Pius T',
+            'awb_number' => '1661272944',
+            'destination' => 'dca',
+            'amount' => '59,600',
+            'pieces' => '1',
+            'weight_kg' => '0.5kg',
+            'collection_time' => '10:03',
+            'checked_by' => 'Elizabeth A',
+        ],
+        [
+            'consignor' => 'Gumia Ngondab',
+            'awb_number' => '1589328716',
+            'destination' => 'BUD',
+            'amount' => '56100',
+            'pieces' => '1',
+            'weight_kg' => '0.500',
+            'collection_time' => '10:20',
+            'checked_by' => 'Elizabeth A',
+        ],
+    ],
+]);
+$assert($pickupSheet->id === 1, 'A pickup sheet should receive a repository ID.');
+$assert($pickupSheet->shipmentCount() === 2, 'All completed shipment rows should be collected.');
+$assert($pickupSheet->totalCashReceivedXaf === 115700, 'The XAF total should be recalculated from shipment rows.');
+$assert($pickupSheet->shipments[0]->destination === 'DCA', 'Destination codes should be normalized to uppercase.');
+$assert($pickupSheet->shipments[0]->weightKg === '0.500', 'Shipment weight should be normalized for MySQL decimals.');
+$assert($pickupSheet->privacyConsentAt !== '', 'Pickup-sheet consent should retain a timestamp.');
+
+$pickupConsentFailed = false;
+try {
+    $pickupService->submit([
+        'agent_name' => 'Consent Test',
+        'collection_date' => '2026-07-29',
+        'privacy_consent' => '',
+        'shipments' => [],
+    ]);
+} catch (InvalidArgumentException $exception) {
+    $pickupConsentFailed = str_contains($exception->getMessage(), 'opt in');
+}
+$assert($pickupConsentFailed, 'Pickup sheets without explicit privacy consent should be rejected.');
+
+$pickupStorageFailed = false;
+try {
+    (new PickupSheetService(new UnavailablePickupSheetRepository()))->submit([
+        'agent_name' => 'Storage Test',
+        'collection_date' => '2026-07-29',
+        'privacy_consent' => '1',
+        'shipments' => [[
+            'consignor' => 'Test Client',
+            'awb_number' => '1234567890',
+            'destination' => 'DLA',
+            'amount' => '1000',
+            'pieces' => '1',
+            'weight_kg' => '0.5',
+            'collection_time' => '10:30',
+            'checked_by' => 'Test Checker',
+        ]],
+    ]);
+} catch (RuntimeException) {
+    $pickupStorageFailed = true;
+}
+$assert($pickupStorageFailed, 'Unavailable production pickup storage should fail explicitly.');
+
 $request = new Request('GET', '/products', [], [], '');
 $assert($request->path === '/products', 'Request should retain the routed path.');
+$arrayRequest = new Request('POST', '/pickupsheet', [], ['shipments' => [['awb_number' => '1234567890']]], '');
+$assert(($arrayRequest->arrayInput('shipments')[0]['awb_number'] ?? '') === '1234567890', 'Request should expose nested shipment arrays.');
 
 $config = require dirname(__DIR__) . '/config/app.php';
 $view = new View(dirname(__DIR__) . '/views');
@@ -151,6 +227,45 @@ $controllerResponse = $controller->store(new Request('POST', '/contact', [], [
 $assert($controllerResponse->status() === 303, 'An incorrect CAPTCHA should return to the contact form.');
 $assert(str_contains((string) ($_SESSION['_errors'][0] ?? ''), 'human verification'), 'An incorrect CAPTCHA should produce a useful form error.');
 
+$_SESSION = [];
+$pickupCsrf = new Csrf();
+$pickupCaptcha = new Captcha('pickupsheet-test');
+$pickupController = new PickupsheetController(
+    new PickupSheetService(new DemoPickupSheetRepository()),
+    $view,
+    $pickupCsrf,
+    $pickupCaptcha,
+    $config,
+    'Demo workspace',
+    true,
+);
+$pickupChallenge = $pickupCaptcha->issue();
+$pickupParts = preg_split('/\s+/', $pickupChallenge['question']);
+$pickupAnswer = is_array($pickupParts) && $pickupParts[1] === '+'
+    ? (string) ((int) $pickupParts[0] + (int) $pickupParts[2])
+    : (string) ((int) $pickupParts[0] - (int) $pickupParts[2]);
+$pickupControllerResponse = $pickupController->store(new Request('POST', '/pickupsheet', [], [
+    '_token' => $pickupCsrf->token(),
+    'captcha_nonce' => $pickupChallenge['nonce'],
+    'captcha_answer' => $pickupAnswer,
+    'website' => '',
+    'agent_name' => 'Controller Agent',
+    'collection_date' => '2026-07-29',
+    'privacy_consent' => '1',
+    'shipments' => [[
+        'consignor' => 'Controller Client',
+        'awb_number' => '1234567890',
+        'destination' => 'DLA',
+        'amount' => '12000',
+        'pieces' => '2',
+        'weight_kg' => '1.25',
+        'collection_time' => '11:40',
+        'checked_by' => 'Controller Checker',
+    ]],
+], ''));
+$assert($pickupControllerResponse->status() === 303, 'A valid pickup sheet should redirect after saving.');
+$assert(str_contains((string) ($_SESSION['_pickup_flash'] ?? ''), '12,000 XAF'), 'The pickup controller should confirm the server-calculated total.');
+
 $home = $view->render('site/home', array_merge($common, [
     'pageTitle' => 'Network outsourcing and managed solutions',
     'pageDescription' => 'Test description',
@@ -182,8 +297,8 @@ $assert(is_string($dhlAsset) && !str_contains($dhlAsset, '<text'), 'The disquali
 $partnerSources = file_get_contents(dirname(__DIR__) . '/public/assets/partners/README.md');
 $assert(is_string($partnerSources) && str_contains($partnerSources, 'www.dhl.com/content/dam/dhl/global/core/images/logos/dhl-logo.svg'), 'The official DHL artwork source should be documented.');
 $assert(!str_contains($home, 'href="/pickupsheet"'), 'Pickupsheet should not be discoverable from the public site chrome or homepage.');
-$assert(str_contains($home, 'styles.css?v=20260824-analytics-consent'), 'The analytics consent update should use a cache-safe stylesheet version.');
-$assert(str_contains($home, 'app.js?v=20260824-analytics-consent'), 'The analytics consent update should use a cache-safe application script version.');
+$assert(str_contains($home, 'styles.css?v=20260824-pickup-form'), 'The pickup form update should use a cache-safe stylesheet version.');
+$assert(str_contains($home, 'app.js?v=20260824-pickup-form'), 'The pickup form update should use a cache-safe application script version.');
 $assert(str_contains($home, 'analytics.js?v=20260824-analytics-consent'), 'The consent-aware Google Analytics loader should render on every page.');
 $assert(str_contains($home, 'data-analytics-accept'), 'The site should offer an explicit analytics acceptance control.');
 $assert(str_contains($home, 'data-analytics-decline'), 'The site should offer an explicit analytics decline control.');
@@ -249,13 +364,34 @@ $assert(str_contains($products, 'Discuss BTSPOS'), 'BTSPOS should provide a focu
 $assert(!str_contains($products, 'href="/pickupsheet"'), 'The private Pickupsheet route should not be listed in the product catalogue.');
 
 $product = $view->render('pickupsheet/show', array_merge($common, [
-    'pageTitle' => 'Pickupsheet logistics operations',
+    'pageTitle' => 'Cash shipment pickup sheet',
     'pageDescription' => 'Test description',
     'pageRobots' => 'noindex, nofollow',
     'activePage' => 'pickupsheet',
+    'csrfToken' => 'pickup-csrf-token',
+    'captcha' => ['question' => '9 + 2', 'nonce' => 'pickup-captcha-nonce'],
+    'flash' => null,
+    'errors' => [],
+    'old' => [],
+    'pickupOperational' => true,
 ]));
 $assert(str_contains($product, 'pickupsheet'), 'The Pickupsheet product page should render.');
-$assert(str_contains($product, 'One clear view'), 'The Pickupsheet value proposition should render.');
+$assert(str_contains($product, 'Cash shipments'), 'The PDF cash-shipment section should render.');
+$assert(str_contains($product, 'name="agent_name"'), 'The pickup form should collect the agent name.');
+$assert(str_contains($product, 'name="collection_date"'), 'The pickup form should collect the sheet date.');
+$assert(str_contains($product, 'shipments[0][consignor]'), 'The pickup form should collect a consignor for each row.');
+$assert(str_contains($product, 'shipments[0][awb_number]'), 'The pickup form should collect the AWB number from the PDF.');
+$assert(str_contains($product, 'shipments[0][destination]'), 'The pickup form should collect the destination code from the PDF.');
+$assert(str_contains($product, 'shipments[0][amount]'), 'The pickup form should collect cash amounts from the PDF.');
+$assert(str_contains($product, 'shipments[0][pieces]'), 'The pickup form should collect piece counts from the PDF.');
+$assert(str_contains($product, 'shipments[0][weight_kg]'), 'The pickup form should collect shipment weight from the PDF.');
+$assert(str_contains($product, 'shipments[0][collection_time]'), 'The pickup form should collect the collection time from the PDF.');
+$assert(str_contains($product, 'shipments[0][checked_by]'), 'The pickup form should collect the checker name from the PDF.');
+$assert(str_contains($product, 'data-shipment-count'), 'The pickup form should calculate shipments collected.');
+$assert(str_contains($product, 'data-shipment-total'), 'The pickup form should calculate total cash received.');
+$assert(str_contains($product, 'name="captcha_nonce" value="pickup-captcha-nonce"'), 'The pickup form should include first-party human verification.');
+$assert(str_contains($product, 'type="checkbox" name="privacy_consent" value="1" required'), 'The pickup form should require explicit privacy consent.');
+$assert(!str_contains($product, 'name="privacy_consent" value="1" required checked'), 'Pickup-sheet consent should not be preselected.');
 $assert(str_contains($product, '<meta name="robots" content="noindex, nofollow">'), 'The direct Pickupsheet page should not be indexed.');
 $sitemap = file_get_contents(dirname(__DIR__) . '/sitemap.xml');
 $assert(is_string($sitemap) && !str_contains($sitemap, '/pickupsheet'), 'The sitemap should not advertise Pickupsheet.');
@@ -267,10 +403,13 @@ $privacy = $view->render('site/privacy', array_merge($common, [
     'activePage' => 'privacy',
 ]));
 $assert(str_contains($privacy, 'Information we collect'), 'The privacy notice should explain collected information.');
+$assert(str_contains($privacy, 'agent name, collection date, consignor, AWB number'), 'The privacy notice should disclose pickup-sheet fields.');
+$assert(str_contains($privacy, 'record and reconcile cash shipment collections'), 'The privacy notice should state the pickup-sheet processing purpose.');
+$assert(str_contains($privacy, 'inquiry and pickup-sheet forms require an explicit, unchecked opt-in'), 'Both personal-data forms should require explicit consent.');
 $assert(str_contains($privacy, 'T&amp;Tech Consulting Group'), 'The privacy notice should identify the data controller.');
 $assert(str_contains($privacy, 'We do not sell inquiry information.'), 'The privacy notice should state the use limitation.');
 $assert(str_contains($privacy, 'forwarded by email to info@ttechcg.com'), 'The privacy notice should disclose the inquiry destination.');
-$assert(str_contains($privacy, 'requires an explicit, unchecked opt-in'), 'The privacy notice should explain the consent control.');
+$assert(str_contains($privacy, 'require an explicit, unchecked opt-in'), 'The privacy notice should explain the consent control.');
 $assert(str_contains($privacy, 'withdraw that consent'), 'The privacy notice should explain how consent can be withdrawn.');
 $assert(str_contains($privacy, 'one first-party session cookie'), 'The privacy notice should disclose the essential security cookie.');
 $assert(str_contains($privacy, 'not used for advertising or cross-site tracking'), 'The privacy notice should state the essential cookie limitation.');
@@ -307,11 +446,17 @@ $assert(is_string($styles) && str_contains($styles, 'aspect-ratio: 16 / 9;'), 'T
 $assert(is_string($styles) && str_contains($styles, 'object-fit: cover;'), 'The landing hero photograph should fill its 16:9 frame without distortion.');
 $assert(is_string($styles) && str_contains($styles, '.consent-field'), 'The required privacy opt-in should have accessible responsive styling.');
 $assert(is_string($styles) && str_contains($styles, '.analytics-consent'), 'The analytics preference panel should have responsive styling.');
+$assert(is_string($styles) && str_contains($styles, '/* Pickupsheet cash-shipment entry */'), 'The pickup-sheet form should have a dedicated visual system.');
+$assert(is_string($styles) && str_contains($styles, '.shipment-row'), 'Shipment rows should have responsive form styling.');
+$assert(is_string($styles) && str_contains($styles, 'content: attr(data-label);'), 'Shipment rows should expose their field labels in the mobile card layout.');
 
 $script = file_get_contents(dirname(__DIR__) . '/public/assets/app.js');
 $assert(is_string($script) && str_contains($script, "event.key === 'Escape'"), 'The mobile navigation should close with Escape.');
 $assert(is_string($script) && str_contains($script, "toggleAttribute('inert', open)"), 'The open mobile navigation should isolate background content.');
 $assert(is_string($script) && str_contains($script, "matchMedia('(min-width: 821px)')"), 'The navigation state should reset when returning to desktop width.');
+$assert(is_string($script) && str_contains($script, "document.querySelector('[data-pickup-form]')"), 'The pickup form should initialize its dynamic row editor.');
+$assert(is_string($script) && str_contains($script, 'maximumRows = 50'), 'The browser should enforce the server shipment-row limit.');
+$assert(is_string($script) && str_contains($script, 'numberFormatter.format(total)'), 'The browser should calculate and format cash totals.');
 
 $analyticsScript = file_get_contents(dirname(__DIR__) . '/public/assets/analytics.js');
 $assert(is_string($analyticsScript) && str_contains($analyticsScript, "const measurementId = 'G-WVFXFB5H3M'"), 'The supplied Google Analytics measurement ID should be configured exactly.');
@@ -329,6 +474,13 @@ $assert(is_string($consentMigration) && str_contains($consentMigration, 'privacy
 $assert(is_string($consentMigration) && str_contains($consentMigration, 'privacy_notice_version'), 'The database should retain privacy-notice versions.');
 $mysqlRepository = file_get_contents(dirname(__DIR__) . '/src/Modules/Contact/Infrastructure/MysqlInquiryRepository.php');
 $assert(is_string($mysqlRepository) && str_contains($mysqlRepository, ':privacy_consent_at'), 'MySQL inquiry persistence should write the consent timestamp.');
+$pickupMigration = file_get_contents(dirname(__DIR__) . '/database/migrations/003_create_pickup_sheets.sql');
+$assert(is_string($pickupMigration) && str_contains($pickupMigration, 'CREATE TABLE IF NOT EXISTS pickup_sheets'), 'The database should store pickup-sheet headers.');
+$assert(is_string($pickupMigration) && str_contains($pickupMigration, 'CREATE TABLE IF NOT EXISTS pickup_shipments'), 'The database should store repeatable shipment rows.');
+$assert(is_string($pickupMigration) && str_contains($pickupMigration, 'ON DELETE CASCADE'), 'Shipment rows should remain part of the pickup-sheet aggregate.');
+$pickupMysqlRepository = file_get_contents(dirname(__DIR__) . '/src/Modules/Pickupsheet/Infrastructure/MysqlPickupSheetRepository.php');
+$assert(is_string($pickupMysqlRepository) && str_contains($pickupMysqlRepository, 'beginTransaction()'), 'Pickup-sheet headers and rows should save transactionally.');
+$assert(is_string($pickupMysqlRepository) && str_contains($pickupMysqlRepository, ':total_cash_received_xaf'), 'MySQL persistence should store the server-calculated XAF total.');
 $bootstrap = file_get_contents(dirname(__DIR__) . '/bootstrap/app.php');
 $assert(is_string($bootstrap) && str_contains($bootstrap, "'httponly' => true"), 'The security session cookie should be inaccessible to client-side scripts.');
 $assert(is_string($bootstrap) && str_contains($bootstrap, "'samesite' => 'Lax'"), 'The security session cookie should use a SameSite policy.');

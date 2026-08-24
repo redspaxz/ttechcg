@@ -6,8 +6,12 @@ namespace App\Shared\Security;
 
 final class Captcha
 {
-    private const SESSION_KEY = '_captcha_challenge';
+    private const SESSION_KEY_PREFIX = '_captcha_challenge_';
     private const TTL_SECONDS = 900;
+
+    public function __construct(private readonly string $context = 'default')
+    {
+    }
 
     /** @return array{question: string, nonce: string} */
     public function issue(): array
@@ -26,7 +30,7 @@ final class Captcha
         }
 
         $nonce = bin2hex(random_bytes(16));
-        $_SESSION[self::SESSION_KEY] = [
+        $_SESSION[$this->sessionKey()] = [
             'nonce' => $nonce,
             'answer' => (string) $answer,
             'expires_at' => time() + self::TTL_SECONDS,
@@ -37,8 +41,9 @@ final class Captcha
 
     public function validate(string $nonce, string $answer): bool
     {
-        $challenge = $_SESSION[self::SESSION_KEY] ?? null;
-        unset($_SESSION[self::SESSION_KEY]);
+        $sessionKey = $this->sessionKey();
+        $challenge = $_SESSION[$sessionKey] ?? null;
+        unset($_SESSION[$sessionKey]);
 
         if (!is_array($challenge)
             || !is_string($challenge['nonce'] ?? null)
@@ -53,5 +58,10 @@ final class Captcha
             && $answer !== ''
             && hash_equals($challenge['nonce'], $nonce)
             && hash_equals($challenge['answer'], trim($answer));
+    }
+
+    private function sessionKey(): string
+    {
+        return self::SESSION_KEY_PREFIX . substr(hash('sha256', $this->context), 0, 12);
     }
 }

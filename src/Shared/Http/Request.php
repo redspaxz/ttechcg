@@ -41,6 +41,13 @@ final class Request
         return is_string($value) ? trim($value) : $default;
     }
 
+    /** @return array<mixed> */
+    public function arrayInput(string $key): array
+    {
+        $value = $this->body[$key] ?? [];
+        return is_array($value) ? $value : [];
+    }
+
     public function queryString(string $key, string $default = ''): string
     {
         $value = $this->query[$key] ?? $default;

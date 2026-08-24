@@ -8,6 +8,10 @@ use App\Modules\Contact\Infrastructure\MysqlInquiryRepository;
 use App\Modules\Contact\Infrastructure\NativeMailInquiryNotifier;
 use App\Modules\Contact\Infrastructure\UnavailableInquiryRepository;
 use App\Modules\Contact\UI\ContactController;
+use App\Modules\Pickupsheet\Application\PickupSheetService;
+use App\Modules\Pickupsheet\Infrastructure\DemoPickupSheetRepository;
+use App\Modules\Pickupsheet\Infrastructure\MysqlPickupSheetRepository;
+use App\Modules\Pickupsheet\Infrastructure\UnavailablePickupSheetRepository;
 use App\Modules\Pickupsheet\UI\PickupsheetController;
 use App\Modules\Site\UI\SiteController;
 use App\Shared\Http\Application;
@@ -56,27 +60,42 @@ $inquiryRepository = match (true) {
     $isProduction => new UnavailableInquiryRepository(),
     default => new DemoInquiryRepository(),
 };
+$pickupSheetRepository = match (true) {
+    $connection !== null => new MysqlPickupSheetRepository($connection),
+    $isProduction => new UnavailablePickupSheetRepository(),
+    default => new DemoPickupSheetRepository(),
+};
 $storageMode = $connection === null ? 'Demo workspace' : 'MySQL connected';
 $contactEmail = (string) ($config['contact_email'] ?? '');
 $notifier = filter_var($contactEmail, FILTER_VALIDATE_EMAIL)
     ? new NativeMailInquiryNotifier($contactEmail, (string) $config['contact_from_email'])
     : null;
 $contactOperational = !$isProduction || ($connection !== null && $notifier !== null);
+$pickupOperational = !$isProduction || $connection !== null;
 
 $view = new View($root . '/views');
 $csrf = new Csrf();
-$captcha = new Captcha();
+$contactCaptcha = new Captcha('contact');
+$pickupCaptcha = new Captcha('pickupsheet');
 $siteController = new SiteController($view, $config, $storageMode, $contactOperational);
 $contactController = new ContactController(
     new InquiryService($inquiryRepository, $notifier),
     $view,
     $csrf,
-    $captcha,
+    $contactCaptcha,
     $config,
     $storageMode,
     $contactOperational,
 );
-$pickupsheetController = new PickupsheetController($view, $config, $storageMode);
+$pickupsheetController = new PickupsheetController(
+    new PickupSheetService($pickupSheetRepository),
+    $view,
+    $csrf,
+    $pickupCaptcha,
+    $config,
+    $storageMode,
+    $pickupOperational,
+);
 
 $router = new Router();
 $router->get('/', fn (Request $request): Response => $siteController->home($request));
@@ -85,7 +104,8 @@ $router->get('/products', fn (Request $request): Response => $siteController->pr
 $router->get('/about', fn (Request $request): Response => $siteController->about($request));
 $router->get('/contact', fn (Request $request): Response => $contactController->index($request));
 $router->post('/contact', fn (Request $request): Response => $contactController->store($request));
-$router->get('/pickupsheet', fn (Request $request): Response => $pickupsheetController->show($request));
+$router->get('/pickupsheet', fn (Request $request): Response => $pickupsheetController->index($request));
+$router->post('/pickupsheet', fn (Request $request): Response => $pickupsheetController->store($request));
 $router->get('/privacy', fn (Request $request): Response => $siteController->privacy($request));
 $router->get('/health', fn (Request $request): Response => $siteController->health($request));
 $router->fallback(fn (Request $request): Response => $siteController->notFound($request));

@@ -13,11 +13,13 @@ src/
 └── Shared/           # HTTP kernel, views, security, environment, and database
 ```
 
-The site uses MySQL through `pdo_mysql`. Valid database settings enable persistent contact inquiries. When MySQL is unavailable, the public site remains reviewable with a session-backed adapter. Database migrations run idempotently on application boot, which supports cPanel accounts without terminal access.
+The site uses MySQL through `pdo_mysql`. Valid database settings enable persistent contact inquiries and pickup sheets. When MySQL is unavailable, the public site remains reviewable with session-backed development adapters, while production data-entry forms fail closed. Database migrations run idempotently on application boot, which supports cPanel accounts without terminal access.
 
 Production contact submissions require both a working MySQL connection and a valid `CONTACT_EMAIL`. Set `CONTACT_EMAIL=info@ttechcg.com` in the server-managed `.env`. Successful inquiries are stored first and then forwarded to that address through the hosting account's PHP mail transport. If either dependency is missing, the form is disabled and `/health` returns `503` instead of presenting a false success. Set `CONTACT_FROM_EMAIL` to a same-domain mailbox authorised by the hosting account.
 
 The contact workflow uses CSRF validation, a honeypot, session rate limiting, a first-party arithmetic CAPTCHA, and an explicit privacy opt-in. The CAPTCHA requires no external keys or tracking service and expires after 15 minutes. Accepted inquiries retain the consent timestamp and privacy-notice version for auditability.
+
+The unlisted `/pickupsheet/` route captures the supplied paper pickup-sheet structure: agent, date, and repeatable cash-shipment rows containing consignor, AWB, destination, amount, pieces, weight, collection time, and checker. Shipment count and total XAF are calculated in the browser for immediate feedback and recalculated on the server before the aggregate and its line items are committed together. CSRF, CAPTCHA, honeypot, rate limiting, field validation, and a recorded privacy opt-in protect submissions.
 
 Google Analytics measurement ID `G-WVFXFB5H3M` is integrated using Basic Consent Mode. The Google tag is not requested until a visitor explicitly accepts analytics cookies, advertising consent remains denied, and visitors can reopen their choice from the footer.
 
