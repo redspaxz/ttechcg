@@ -21,6 +21,16 @@ jobs:
       - name: Check out source
         uses: actions/checkout@v4
 
+      - name: Validate cPanel deployment descriptor
+        shell: ruby {0}
+        run: |
+          require "yaml"
+
+          document = YAML.safe_load_file(".cpanel.yml")
+          tasks = document.dig("deployment", "tasks")
+
+          abort "Invalid .cpanel.yml deployment tasks" unless tasks.is_a?(Array) && tasks.all? { |task| task.is_a?(String) }
+
       - name: Lint PHP
         shell: bash
         run: |
@@ -31,4 +41,3 @@ jobs:
 
       - name: Run application tests
         run: php tests/run.php
-

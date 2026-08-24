@@ -1,13 +1,12 @@
 ---
 deployment:
   tasks:
-    - /bin/rm -f /home/ttecwymc/public_html/index.html
-    - /bin/rm -rf /home/ttecwymc/public_html/.git /home/ttecwymc/public_html/.github /home/ttecwymc/public_html/bin /home/ttecwymc/public_html/tests
-    - /bin/rm -f /home/ttecwymc/public_html/.env.example /home/ttecwymc/public_html/.gitignore /home/ttecwymc/public_html/.cpanel.yml /home/ttecwymc/public_html/README.md /home/ttecwymc/public_html/router.php /home/ttecwymc/public_html/docker-compose.yml
-    - /bin/rsync -av --chmod=D755,F644 --exclude='.git/' --exclude='.github/' --exclude='.env' --exclude='.env.example' --exclude='.cpanel.yml' --exclude='.gitignore' --exclude='bin/' --exclude='tests/' --exclude='storage/*.zip' --exclude='README.md' --exclude='router.php' --exclude='docker-compose.yml' /home/ttecwymc/repositories/ttechcg/ /home/ttecwymc/public_html/
-    - /bin/chmod 755 /home/ttecwymc/public_html
-    - /bin/chmod 644 /home/ttecwymc/public_html/.htaccess /home/ttecwymc/public_html/index.php /home/ttecwymc/public_html/public/assets/styles.css
-    - /bin/test -r /home/ttecwymc/public_html/.htaccess
-    - /bin/test -s /home/ttecwymc/public_html/index.php
-    - /bin/test -s /home/ttecwymc/public_html/public/assets/styles.css
-    - /bin/test ! -e /home/ttecwymc/public_html/index.html
+    - "/bin/rm -f /home/ttecwymc/public_html/index.html"
+    - "/bin/rm -rf /home/ttecwymc/public_html/.git /home/ttecwymc/public_html/.github /home/ttecwymc/public_html/bin /home/ttecwymc/public_html/tests"
+    - "/bin/rm -f /home/ttecwymc/public_html/.env.example /home/ttecwymc/public_html/.gitignore /home/ttecwymc/public_html/.cpanel.yml /home/ttecwymc/public_html/README.md /home/ttecwymc/public_html/router.php /home/ttecwymc/public_html/docker-compose.yml"
+    - "/bin/rsync -av --chmod=D755,F644 --exclude='.git/' --exclude='.github/' --exclude='.env' --exclude='.env.example' --exclude='.cpanel.yml' --exclude='.gitignore' --exclude='bin/' --exclude='tests/' --exclude='storage/*.zip' --exclude='README.md' --exclude='router.php' --exclude='docker-compose.yml' /home/ttecwymc/repositories/ttechcg/ /home/ttecwymc/public_html/"
+    - "/bin/chmod 755 /home/ttecwymc/public_html"
+    - "/bin/chmod 644 /home/ttecwymc/public_html/.htaccess /home/ttecwymc/public_html/index.php /home/ttecwymc/public_html/public/assets/styles.css"
+    - "/bin/test -r /home/ttecwymc/public_html/.htaccess"
+    - "/bin/test -s /home/ttecwymc/public_html/index.php"
+    - "/bin/test -s /home/ttecwymc/public_html/public/assets/styles.css"
