@@ -310,7 +310,10 @@ $assert(str_contains($printResponse->body(), '29/07/2026'), 'The printable sheet
 $assert(str_contains($printResponse->body(), 'paper-empty-row'), 'The printable sheet should retain blank continuation rows like the original form.');
 $assert(str_contains($printResponse->body(), '@page { size: A4 portrait;'), 'The printable sheet should use the original portrait page orientation.');
 $assert(str_contains($printResponse->body(), 'class="print-preview"'), 'The A4 document should render inside a dedicated centered preview stage.');
-$assert(str_contains($printResponse->body(), 'flex: 0 0 210mm;'), 'The on-screen preview should retain the exact A4 paper width.');
+$assert(str_contains($printResponse->body(), 'place-items: start center;'), 'The A4 paper should be centered in its screen preview.');
+$assert(str_contains($printResponse->body(), 'min-width: 210mm;'), 'The on-screen preview should retain the exact A4 paper width.');
+$assert(str_contains($printResponse->body(), 'background: #5b5b5b;'), 'The on-screen A4 preview should use a clearly gray surround.');
+$assert(str_contains($printResponse->body(), 'background: #fff !important;'), 'The A4 paper should remain solid white on screen and in print output.');
 $assert(str_contains($printResponse->body(), 'border: 1pt solid #000 !important;'), 'Every shipment cell should retain a solid black line when printed.');
 $assert(str_contains($printResponse->body(), 'text-align: left !important;'), 'Shipment headers and data should be explicitly left-aligned in the PDF.');
 $assert(str_contains($printResponse->body(), 'border="1" rules="all" cellspacing="0"'), 'The shipment table should include a renderer-safe solid-grid fallback.');

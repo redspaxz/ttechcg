@@ -12,9 +12,10 @@ $e = static fn (mixed $value): string => htmlspecialchars((string) $value, ENT_Q
     <meta name="robots" content="noindex, nofollow">
     <title><?= $e($pageTitle ?? 'Pickup sheet') ?> | Pickupsheet</title>
     <style>
-        :root { color-scheme: light; font-family: Arial, Helvetica, sans-serif; }
+        :root { color-scheme: light; font-family: Arial, Helvetica, sans-serif; background: #5b5b5b; }
         * { box-sizing: border-box; }
-        body { margin: 0; background: #e8e8e8; color: #151515; }
+        html, body { min-height: 100%; }
+        body { margin: 0; background: #5b5b5b; color: #151515; }
         .print-actions { display: flex; justify-content: center; gap: 12px; padding: 18px; }
         .print-actions button,
         .print-actions a {
@@ -29,21 +30,25 @@ $e = static fn (mixed $value): string => htmlspecialchars((string) $value, ENT_Q
         }
         .print-actions button { background: #111; color: #fff; }
         .print-preview {
-            display: flex;
-            justify-content: center;
+            display: grid;
+            min-height: calc(100vh - 76px);
+            place-items: start center;
             width: 100%;
-            padding: 0 16px 32px;
-            overflow-x: auto;
+            padding: 24px 24px 56px;
+            overflow: auto;
+            background: #5b5b5b;
         }
         .print-sheet {
-            flex: 0 0 210mm;
+            display: block;
             width: 210mm;
+            min-width: 210mm;
             min-height: 297mm;
             margin: 0;
             padding: 13mm 9mm 12mm;
             border: 1px solid #c9c9c9;
-            background: #fff;
-            box-shadow: 0 18px 55px rgba(0, 0, 0, 0.12);
+            background: #fff !important;
+            color: #000;
+            box-shadow: 0 20px 65px rgba(0, 0, 0, 0.34);
             text-transform: uppercase;
         }
         .paper-header {
@@ -154,18 +159,29 @@ $e = static fn (mixed $value): string => htmlspecialchars((string) $value, ENT_Q
         }
         @page { size: A4 portrait; margin: 10mm; }
         @media (max-width: 850px) {
-            .print-preview { justify-content: flex-start; padding-inline: 8px; }
+            .print-preview { place-items: start; padding: 12px 8px 36px; }
         }
         @media print {
-            body { background: #fff; print-color-adjust: exact; -webkit-print-color-adjust: exact; }
+            :root,
+            html,
+            body { background: #fff !important; }
+            body { print-color-adjust: exact; -webkit-print-color-adjust: exact; }
             .print-actions { display: none; }
-            .print-preview { display: block; padding: 0; overflow: visible; }
+            .print-preview {
+                display: block;
+                min-height: 0;
+                padding: 0;
+                overflow: visible;
+                background: #fff !important;
+            }
             .print-sheet {
                 width: 100%;
+                min-width: 0;
                 min-height: 0;
                 margin: 0;
                 padding: 0;
                 border: 0;
+                background: #fff !important;
                 box-shadow: none;
             }
             .paper-shipment-table {
