@@ -10,7 +10,9 @@ return [
     'timezone' => getenv('APP_TIMEZONE') ?: 'Africa/Douala',
     'contact_email' => getenv('CONTACT_EMAIL') ?: 'info@ttechcg.com',
     'contact_from_email' => getenv('CONTACT_FROM_EMAIL') ?: 'website@ttechcg.com',
-    'pickup_view_key' => getenv('PICKUPSHEET_VIEW_KEY') ?: '',
+    'pickup_login_username' => getenv('PICKUPSHEET_LOGIN_USERNAME') ?: '',
+    'pickup_login_name' => getenv('PICKUPSHEET_LOGIN_NAME') ?: '',
+    'pickup_login_password' => getenv('PICKUPSHEET_LOGIN_PASSWORD') ?: '',
     'locations' => [
         [
             'city' => 'Bamenda',

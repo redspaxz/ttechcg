@@ -234,7 +234,11 @@ $assert(str_contains((string) ($_SESSION['_errors'][0] ?? ''), 'human verificati
 $_SESSION = [];
 $pickupCsrf = new Csrf();
 $pickupCaptcha = new Captcha('pickupsheet-test');
-$pickupConfig = array_merge($config, ['pickup_view_key' => 'test-pickup-view-key-2026']);
+$pickupConfig = array_merge($config, [
+    'pickup_login_username' => 'edmund.operator',
+    'pickup_login_name' => 'Edmund Operator',
+    'pickup_login_password' => 'test-pickup-password-2026',
+]);
 $pickupController = new PickupsheetController(
     new PickupSheetService(new DemoPickupSheetRepository()),
     $view,
@@ -244,6 +248,31 @@ $pickupController = new PickupsheetController(
     'Demo workspace',
     true,
 );
+
+$lockedPickup = $pickupController->index(new Request('GET', '/pickupsheet', [], [], ''));
+$assert($lockedPickup->status() === 200, 'The private Pickupsheet route should render its login portal.');
+$assert(str_contains($lockedPickup->body(), 'Operator login'), 'The private Pickupsheet route should identify the operator portal.');
+$assert(str_contains($lockedPickup->body(), 'name="username"'), 'The operator portal should request a username.');
+$assert(str_contains($lockedPickup->body(), 'name="password"'), 'The operator portal should request a password.');
+$assert(!str_contains($lockedPickup->body(), 'data-pickup-form'), 'The pickup form should remain hidden before authentication.');
+$assert(($lockedPickup->headers()['Cache-Control'] ?? '') === 'private, no-store, max-age=0', 'The operator login should not be cached.');
+
+$unauthorizedSubmissions = $pickupController->submissions(new Request('GET', '/pickupsheet/submissions', [], [], ''));
+$assert($unauthorizedSubmissions->status() === 303, 'Submitted sheets should redirect to the operator login before authentication.');
+$unauthorizedExport = $pickupController->export(new Request('GET', '/pickupsheet/submissions/export', ['reference' => 'PS-20260729-AAAAAAAAAAAAAAAA'], [], ''));
+$assert($unauthorizedExport->status() === 303, 'An unauthorised spreadsheet export should return to the operator login.');
+
+$pickupLoginResponse = $pickupController->login(new Request('POST', '/pickupsheet/login', [], [
+    '_token' => $pickupCsrf->token(),
+    'username' => 'edmund.operator',
+    'password' => 'test-pickup-password-2026',
+], ''));
+$assert($pickupLoginResponse->status() === 303, 'Valid operator credentials should establish the protected session.');
+$unlockedPickup = $pickupController->index(new Request('GET', '/pickupsheet', [], [], ''));
+$assert(str_contains($unlockedPickup->body(), 'data-pickup-form'), 'The pickup form should render after operator authentication.');
+$assert(str_contains($unlockedPickup->body(), 'Edmund Operator'), 'The authenticated page should identify the signed-in operator.');
+$assert(!str_contains($unlockedPickup->body(), 'name="shipments[0][checked_by]"'), 'The checker identity must not be editable or submitted by the browser.');
+
 $pickupChallenge = $pickupCaptcha->issue();
 $pickupParts = preg_split('/\s+/', $pickupChallenge['question']);
 $pickupAnswer = is_array($pickupParts) && $pickupParts[1] === '+'
@@ -265,7 +294,7 @@ $pickupControllerResponse = $pickupController->store(new Request('POST', '/picku
         'pieces' => '2',
         'weight_kg' => '1.25',
         'collection_time' => '11:40',
-        'checked_by' => 'Controller Checker',
+        'checked_by' => 'Spoofed Checker',
     ]],
 ], ''));
 $assert($pickupControllerResponse->status() === 303, 'A valid pickup sheet should redirect after saving.');
@@ -273,20 +302,9 @@ $assert(str_contains((string) ($_SESSION['_pickup_flash'] ?? ''), 'PS-20260729-'
 $assert(str_contains((string) ($_SESSION['_pickup_flash'] ?? ''), '12,000 XAF'), 'The pickup controller should confirm the server-calculated total.');
 $savedControllerSheet = $_SESSION['_demo_pickup_sheets'][0] ?? null;
 $assert($savedControllerSheet instanceof App\Modules\Pickupsheet\Domain\PickupSheet, 'The controller should persist a pickup-sheet aggregate.');
+$assert(($savedControllerSheet->shipments[0]->checkedBy ?? '') === 'Edmund Operator', 'The server should replace a spoofed checker value with the logged-in operator name.');
 $savedReference = $savedControllerSheet->referenceNumber;
 
-$unauthorizedSubmissions = $pickupController->submissions(new Request('GET', '/pickupsheet/submissions', [], [], ''));
-$assert($unauthorizedSubmissions->status() === 200, 'The protected submissions login should render.');
-$assert(str_contains($unauthorizedSubmissions->body(), 'name="access_key"'), 'Submitted sheets should require the configured access key.');
-$assert(!str_contains($unauthorizedSubmissions->body(), 'Controller Client'), 'Shipment records should not render before authorization.');
-$unauthorizedExport = $pickupController->export(new Request('GET', '/pickupsheet/submissions/export', ['reference' => $savedReference], [], ''));
-$assert($unauthorizedExport->status() === 303, 'An unauthorised spreadsheet export should return to the protected login.');
-
-$pickupLoginResponse = $pickupController->login(new Request('POST', '/pickupsheet/submissions/login', [], [
-    '_token' => $pickupCsrf->token(),
-    'access_key' => 'test-pickup-view-key-2026',
-], ''));
-$assert($pickupLoginResponse->status() === 303, 'A valid submissions access key should establish the protected session.');
 $authorizedSubmissions = $pickupController->submissions(new Request('GET', '/pickupsheet/submissions', [], [], ''));
 $assert(str_contains($authorizedSubmissions->body(), $savedReference), 'The protected table should show each sheet reference.');
 $assert(str_contains($authorizedSubmissions->body(), 'Controller Client'), 'The protected table should show shipment rows after authorization.');
@@ -304,6 +322,14 @@ $assert(str_starts_with($exportResponse->body(), "\xEF\xBB\xBF"), 'The Excel-com
 $assert(str_contains($exportResponse->body(), 'Controller Client'), 'The spreadsheet export should contain shipment data.');
 $assert(str_contains($exportResponse->body(), '"Total cash received",12000,XAF'), 'The spreadsheet export should contain the server-calculated total.');
 $assert(($exportResponse->headers()['Content-Disposition'] ?? '') === 'attachment; filename="' . $savedReference . '.csv"', 'The Excel export should use the pickup reference as its filename.');
+
+$pickupLogoutResponse = $pickupController->logout(new Request('POST', '/pickupsheet/logout', [], [
+    '_token' => $pickupCsrf->token(),
+], ''));
+$assert($pickupLogoutResponse->status() === 303, 'Signing out should return to the operator portal.');
+$relockedPickup = $pickupController->index(new Request('GET', '/pickupsheet', [], [], ''));
+$assert(str_contains($relockedPickup->body(), 'Operator login'), 'Signing out should lock the Pickupsheet workspace.');
+$assert(!str_contains($relockedPickup->body(), 'data-pickup-form'), 'The form should be inaccessible after sign-out.');
 
 $home = $view->render('site/home', array_merge($common, [
     'pageTitle' => 'Network outsourcing and managed solutions',
@@ -336,8 +362,8 @@ $assert(is_string($dhlAsset) && !str_contains($dhlAsset, '<text'), 'The disquali
 $partnerSources = file_get_contents(dirname(__DIR__) . '/public/assets/partners/README.md');
 $assert(is_string($partnerSources) && str_contains($partnerSources, 'www.dhl.com/content/dam/dhl/global/core/images/logos/dhl-logo.svg'), 'The official DHL artwork source should be documented.');
 $assert(!str_contains($home, 'href="/pickupsheet"'), 'Pickupsheet should not be discoverable from the public site chrome or homepage.');
-$assert(str_contains($home, 'styles.css?v=20260824-pickup-submissions'), 'The submissions update should use a cache-safe stylesheet version.');
-$assert(str_contains($home, 'app.js?v=20260824-pickup-submissions'), 'The submissions update should use a cache-safe application script version.');
+$assert(str_contains($home, 'styles.css?v=20260824-pickup-login'), 'The operator login update should use a cache-safe stylesheet version.');
+$assert(str_contains($home, 'app.js?v=20260824-pickup-login'), 'The operator login update should use a cache-safe application script version.');
 $assert(str_contains($home, 'analytics.js?v=20260824-analytics-consent'), 'The consent-aware Google Analytics loader should render on every page.');
 $assert(str_contains($home, 'data-analytics-accept'), 'The site should offer an explicit analytics acceptance control.');
 $assert(str_contains($home, 'data-analytics-decline'), 'The site should offer an explicit analytics decline control.');
@@ -413,6 +439,8 @@ $product = $view->render('pickupsheet/show', array_merge($common, [
     'errors' => [],
     'old' => [],
     'pickupOperational' => true,
+    'operatorName' => 'Test Operator',
+    'operatorUsername' => 'test.operator',
 ]));
 $assert(str_contains($product, 'pickupsheet'), 'The Pickupsheet product page should render.');
 $assert(str_contains($product, 'Cash shipments'), 'The PDF cash-shipment section should render.');
@@ -428,7 +456,10 @@ $assert(str_contains($product, 'shipments[0][amount]'), 'The pickup form should 
 $assert(str_contains($product, 'shipments[0][pieces]'), 'The pickup form should collect piece counts from the PDF.');
 $assert(str_contains($product, 'shipments[0][weight_kg]'), 'The pickup form should collect shipment weight from the PDF.');
 $assert(str_contains($product, 'shipments[0][collection_time]'), 'The pickup form should collect the collection time from the PDF.');
-$assert(str_contains($product, 'shipments[0][checked_by]'), 'The pickup form should collect the checker name from the PDF.');
+$assert(str_contains($product, 'pickup-checked-by'), 'The pickup form should display the authenticated checker identity.');
+$assert(str_contains($product, 'Test Operator'), 'The pickup form should show the signed-in operator as the checker.');
+$assert(!str_contains($product, 'shipments[0][checked_by]'), 'The pickup form should not expose an editable checker field.');
+$assert(str_contains($product, 'action="/pickupsheet/logout"'), 'The private workspace should provide a CSRF-protected sign-out action.');
 $assert(str_contains($product, 'data-shipment-count'), 'The pickup form should calculate shipments collected.');
 $assert(str_contains($product, 'data-shipment-total'), 'The pickup form should calculate total cash received.');
 $assert(str_contains($product, 'name="captcha_nonce" value="pickup-captcha-nonce"'), 'The pickup form should include first-party human verification.');
@@ -447,7 +478,8 @@ $privacy = $view->render('site/privacy', array_merge($common, [
 $assert(str_contains($privacy, 'Information we collect'), 'The privacy notice should explain collected information.');
 $assert(str_contains($privacy, 'agent name, collection date, consignor, AWB number'), 'The privacy notice should disclose pickup-sheet fields.');
 $assert(str_contains($privacy, 'record and reconcile cash shipment collections'), 'The privacy notice should state the pickup-sheet processing purpose.');
-$assert(str_contains($privacy, 'spreadsheet exports are restricted behind a server-managed access key'), 'The privacy notice should explain protected sheet exports.');
+$assert(str_contains($privacy, 'requires an operator login and protected session'), 'The privacy notice should explain protected sheet access.');
+$assert(str_contains($privacy, 'checker identity is assigned from the signed-in operator account'), 'The privacy notice should explain the authenticated checker identity.');
 $assert(str_contains($privacy, 'inquiry and pickup-sheet forms require an explicit, unchecked opt-in'), 'Both personal-data forms should require explicit consent.');
 $assert(str_contains($privacy, 'T&amp;Tech Consulting Group'), 'The privacy notice should identify the data controller.');
 $assert(str_contains($privacy, 'We do not sell inquiry information.'), 'The privacy notice should state the use limitation.');
@@ -464,7 +496,9 @@ $assert(str_contains($privacy, 'Cookie settings'), 'The privacy notice should ex
 $environmentExample = file_get_contents(dirname(__DIR__) . '/.env.example');
 $assert(is_string($environmentExample) && str_contains($environmentExample, 'APP_TIMEZONE=Africa/Douala'), 'The environment example should use Cameroon time.');
 $assert(is_string($environmentExample) && str_contains($environmentExample, 'CONTACT_EMAIL=info@ttechcg.com'), 'The environment example should route production inquiries to the company mailbox.');
-$assert(is_string($environmentExample) && str_contains($environmentExample, 'PICKUPSHEET_VIEW_KEY='), 'The environment example should document the private submissions access key.');
+$assert(is_string($environmentExample) && str_contains($environmentExample, 'PICKUPSHEET_LOGIN_USERNAME='), 'The environment example should document the operator username.');
+$assert(is_string($environmentExample) && str_contains($environmentExample, 'PICKUPSHEET_LOGIN_NAME='), 'The environment example should document the operator display name.');
+$assert(is_string($environmentExample) && str_contains($environmentExample, 'PICKUPSHEET_LOGIN_PASSWORD='), 'The environment example should document the operator password.');
 
 $styles = file_get_contents(dirname(__DIR__) . '/public/assets/styles.css');
 $assert(is_string($styles) && str_contains($styles, '--navy: #0b0b0c;'), 'T&Tech near-black should be the minimal corporate foundation.');
@@ -497,6 +531,8 @@ $assert(is_string($styles) && str_contains($styles, '.shipment-row'), 'Shipment 
 $assert(is_string($styles) && str_contains($styles, 'content: attr(data-label);'), 'Shipment rows should expose their field labels in the mobile card layout.');
 $assert(is_string($styles) && str_contains($styles, '/* Protected pickup-sheet records */'), 'Submitted pickup sheets should have a dedicated protected table layout.');
 $assert(is_string($styles) && str_contains($styles, '.pickup-record-actions'), 'Each submitted sheet should style its print and spreadsheet actions.');
+$assert(is_string($styles) && str_contains($styles, '.pickup-checked-by'), 'The authenticated checker identity should have a non-editable presentation.');
+$assert(is_string($styles) && str_contains($styles, '.pickup-operator-identity'), 'The private workspace should identify the logged-in operator.');
 
 $script = file_get_contents(dirname(__DIR__) . '/public/assets/app.js');
 $assert(is_string($script) && str_contains($script, "event.key === 'Escape'"), 'The mobile navigation should close with Escape.');

@@ -30,12 +30,17 @@ final class PickupsheetController
 
     public function index(Request $request): Response
     {
+        $operator = $this->currentOperator();
+        if ($operator === null) {
+            return $this->loginPortal($request);
+        }
+
         $flash = $_SESSION['_pickup_flash'] ?? null;
         $errors = $_SESSION['_pickup_errors'] ?? [];
         $old = $_SESSION['_pickup_old'] ?? [];
         unset($_SESSION['_pickup_flash'], $_SESSION['_pickup_errors'], $_SESSION['_pickup_old']);
 
-        return Response::html($this->view->render('pickupsheet/show', [
+        $body = $this->view->render('pickupsheet/show', [
             'pageTitle' => 'Cash shipment pickup sheet',
             'pageDescription' => 'Securely record cash shipment collections and pickup-sheet totals.',
             'pageRobots' => 'noindex, nofollow',
@@ -50,19 +55,36 @@ final class PickupsheetController
             'errors' => is_array($errors) ? $errors : [],
             'old' => is_array($old) ? $old : [],
             'pickupOperational' => $this->pickupOperational,
-        ]));
+            'operatorName' => $operator['name'],
+            'operatorUsername' => $operator['username'],
+        ]);
+
+        return Response::html($body, 200, $this->privateHeaders());
     }
 
     public function store(Request $request): Response
     {
+        $operator = $this->currentOperator();
+        if ($operator === null) {
+            return Response::redirect($request->basePath . '/pickupsheet/');
+        }
+
         if (!$this->csrf->validate($request->input('_token'))) {
             return Response::html('Invalid or expired form token.', 419);
+        }
+
+        $shipments = $request->arrayInput('shipments');
+        foreach ($shipments as $index => $shipment) {
+            if (is_array($shipment)) {
+                $shipment['checked_by'] = $operator['name'];
+                $shipments[$index] = $shipment;
+            }
         }
 
         $input = [
             'agent_name' => $request->input('agent_name'),
             'collection_date' => $request->input('collection_date'),
-            'shipments' => $request->arrayInput('shipments'),
+            'shipments' => $shipments,
             'privacy_consent' => $request->input('privacy_consent'),
         ];
 
@@ -114,12 +136,14 @@ final class PickupsheetController
 
     public function submissions(Request $request): Response
     {
-        $authorized = $this->viewerAuthorized();
-        $errors = $_SESSION['_pickup_view_errors'] ?? [];
-        unset($_SESSION['_pickup_view_errors']);
-        $pickupSheets = [];
+        $operator = $this->currentOperator();
+        if ($operator === null) {
+            return Response::redirect($request->basePath . '/pickupsheet/');
+        }
 
-        if ($authorized && $this->pickupOperational) {
+        $errors = [];
+        $pickupSheets = [];
+        if ($this->pickupOperational) {
             try {
                 $pickupSheets = $this->service->recent();
             } catch (RuntimeException $exception) {
@@ -138,17 +162,13 @@ final class PickupsheetController
             'config' => $this->config,
             'storageMode' => $this->storageMode,
             'csrfToken' => $this->csrf->token(),
-            'authorized' => $authorized,
-            'viewKeyConfigured' => $this->viewKey() !== '',
             'pickupOperational' => $this->pickupOperational,
             'pickupSheets' => $pickupSheets,
-            'errors' => is_array($errors) ? $errors : [],
+            'errors' => $errors,
+            'operatorName' => $operator['name'],
         ]);
 
-        return Response::html($body, 200, [
-            'Cache-Control' => 'private, no-store, max-age=0',
-            'X-Robots-Tag' => 'noindex, nofollow',
-        ]);
+        return Response::html($body, 200, $this->privateHeaders());
     }
 
     public function login(Request $request): Response
@@ -157,34 +177,43 @@ final class PickupsheetController
             return Response::html('Invalid or expired form token.', 419);
         }
 
-        $viewKey = $this->viewKey();
-        if ($viewKey === '') {
-            $_SESSION['_pickup_view_errors'] = ['Submitted-sheet access is not configured on this server.'];
-            return Response::redirect($request->basePath . '/pickupsheet/submissions');
+        $configuredOperator = $this->configuredOperator();
+        if ($configuredOperator === null) {
+            $_SESSION['_pickup_login_errors'] = ['The Pickupsheet operator account is not configured on this server.'];
+            return Response::redirect($request->basePath . '/pickupsheet/');
         }
 
-        $attempts = $_SESSION['_pickup_view_attempts'] ?? ['count' => 0, 'last_at' => 0];
+        $attempts = $_SESSION['_pickup_login_attempts'] ?? ['count' => 0, 'last_at' => 0];
         $count = is_array($attempts) ? (int) ($attempts['count'] ?? 0) : 0;
         $lastAt = is_array($attempts) ? (int) ($attempts['last_at'] ?? 0) : 0;
         if ($count >= 5 && time() - $lastAt < 300) {
-            $_SESSION['_pickup_view_errors'] = ['Too many access attempts. Please wait five minutes and try again.'];
-            return Response::redirect($request->basePath . '/pickupsheet/submissions');
+            $_SESSION['_pickup_login_errors'] = ['Too many login attempts. Please wait five minutes and try again.'];
+            return Response::redirect($request->basePath . '/pickupsheet/');
         }
         if ($lastAt > 0 && time() - $lastAt >= 300) {
             $count = 0;
         }
 
-        if (!hash_equals($viewKey, $request->input('access_key'))) {
-            $_SESSION['_pickup_view_attempts'] = ['count' => $count + 1, 'last_at' => time()];
-            $_SESSION['_pickup_view_errors'] = ['The submitted-sheet access key is incorrect.'];
-            return Response::redirect($request->basePath . '/pickupsheet/submissions');
+        $usernameMatches = hash_equals(
+            strtolower($configuredOperator['username']),
+            strtolower($request->input('username')),
+        );
+        $passwordMatches = hash_equals($configuredOperator['password'], $request->input('password'));
+        if (!$usernameMatches || !$passwordMatches) {
+            $_SESSION['_pickup_login_attempts'] = ['count' => $count + 1, 'last_at' => time()];
+            $_SESSION['_pickup_login_errors'] = ['The username or password is incorrect.'];
+            return Response::redirect($request->basePath . '/pickupsheet/');
         }
 
         session_regenerate_id(true);
-        $_SESSION['_pickup_view_authorization'] = hash('sha256', $viewKey);
-        unset($_SESSION['_pickup_view_attempts']);
+        $_SESSION['_pickup_operator'] = [
+            'username' => $configuredOperator['username'],
+            'name' => $configuredOperator['name'],
+            'fingerprint' => $this->operatorFingerprint($configuredOperator),
+        ];
+        unset($_SESSION['_pickup_login_attempts'], $_SESSION['_pickup_login_errors']);
 
-        return Response::redirect($request->basePath . '/pickupsheet/submissions');
+        return Response::redirect($request->basePath . '/pickupsheet/');
     }
 
     public function logout(Request $request): Response
@@ -193,16 +222,16 @@ final class PickupsheetController
             return Response::html('Invalid or expired form token.', 419);
         }
 
-        unset($_SESSION['_pickup_view_authorization']);
+        unset($_SESSION['_pickup_operator']);
         session_regenerate_id(true);
 
-        return Response::redirect($request->basePath . '/pickupsheet/submissions');
+        return Response::redirect($request->basePath . '/pickupsheet/');
     }
 
     public function print(Request $request): Response
     {
-        if (!$this->viewerAuthorized()) {
-            return Response::redirect($request->basePath . '/pickupsheet/submissions');
+        if ($this->currentOperator() === null) {
+            return Response::redirect($request->basePath . '/pickupsheet/');
         }
 
         $pickupSheet = $this->service->findByReference($request->queryString('reference'));
@@ -217,16 +246,13 @@ final class PickupsheetController
             'pickupSheet' => $pickupSheet,
         ], 'layouts/print');
 
-        return Response::html($body, 200, [
-            'Cache-Control' => 'private, no-store, max-age=0',
-            'X-Robots-Tag' => 'noindex, nofollow',
-        ]);
+        return Response::html($body, 200, $this->privateHeaders());
     }
 
     public function export(Request $request): Response
     {
-        if (!$this->viewerAuthorized()) {
-            return Response::redirect($request->basePath . '/pickupsheet/submissions');
+        if ($this->currentOperator() === null) {
+            return Response::redirect($request->basePath . '/pickupsheet/');
         }
 
         $pickupSheet = $this->service->findByReference($request->queryString('reference'));
@@ -241,20 +267,80 @@ final class PickupsheetController
         );
     }
 
-    private function viewerAuthorized(): bool
+    /** @return array{username: string, name: string}|null */
+    private function currentOperator(): ?array
     {
-        $viewKey = $this->viewKey();
-        $authorization = $_SESSION['_pickup_view_authorization'] ?? '';
+        $configuredOperator = $this->configuredOperator();
+        $sessionOperator = $_SESSION['_pickup_operator'] ?? null;
+        if ($configuredOperator === null
+            || !is_array($sessionOperator)
+            || !is_string($sessionOperator['username'] ?? null)
+            || !is_string($sessionOperator['name'] ?? null)
+            || !is_string($sessionOperator['fingerprint'] ?? null)
+            || !hash_equals($this->operatorFingerprint($configuredOperator), $sessionOperator['fingerprint'])
+            || !hash_equals($configuredOperator['username'], $sessionOperator['username'])
+            || !hash_equals($configuredOperator['name'], $sessionOperator['name'])
+        ) {
+            return null;
+        }
 
-        return $viewKey !== ''
-            && is_string($authorization)
-            && hash_equals(hash('sha256', $viewKey), $authorization);
+        return ['username' => $sessionOperator['username'], 'name' => $sessionOperator['name']];
     }
 
-    private function viewKey(): string
+    /** @return array{username: string, name: string, password: string}|null */
+    private function configuredOperator(): ?array
     {
-        $viewKey = trim((string) ($this->config['pickup_view_key'] ?? ''));
-        return strlen($viewKey) >= 16 ? $viewKey : '';
+        $username = trim((string) ($this->config['pickup_login_username'] ?? ''));
+        $name = trim((string) ($this->config['pickup_login_name'] ?? ''));
+        $password = trim((string) ($this->config['pickup_login_password'] ?? ''));
+
+        if (!preg_match('/^[A-Za-z0-9._-]{3,60}$/', $username)
+            || strlen($name) < 2
+            || strlen($name) > 100
+            || strlen($password) < 16
+            || strlen($password) > 200
+        ) {
+            return null;
+        }
+
+        return ['username' => $username, 'name' => $name, 'password' => $password];
+    }
+
+    /** @param array{username: string, name: string, password: string} $operator */
+    private function operatorFingerprint(array $operator): string
+    {
+        return hash('sha256', $operator['username'] . "\0" . $operator['name'] . "\0" . $operator['password']);
+    }
+
+    private function loginPortal(Request $request): Response
+    {
+        $errors = $_SESSION['_pickup_login_errors'] ?? [];
+        unset($_SESSION['_pickup_login_errors']);
+
+        $body = $this->view->render('pickupsheet/login', [
+            'pageTitle' => 'Pickupsheet operator login',
+            'pageDescription' => 'Secure operator access to Pickupsheet.',
+            'pageRobots' => 'noindex, nofollow',
+            'activePage' => 'pickupsheet',
+            'basePath' => $request->basePath,
+            'assetBase' => $request->basePath . '/public/assets',
+            'config' => $this->config,
+            'storageMode' => $this->storageMode,
+            'csrfToken' => $this->csrf->token(),
+            'loginConfigured' => $this->configuredOperator() !== null,
+            'errors' => is_array($errors) ? $errors : [],
+        ]);
+
+        return Response::html($body, 200, $this->privateHeaders());
+    }
+
+    /** @return array<string, string> */
+    private function privateHeaders(): array
+    {
+        return [
+            'Cache-Control' => 'private, no-store, max-age=0',
+            'X-Robots-Tag' => 'noindex, nofollow',
+        ];
     }
 
     private function excelCsv(PickupSheet $pickupSheet): string
