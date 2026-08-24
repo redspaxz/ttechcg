@@ -96,7 +96,12 @@ $assert(str_contains($home, 'T&amp;Tech'), 'Corporate brand should render.');
 $assert(str_contains($home, 'Digital product engineering'), 'Services should render on the home page.');
 $assert(str_contains($home, 'dhl-logo.svg'), 'Pickupsheet should render as a dedicated product section.');
 $assert(str_contains($home, 'href="/pickupsheet"'), 'Pickupsheet should have a root-domain route.');
-$assert(str_contains($home, 'styles.css?v=20260824-minimal'), 'The minimal design stylesheet should use a cache-safe version.');
+$assert(str_contains($home, 'styles.css?v=20260824-wordmark'), 'The wordmark design stylesheet should use a cache-safe version.');
+$assert(str_contains($home, '<span class="company-name">T&amp;Tech Consulting Group</span>'), 'The header should render the full company name as text.');
+$headerStart = strpos($home, '<header');
+$headerEnd = strpos($home, '</header>');
+$headerMarkup = $headerStart !== false && $headerEnd !== false ? substr($home, $headerStart, $headerEnd - $headerStart) : '';
+$assert(!str_contains($headerMarkup, 'ttechcg-mark.svg'), 'The header should not render the logo image.');
 
 $product = $view->render('pickupsheet/show', array_merge($common, [
     'pageTitle' => 'Pickupsheet logistics operations',

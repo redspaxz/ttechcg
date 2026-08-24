@@ -15,16 +15,15 @@ $activePage = $activePage ?? '';
     <meta name="description" content="<?= $e($pageDescription ?? 'T&Tech Consulting Group') ?>">
     <title><?= $e($pageTitle ?? 'T&Tech Consulting Group') ?> | T&amp;Tech</title>
     <link rel="icon" href="<?= $e($assetBase) ?>/ttechcg-mark.svg" type="image/svg+xml">
-    <link rel="stylesheet" href="<?= $e($assetBase) ?>/styles.css?v=20260824-minimal">
-    <script src="<?= $e($assetBase) ?>/app.js?v=20260824-minimal" defer></script>
+    <link rel="stylesheet" href="<?= $e($assetBase) ?>/styles.css?v=20260824-wordmark">
+    <script src="<?= $e($assetBase) ?>/app.js?v=20260824-wordmark" defer></script>
 </head>
 <body>
     <a class="skip-link" href="#main-content">Skip to content</a>
     <header class="site-header" data-site-header>
         <div class="container header-inner">
             <a class="site-logo" href="<?= $e($url('/')) ?>" aria-label="T and Tech Consulting Group home">
-                <img src="<?= $e($assetBase) ?>/ttechcg-mark.svg" alt="">
-                <span><strong>T&amp;Tech</strong><small>Consulting Group</small></span>
+                <span class="company-name">T&amp;Tech Consulting Group</span>
             </a>
 
             <button class="nav-toggle" type="button" aria-expanded="false" aria-controls="site-navigation" data-nav-toggle>

@@ -371,6 +371,7 @@ body { line-height: 1.5; }
 .site-logo img { width: 36px; height: 36px; }
 .site-logo strong { font-size: 1rem; letter-spacing: -0.025em; }
 .site-logo small { margin-top: 4px; font-size: 0.55rem; letter-spacing: 0.1em; }
+.site-logo .company-name { display: block; font-size: 1.32rem; font-weight: 760; letter-spacing: -0.04em; line-height: 1; }
 .site-nav { gap: 27px; }
 .site-nav a { font-size: 0.77rem; font-weight: 680; }
 .site-nav a:not(.nav-cta)::after { bottom: -7px; height: 1px; }
@@ -534,6 +535,7 @@ h1 em, h2 em { color: var(--copper); font-family: inherit; font-style: normal; f
     .section { padding: 76px 0; }
     .site-header, .site-header[data-scrolled] { height: 68px; }
     .site-logo img { width: 34px; height: 34px; }
+    .site-logo .company-name { font-size: 1.16rem; }
     .nav-toggle { display: block; position: relative; z-index: 2; }
     .site-nav { position: fixed; inset: 0; display: none; align-items: flex-start; justify-content: center; flex-direction: column; gap: 24px; padding: 100px 24px 36px; background: var(--paper); }
     .site-nav[data-open] { display: flex; }
