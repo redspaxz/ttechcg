@@ -302,7 +302,10 @@ $printResponse = $pickupController->print(new Request('GET', '/pickupsheet/submi
 $assert($printResponse->status() === 200, 'A direct pickup sheet should render for printing.');
 $assert(str_contains($printResponse->body(), 'window.print()'), 'The print view should invoke the browser PDF/print workflow.');
 $assert(str_contains($printResponse->body(), $savedReference), 'The printable sheet should display its reference number.');
-$assert(str_contains($printResponse->body(), 'Pick-up sheet'), 'The printable sheet should reproduce the original form heading.');
+$assert(str_contains($printResponse->body(), 'PICK-UP SHEET'), 'The printable sheet should reproduce the original uppercase form heading.');
+$assert(str_contains($printResponse->body(), 'CONTROLLER AGENT'), 'The printable sheet should uppercase the agent value in its generated content.');
+$assert(str_contains($printResponse->body(), 'CONTROLLER CLIENT'), 'The printable sheet should uppercase consignor values in its generated content.');
+$assert(str_contains($printResponse->body(), 'CONTROLLER CHECKER'), 'The printable sheet should uppercase checker values in its generated content.');
 $assert(str_contains($printResponse->body(), '29/07/2026'), 'The printable sheet should use the original day/month/year date format.');
 $assert(str_contains($printResponse->body(), 'paper-empty-row'), 'The printable sheet should retain blank continuation rows like the original form.');
 $assert(str_contains($printResponse->body(), '@page { size: A4 portrait;'), 'The printable sheet should use the original portrait page orientation.');
