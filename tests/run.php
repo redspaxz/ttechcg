@@ -110,7 +110,10 @@ foreach ($partnerAssets as $partnerAsset) {
 }
 $assert(!str_contains($home, 'href="/pickupsheet"'), 'Pickupsheet should not be discoverable from the public site chrome or homepage.');
 $assert(!str_contains($home, 'dhl-logo.svg'), 'The private Pickupsheet product should not be promoted on the homepage.');
-$assert(str_contains($home, 'styles.css?v=20260824-partner-logos'), 'The partner logo update should use a cache-safe stylesheet version.');
+$assert(str_contains($home, 'styles.css?v=20260824-mobile'), 'The mobile optimization should use a cache-safe stylesheet version.');
+$assert(str_contains($home, 'app.js?v=20260824-mobile'), 'The mobile navigation update should use a cache-safe script version.');
+$assert(str_contains($home, 'viewport-fit=cover'), 'The viewport should support mobile safe areas.');
+$assert(str_contains($home, 'loading="lazy" decoding="async"'), 'Below-the-fold partner logos should load efficiently on mobile.');
 $assert(str_contains($home, '<span class="company-name">T&amp;Tech Consulting Group</span>'), 'The header should render the full company name as text.');
 $headerStart = strpos($home, '<header');
 $headerEnd = strpos($home, '</header>');
@@ -160,6 +163,14 @@ $assert(is_string($styles) && str_contains($styles, '--ink: #f5f5f3;'), 'The inv
 $assert(is_string($styles) && str_contains($styles, '.site-logo .company-name { color: var(--copper); }'), 'The text-only company wordmark should use the matching red accent.');
 $assert(is_string($styles) && str_contains($styles, '.product-card-heading'), 'The public product catalogue should have a responsive product layout.');
 $assert(is_string($styles) && str_contains($styles, '.partner-logo--aws'), 'The partner logo wall should preserve the AWS dark logo treatment.');
+$assert(is_string($styles) && str_contains($styles, '/* Mobile experience hardening */'), 'The site should include focused mobile overrides.');
+$assert(is_string($styles) && str_contains($styles, 'height: calc(100dvh - 68px);'), 'The mobile navigation should respect the dynamic viewport height.');
+$assert(is_string($styles) && str_contains($styles, 'font-size: 16px;'), 'Mobile form controls should prevent automatic input zoom.');
+
+$script = file_get_contents(dirname(__DIR__) . '/public/assets/app.js');
+$assert(is_string($script) && str_contains($script, "event.key === 'Escape'"), 'The mobile navigation should close with Escape.');
+$assert(is_string($script) && str_contains($script, "toggleAttribute('inert', open)"), 'The open mobile navigation should isolate background content.');
+$assert(is_string($script) && str_contains($script, "matchMedia('(min-width: 821px)')"), 'The navigation state should reset when returning to desktop width.');
 
 $database = file_get_contents(dirname(__DIR__) . '/src/Shared/Infrastructure/Database.php');
 $assert(is_string($database) && str_contains($database, "extension_loaded('pdo_mysql')"), 'The application should use PDO MySQL.');

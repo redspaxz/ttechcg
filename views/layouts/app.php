@@ -11,14 +11,14 @@ $pageRobots = $pageRobots ?? 'index, follow';
 <html lang="en">
 <head>
     <meta charset="utf-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
     <meta name="theme-color" content="#080808">
     <meta name="description" content="<?= $e($pageDescription ?? 'T&Tech Consulting Group') ?>">
     <meta name="robots" content="<?= $e($pageRobots) ?>">
     <title><?= $e($pageTitle ?? 'T&Tech Consulting Group') ?> | T&amp;Tech</title>
     <link rel="icon" href="<?= $e($assetBase) ?>/ttechcg-mark.svg" type="image/svg+xml">
-    <link rel="stylesheet" href="<?= $e($assetBase) ?>/styles.css?v=20260824-partner-logos">
-    <script src="<?= $e($assetBase) ?>/app.js?v=20260824-partner-logos" defer></script>
+    <link rel="stylesheet" href="<?= $e($assetBase) ?>/styles.css?v=20260824-mobile">
+    <script src="<?= $e($assetBase) ?>/app.js?v=20260824-mobile" defer></script>
 </head>
 <body>
     <a class="skip-link" href="#main-content">Skip to content</a>
