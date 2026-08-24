@@ -71,6 +71,7 @@ $pickupsheetController = new PickupsheetController($view, $config, $storageMode)
 $router = new Router();
 $router->get('/', fn (Request $request): Response => $siteController->home($request));
 $router->get('/services', fn (Request $request): Response => $siteController->services($request));
+$router->get('/products', fn (Request $request): Response => $siteController->products($request));
 $router->get('/about', fn (Request $request): Response => $siteController->about($request));
 $router->get('/contact', fn (Request $request): Response => $contactController->index($request));
 $router->post('/contact', fn (Request $request): Response => $contactController->store($request));

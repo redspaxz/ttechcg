@@ -21,20 +21,26 @@ final class SiteController
 
     public function home(Request $request): Response
     {
-        return $this->page($request, 'site/home', 'Technology that moves the work forward', 'home',
-            'T&Tech designs practical digital products, connected operations, and technology systems for ambitious organisations.');
+        return $this->page($request, 'site/home', 'Network outsourcing and managed solutions', 'home',
+            'T&Tech keeps organisations connected and productive through network outsourcing, managed infrastructure, cloud security, and practical business solutions.');
     }
 
     public function services(Request $request): Response
     {
-        return $this->page($request, 'site/services', 'Services built around outcomes', 'services',
-            'Product engineering, workflow automation, data and cloud systems, and hands-on technical advisory.');
+        return $this->page($request, 'site/services', 'Network and technology services', 'services',
+            'Network outsourcing, managed infrastructure, cloud security, continuity, and business systems delivered by one accountable partner.');
+    }
+
+    public function products(Request $request): Response
+    {
+        return $this->page($request, 'site/products', 'Technology products for real operations', 'products',
+            'Explore T&Tech products, including BTSPOS: a multi-agency ticketing and transport operations platform.');
     }
 
     public function about(Request $request): Response
     {
-        return $this->page($request, 'site/about', 'Clear thinking. Useful technology.', 'about',
-            'T&Tech brings strategy and delivery into one accountable consulting partnership.');
+        return $this->page($request, 'site/about', 'An accountable technology operations partner', 'about',
+            'T&Tech combines managed network operations and solution delivery to keep organisations connected, resilient, and ready to grow.');
     }
 
     public function privacy(Request $request): Response

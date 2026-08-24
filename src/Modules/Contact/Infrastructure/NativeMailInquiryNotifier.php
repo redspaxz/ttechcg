@@ -57,6 +57,11 @@ final class NativeMailInquiryNotifier implements InquiryNotifier
     private function serviceLabel(string $service): string
     {
         return match ($service) {
+            'network-outsourcing' => 'Network outsourcing',
+            'managed-infrastructure' => 'Managed infrastructure & support',
+            'cloud-security' => 'Cloud, security & continuity',
+            'business-solutions' => 'Business systems & integration',
+            'btspos' => 'BTSPOS',
             'digital-products' => 'Digital product engineering',
             'workflow-automation' => 'Workflow automation',
             'data-cloud' => 'Data & cloud systems',

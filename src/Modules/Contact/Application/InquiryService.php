@@ -13,7 +13,19 @@ use InvalidArgumentException;
 
 final class InquiryService
 {
-    private const SERVICES = ['digital-products', 'workflow-automation', 'data-cloud', 'technical-advisory', 'pickupsheet', 'other'];
+    private const SERVICES = [
+        'network-outsourcing',
+        'managed-infrastructure',
+        'cloud-security',
+        'business-solutions',
+        'btspos',
+        'digital-products',
+        'workflow-automation',
+        'data-cloud',
+        'technical-advisory',
+        'pickupsheet',
+        'other',
+    ];
 
     public function __construct(
         private readonly InquiryRepository $repository,

@@ -17,8 +17,8 @@ $pageRobots = $pageRobots ?? 'index, follow';
     <meta name="robots" content="<?= $e($pageRobots) ?>">
     <title><?= $e($pageTitle ?? 'T&Tech Consulting Group') ?> | T&amp;Tech</title>
     <link rel="icon" href="<?= $e($assetBase) ?>/ttechcg-mark.svg" type="image/svg+xml">
-    <link rel="stylesheet" href="<?= $e($assetBase) ?>/styles.css?v=20260824-red-wordmark">
-    <script src="<?= $e($assetBase) ?>/app.js?v=20260824-red-wordmark" defer></script>
+    <link rel="stylesheet" href="<?= $e($assetBase) ?>/styles.css?v=20260824-network-products">
+    <script src="<?= $e($assetBase) ?>/app.js?v=20260824-network-products" defer></script>
 </head>
 <body>
     <a class="skip-link" href="#main-content">Skip to content</a>
@@ -36,6 +36,7 @@ $pageRobots = $pageRobots ?? 'index, follow';
             <nav class="site-nav" id="site-navigation" aria-label="Primary navigation" data-navigation>
                 <a href="<?= $e($url('/')) ?>" <?= $activePage === 'home' ? 'aria-current="page"' : '' ?>>Home</a>
                 <a href="<?= $e($url('/services')) ?>" <?= $activePage === 'services' ? 'aria-current="page"' : '' ?>>Services</a>
+                <a href="<?= $e($url('/products')) ?>" <?= $activePage === 'products' ? 'aria-current="page"' : '' ?>>Products</a>
                 <a href="<?= $e($url('/about')) ?>" <?= $activePage === 'about' ? 'aria-current="page"' : '' ?>>About</a>
                 <a class="nav-cta" href="<?= $e($url('/contact')) ?>" <?= $activePage === 'contact' ? 'aria-current="page"' : '' ?>>Start a project <span aria-hidden="true">↗</span></a>
             </nav>
@@ -49,8 +50,8 @@ $pageRobots = $pageRobots ?? 'index, follow';
     <footer class="site-footer">
         <div class="container footer-top">
             <div class="footer-statement">
-                <span class="eyebrow eyebrow-light">Build what matters</span>
-                <h2>Useful technology.<br>Measurable progress.</h2>
+                <span class="eyebrow eyebrow-light">Keep business moving</span>
+                <h2>Reliable networks.<br>Practical solutions.</h2>
             </div>
             <a class="circle-link" href="<?= $e($url('/contact')) ?>" aria-label="Start a conversation">
                 <span>Let's talk</span><i aria-hidden="true">↗</i>
@@ -60,6 +61,7 @@ $pageRobots = $pageRobots ?? 'index, follow';
             <a class="footer-brand" href="<?= $e($url('/')) ?>">T&amp;Tech <span>Consulting Group</span></a>
             <nav aria-label="Footer navigation">
                 <a href="<?= $e($url('/services')) ?>">Services</a>
+                <a href="<?= $e($url('/products')) ?>">Products</a>
                 <a href="<?= $e($url('/about')) ?>">About</a>
                 <a href="<?= $e($url('/contact')) ?>">Contact</a>
                 <a href="<?= $e($url('/privacy')) ?>">Privacy</a>
