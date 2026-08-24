@@ -15,8 +15,8 @@ $activePage = $activePage ?? '';
     <meta name="description" content="<?= $e($pageDescription ?? 'T&Tech Consulting Group') ?>">
     <title><?= $e($pageTitle ?? 'T&Tech Consulting Group') ?> | T&amp;Tech</title>
     <link rel="icon" href="<?= $e($assetBase) ?>/ttechcg-mark.svg" type="image/svg+xml">
-    <link rel="stylesheet" href="<?= $e($assetBase) ?>/styles.css">
-    <script src="<?= $e($assetBase) ?>/app.js" defer></script>
+    <link rel="stylesheet" href="<?= $e($assetBase) ?>/styles.css?v=20260824-minimal">
+    <script src="<?= $e($assetBase) ?>/app.js?v=20260824-minimal" defer></script>
 </head>
 <body>
     <a class="skip-link" href="#main-content">Skip to content</a>

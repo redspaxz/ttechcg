@@ -96,6 +96,7 @@ $assert(str_contains($home, 'T&amp;Tech'), 'Corporate brand should render.');
 $assert(str_contains($home, 'Digital product engineering'), 'Services should render on the home page.');
 $assert(str_contains($home, 'dhl-logo.svg'), 'Pickupsheet should render as a dedicated product section.');
 $assert(str_contains($home, 'href="/pickupsheet"'), 'Pickupsheet should have a root-domain route.');
+$assert(str_contains($home, 'styles.css?v=20260824-minimal'), 'The minimal design stylesheet should use a cache-safe version.');
 
 $product = $view->render('pickupsheet/show', array_merge($common, [
     'pageTitle' => 'Pickupsheet logistics operations',
@@ -114,10 +115,12 @@ $assert(str_contains($privacy, 'Information we collect'), 'The privacy notice sh
 $assert(str_contains($privacy, 'We do not sell inquiry information.'), 'The privacy notice should state the use limitation.');
 
 $styles = file_get_contents(dirname(__DIR__) . '/public/assets/styles.css');
-$assert(is_string($styles) && str_contains($styles, '--navy: #080808;'), 'T&Tech black should be the corporate foundation.');
+$assert(is_string($styles) && str_contains($styles, '--navy: #0b0b0c;'), 'T&Tech near-black should be the minimal corporate foundation.');
 $assert(is_string($styles) && str_contains($styles, '--copper: #d40511;'), 'T&Tech red should be the corporate accent.');
 $assert(is_string($styles) && str_contains($styles, '--paper: #ffffff;'), 'T&Tech white should be the corporate canvas.');
 $assert(is_string($styles) && str_contains($styles, '--dhl-yellow: #ffcc00;'), 'Pickupsheet should retain the DHL-yellow treatment.');
+$assert(is_string($styles) && str_contains($styles, '--container: 1180px;'), 'The minimal layout should use the restrained content width.');
+$assert(is_string($styles) && str_contains($styles, '.signal-orbit { display: none; }'), 'Decorative hero orbits should remain removed.');
 
 $database = file_get_contents(dirname(__DIR__) . '/src/Shared/Infrastructure/Database.php');
 $assert(is_string($database) && str_contains($database, "extension_loaded('pdo_mysql')"), 'The application should use PDO MySQL.');
