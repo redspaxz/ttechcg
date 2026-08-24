@@ -2,6 +2,8 @@
 
 declare(strict_types=1);
 
+$appUrl = rtrim(getenv('APP_URL') ?: 'https://ttechcg.com', '/');
+
 return [
     'name' => 'T&Tech Consulting Group',
     'short_name' => 'T&Tech',
@@ -10,9 +12,10 @@ return [
     'timezone' => getenv('APP_TIMEZONE') ?: 'Africa/Douala',
     'contact_email' => getenv('CONTACT_EMAIL') ?: 'info@ttechcg.com',
     'contact_from_email' => getenv('CONTACT_FROM_EMAIL') ?: 'website@ttechcg.com',
-    'pickup_login_username' => getenv('PICKUPSHEET_LOGIN_USERNAME') ?: '',
-    'pickup_login_name' => getenv('PICKUPSHEET_LOGIN_NAME') ?: '',
-    'pickup_login_password' => getenv('PICKUPSHEET_LOGIN_PASSWORD') ?: '',
+    'jumpcloud_oidc_issuer' => getenv('JUMPCLOUD_OIDC_ISSUER') ?: 'https://oauth.id.jumpcloud.com/',
+    'jumpcloud_oidc_client_id' => getenv('JUMPCLOUD_OIDC_CLIENT_ID') ?: '',
+    'jumpcloud_oidc_client_secret' => getenv('JUMPCLOUD_OIDC_CLIENT_SECRET') ?: '',
+    'jumpcloud_oidc_redirect_uri' => getenv('JUMPCLOUD_OIDC_REDIRECT_URI') ?: $appUrl . '/pickupsheet/login/callback',
     'locations' => [
         [
             'city' => 'Bamenda',

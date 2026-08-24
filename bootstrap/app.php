@@ -23,6 +23,7 @@ use App\Shared\Infrastructure\Environment;
 use App\Shared\Infrastructure\MigrationRunner;
 use App\Shared\Security\Captcha;
 use App\Shared\Security\Csrf;
+use App\Shared\Security\JumpCloudOidcProvider;
 use App\Shared\View\View;
 
 require __DIR__ . '/autoload.php';
@@ -92,6 +93,7 @@ $pickupsheetController = new PickupsheetController(
     $view,
     $csrf,
     $pickupCaptcha,
+    new JumpCloudOidcProvider($config),
     $config,
     $storageMode,
     $pickupOperational,
@@ -107,6 +109,7 @@ $router->post('/contact', fn (Request $request): Response => $contactController-
 $router->get('/pickupsheet', fn (Request $request): Response => $pickupsheetController->index($request));
 $router->post('/pickupsheet', fn (Request $request): Response => $pickupsheetController->store($request));
 $router->post('/pickupsheet/login', fn (Request $request): Response => $pickupsheetController->login($request));
+$router->get('/pickupsheet/login/callback', fn (Request $request): Response => $pickupsheetController->loginCallback($request));
 $router->post('/pickupsheet/logout', fn (Request $request): Response => $pickupsheetController->logout($request));
 $router->get('/pickupsheet/submissions', fn (Request $request): Response => $pickupsheetController->submissions($request));
 $router->get('/pickupsheet/submissions/print', fn (Request $request): Response => $pickupsheetController->print($request));

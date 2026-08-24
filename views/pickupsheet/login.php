@@ -20,7 +20,7 @@ $csrfToken = (string) ($csrfToken ?? '');
         <div class="pickup-access-card">
             <p class="eyebrow eyebrow-red">Protected workspace</p>
             <h1>Operator login</h1>
-            <p>Sign in to create, review, print, and export cash shipment pickup sheets.</p>
+            <p>Use your T&amp;Tech JumpCloud account to create, review, print, and export cash shipment pickup sheets.</p>
 
             <?php if ($errors !== []): ?>
                 <div class="notice notice-error" role="alert"><?php foreach ($errors as $error): ?><span><?= $e($error) ?></span><?php endforeach; ?></div>
@@ -28,20 +28,13 @@ $csrfToken = (string) ($csrfToken ?? '');
 
             <?php if (!$loginConfigured): ?>
                 <div class="notice notice-error" role="alert">
-                    Operator access is disabled. Add <code>PICKUPSHEET_LOGIN_USERNAME</code>, <code>PICKUPSHEET_LOGIN_NAME</code>, and a <code>PICKUPSHEET_LOGIN_PASSWORD</code> of at least 16 characters to the server-managed <code>.env</code>.
+                    JumpCloud access is disabled until the OIDC client ID, client secret, issuer, and callback URI are configured in the server-managed <code>.env</code>.
                 </div>
             <?php else: ?>
                 <form class="pickup-access-form" method="post" action="<?= $e($basePath) ?>/pickupsheet/login">
                     <input type="hidden" name="_token" value="<?= $e($csrfToken) ?>">
-                    <label>
-                        <span>Username</span>
-                        <input name="username" minlength="3" maxlength="60" required autocomplete="username" autofocus>
-                    </label>
-                    <label>
-                        <span>Password</span>
-                        <input type="password" name="password" minlength="16" maxlength="200" required autocomplete="current-password">
-                    </label>
-                    <button class="button button-red" type="submit">Sign in <span aria-hidden="true">→</span></button>
+                    <button class="button button-red pickup-idp-button" type="submit">Continue with JumpCloud <span aria-hidden="true">→</span></button>
+                    <p class="pickup-idp-note">Authentication and access policy are managed by JumpCloud. This site never receives your JumpCloud password.</p>
                 </form>
             <?php endif; ?>
         </div>

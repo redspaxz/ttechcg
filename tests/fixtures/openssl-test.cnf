@@ -1,0 +1,5 @@
+# Minimal OpenSSL configuration for the disposable OIDC test key.
+[ req ]
+distinguished_name = req_distinguished_name
+
+[ req_distinguished_name ]

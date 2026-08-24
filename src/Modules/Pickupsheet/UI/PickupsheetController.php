@@ -10,6 +10,7 @@ use App\Shared\Http\Request;
 use App\Shared\Http\Response;
 use App\Shared\Security\Captcha;
 use App\Shared\Security\Csrf;
+use App\Shared\Security\IdentityProvider;
 use App\Shared\View\View;
 use InvalidArgumentException;
 use RuntimeException;
@@ -22,6 +23,7 @@ final class PickupsheetController
         private readonly View $view,
         private readonly Csrf $csrf,
         private readonly Captcha $captcha,
+        private readonly IdentityProvider $identityProvider,
         private readonly array $config,
         private readonly string $storageMode,
         private readonly bool $pickupOperational,
@@ -177,41 +179,79 @@ final class PickupsheetController
             return Response::html('Invalid or expired form token.', 419);
         }
 
-        $configuredOperator = $this->configuredOperator();
-        if ($configuredOperator === null) {
-            $_SESSION['_pickup_login_errors'] = ['The Pickupsheet operator account is not configured on this server.'];
+        if (!$this->identityProvider->configured()) {
+            $_SESSION['_pickup_login_errors'] = ['JumpCloud sign-in is not configured on this server.'];
             return Response::redirect($request->basePath . '/pickupsheet/');
         }
 
-        $attempts = $_SESSION['_pickup_login_attempts'] ?? ['count' => 0, 'last_at' => 0];
-        $count = is_array($attempts) ? (int) ($attempts['count'] ?? 0) : 0;
-        $lastAt = is_array($attempts) ? (int) ($attempts['last_at'] ?? 0) : 0;
-        if ($count >= 5 && time() - $lastAt < 300) {
-            $_SESSION['_pickup_login_errors'] = ['Too many login attempts. Please wait five minutes and try again.'];
+        $state = $this->randomBase64Url(32);
+        $nonce = $this->randomBase64Url(32);
+        $codeVerifier = $this->randomBase64Url(64);
+        $codeChallenge = rtrim(strtr(base64_encode(hash('sha256', $codeVerifier, true)), '+/', '-_'), '=');
+        $_SESSION['_pickup_oidc_transaction'] = [
+            'state_hash' => hash('sha256', $state),
+            'nonce' => $nonce,
+            'code_verifier' => $codeVerifier,
+            'created_at' => time(),
+        ];
+
+        try {
+            return Response::redirect($this->identityProvider->authorizationUrl($state, $nonce, $codeChallenge));
+        } catch (RuntimeException $exception) {
+            unset($_SESSION['_pickup_oidc_transaction']);
+            error_log($exception->__toString());
+            $_SESSION['_pickup_login_errors'] = ['JumpCloud sign-in could not be started. Please try again.'];
             return Response::redirect($request->basePath . '/pickupsheet/');
         }
-        if ($lastAt > 0 && time() - $lastAt >= 300) {
-            $count = 0;
+    }
+
+    public function loginCallback(Request $request): Response
+    {
+        $transaction = $_SESSION['_pickup_oidc_transaction'] ?? null;
+        unset($_SESSION['_pickup_oidc_transaction']);
+
+        $state = $request->queryString('state');
+        if (!is_array($transaction)
+            || !is_string($transaction['state_hash'] ?? null)
+            || !is_string($transaction['nonce'] ?? null)
+            || !is_string($transaction['code_verifier'] ?? null)
+            || !is_int($transaction['created_at'] ?? null)
+            || $transaction['created_at'] > time() + 60
+            || time() - $transaction['created_at'] > 600
+            || $state === ''
+            || !hash_equals($transaction['state_hash'], hash('sha256', $state))
+        ) {
+            $_SESSION['_pickup_login_errors'] = ['The JumpCloud login transaction is invalid or expired. Please try again.'];
+            return Response::redirect($request->basePath . '/pickupsheet/');
         }
 
-        $usernameMatches = hash_equals(
-            strtolower($configuredOperator['username']),
-            strtolower($request->input('username')),
-        );
-        $passwordMatches = hash_equals($configuredOperator['password'], $request->input('password'));
-        if (!$usernameMatches || !$passwordMatches) {
-            $_SESSION['_pickup_login_attempts'] = ['count' => $count + 1, 'last_at' => time()];
-            $_SESSION['_pickup_login_errors'] = ['The username or password is incorrect.'];
+        if ($request->queryString('error') !== '') {
+            $_SESSION['_pickup_login_errors'] = ['JumpCloud sign-in was not completed.'];
+            return Response::redirect($request->basePath . '/pickupsheet/');
+        }
+
+        try {
+            $identity = $this->identityProvider->authenticate(
+                $request->queryString('code'),
+                $transaction['code_verifier'],
+                $transaction['nonce'],
+            );
+        } catch (RuntimeException $exception) {
+            error_log($exception->__toString());
+            $_SESSION['_pickup_login_errors'] = ['JumpCloud could not verify your identity. Please try again or contact an administrator.'];
             return Response::redirect($request->basePath . '/pickupsheet/');
         }
 
         session_regenerate_id(true);
         $_SESSION['_pickup_operator'] = [
-            'username' => $configuredOperator['username'],
-            'name' => $configuredOperator['name'],
-            'fingerprint' => $this->operatorFingerprint($configuredOperator),
+            'sub' => $identity['sub'],
+            'username' => $identity['username'],
+            'name' => $identity['name'],
+            'email' => $identity['email'],
+            'expires_at' => $identity['expires_at'],
+            'fingerprint' => $this->identityProvider->fingerprint(),
         ];
-        unset($_SESSION['_pickup_login_attempts'], $_SESSION['_pickup_login_errors']);
+        unset($_SESSION['_pickup_login_errors']);
 
         return Response::redirect($request->basePath . '/pickupsheet/');
     }
@@ -222,7 +262,7 @@ final class PickupsheetController
             return Response::html('Invalid or expired form token.', 419);
         }
 
-        unset($_SESSION['_pickup_operator']);
+        unset($_SESSION['_pickup_operator'], $_SESSION['_pickup_oidc_transaction']);
         session_regenerate_id(true);
 
         return Response::redirect($request->basePath . '/pickupsheet/');
@@ -270,46 +310,22 @@ final class PickupsheetController
     /** @return array{username: string, name: string}|null */
     private function currentOperator(): ?array
     {
-        $configuredOperator = $this->configuredOperator();
         $sessionOperator = $_SESSION['_pickup_operator'] ?? null;
-        if ($configuredOperator === null
+        if (!$this->identityProvider->configured()
             || !is_array($sessionOperator)
+            || !is_string($sessionOperator['sub'] ?? null)
             || !is_string($sessionOperator['username'] ?? null)
             || !is_string($sessionOperator['name'] ?? null)
             || !is_string($sessionOperator['fingerprint'] ?? null)
-            || !hash_equals($this->operatorFingerprint($configuredOperator), $sessionOperator['fingerprint'])
-            || !hash_equals($configuredOperator['username'], $sessionOperator['username'])
-            || !hash_equals($configuredOperator['name'], $sessionOperator['name'])
+            || !is_int($sessionOperator['expires_at'] ?? null)
+            || $sessionOperator['expires_at'] <= time()
+            || !hash_equals($this->identityProvider->fingerprint(), $sessionOperator['fingerprint'])
         ) {
+            unset($_SESSION['_pickup_operator']);
             return null;
         }
 
         return ['username' => $sessionOperator['username'], 'name' => $sessionOperator['name']];
-    }
-
-    /** @return array{username: string, name: string, password: string}|null */
-    private function configuredOperator(): ?array
-    {
-        $username = trim((string) ($this->config['pickup_login_username'] ?? ''));
-        $name = trim((string) ($this->config['pickup_login_name'] ?? ''));
-        $password = trim((string) ($this->config['pickup_login_password'] ?? ''));
-
-        if (!preg_match('/^[A-Za-z0-9._-]{3,60}$/', $username)
-            || strlen($name) < 2
-            || strlen($name) > 100
-            || strlen($password) < 16
-            || strlen($password) > 200
-        ) {
-            return null;
-        }
-
-        return ['username' => $username, 'name' => $name, 'password' => $password];
-    }
-
-    /** @param array{username: string, name: string, password: string} $operator */
-    private function operatorFingerprint(array $operator): string
-    {
-        return hash('sha256', $operator['username'] . "\0" . $operator['name'] . "\0" . $operator['password']);
     }
 
     private function loginPortal(Request $request): Response
@@ -327,7 +343,7 @@ final class PickupsheetController
             'config' => $this->config,
             'storageMode' => $this->storageMode,
             'csrfToken' => $this->csrf->token(),
-            'loginConfigured' => $this->configuredOperator() !== null,
+            'loginConfigured' => $this->identityProvider->configured(),
             'errors' => is_array($errors) ? $errors : [],
         ]);
 
@@ -341,6 +357,11 @@ final class PickupsheetController
             'Cache-Control' => 'private, no-store, max-age=0',
             'X-Robots-Tag' => 'noindex, nofollow',
         ];
+    }
+
+    private function randomBase64Url(int $bytes): string
+    {
+        return rtrim(strtr(base64_encode(random_bytes($bytes)), '+/', '-_'), '=');
     }
 
     private function excelCsv(PickupSheet $pickupSheet): string

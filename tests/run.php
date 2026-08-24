@@ -15,6 +15,8 @@ use App\Modules\Pickupsheet\UI\PickupsheetController;
 use App\Shared\Http\Request;
 use App\Shared\Security\Captcha;
 use App\Shared\Security\Csrf;
+use App\Shared\Security\IdentityProvider;
+use App\Shared\Security\JumpCloudOidcProvider;
 use App\Shared\View\View;
 
 require dirname(__DIR__) . '/bootstrap/autoload.php';
@@ -194,6 +196,85 @@ $assert($request->path === '/products', 'Request should retain the routed path.'
 $arrayRequest = new Request('POST', '/pickupsheet', [], ['shipments' => [['awb_number' => '1234567890']]], '');
 $assert(($arrayRequest->arrayInput('shipments')[0]['awb_number'] ?? '') === '1234567890', 'Request should expose nested shipment arrays.');
 
+$base64Url = static fn (string $value): string => rtrim(strtr(base64_encode($value), '+/', '-_'), '=');
+$oidcNonce = str_repeat('n', 43);
+$oidcVerifier = str_repeat('v', 64);
+$oidcKeyOptions = [
+    'config' => __DIR__ . '/fixtures/openssl-test.cnf',
+    'private_key_bits' => 2048,
+    'private_key_type' => OPENSSL_KEYTYPE_RSA,
+];
+$oidcKey = openssl_pkey_new($oidcKeyOptions);
+$assert($oidcKey !== false, 'The OIDC test should generate an RSA signing key.');
+$oidcKeyDetails = openssl_pkey_get_details($oidcKey);
+$assert(is_array($oidcKeyDetails) && is_array($oidcKeyDetails['rsa'] ?? null), 'The OIDC test should expose RSA key details.');
+$oidcJwk = [
+    'kty' => 'RSA',
+    'kid' => 'test-signing-key',
+    'use' => 'sig',
+    'alg' => 'RS256',
+    'n' => $base64Url($oidcKeyDetails['rsa']['n']),
+    'e' => $base64Url($oidcKeyDetails['rsa']['e']),
+];
+$oidcHeader = $base64Url((string) json_encode(['alg' => 'RS256', 'typ' => 'JWT', 'kid' => 'test-signing-key']));
+$oidcPayload = $base64Url((string) json_encode([
+    'iss' => 'https://oauth.id.jumpcloud.com/',
+    'aud' => 'test-client-id-2026',
+    'sub' => 'jumpcloud-user-123',
+    'nonce' => $oidcNonce,
+    'iat' => time(),
+    'exp' => time() + 3600,
+]));
+$oidcSigningInput = $oidcHeader . '.' . $oidcPayload;
+$oidcSignature = '';
+$assert(openssl_sign($oidcSigningInput, $oidcSignature, $oidcKey, OPENSSL_ALGO_SHA256), 'The OIDC test token should be signed.');
+$oidcIdToken = $oidcSigningInput . '.' . $base64Url($oidcSignature);
+$oidcRequests = [];
+$oidcTransport = static function (string $method, string $url, array $form, array $headers) use (&$oidcRequests, $oidcIdToken, $oidcJwk): array {
+    $oidcRequests[] = compact('method', 'url', 'form', 'headers');
+    if (str_ends_with($url, '/oauth2/token')) {
+        return ['access_token' => 'opaque-access-token', 'id_token' => $oidcIdToken, 'token_type' => 'Bearer'];
+    }
+    if (str_ends_with($url, '/userinfo')) {
+        return [
+            'sub' => 'jumpcloud-user-123',
+            'name' => 'JumpCloud Test Operator',
+            'preferred_username' => 'jumpcloud.operator',
+            'email' => 'operator@example.com',
+        ];
+    }
+    if (str_ends_with($url, '/.well-known/jwks.json')) {
+        return ['keys' => [$oidcJwk]];
+    }
+    throw new RuntimeException('Unexpected OIDC test request.');
+};
+$jumpCloudProvider = new JumpCloudOidcProvider([
+    'jumpcloud_oidc_issuer' => 'https://oauth.id.jumpcloud.com/',
+    'jumpcloud_oidc_client_id' => 'test-client-id-2026',
+    'jumpcloud_oidc_client_secret' => 'test-client-secret-2026',
+    'jumpcloud_oidc_redirect_uri' => 'https://ttechcg.com/pickupsheet/login/callback',
+], $oidcTransport);
+$assert($jumpCloudProvider->configured(), 'A complete JumpCloud OIDC configuration should be operational.');
+$oidcAuthorizationUrl = $jumpCloudProvider->authorizationUrl(
+    str_repeat('s', 43),
+    $oidcNonce,
+    rtrim(strtr(base64_encode(hash('sha256', $oidcVerifier, true)), '+/', '-_'), '='),
+);
+$assert(str_contains($oidcAuthorizationUrl, 'response_type=code'), 'JumpCloud should use the authorization-code flow.');
+$assert(str_contains($oidcAuthorizationUrl, 'scope=openid%20profile%20email'), 'JumpCloud should request the required OIDC identity scopes.');
+$assert(str_contains($oidcAuthorizationUrl, 'code_challenge_method=S256'), 'JumpCloud should use PKCE S256.');
+$oidcIdentity = $jumpCloudProvider->authenticate('test-authorization-code', $oidcVerifier, $oidcNonce);
+$assert($oidcIdentity['name'] === 'JumpCloud Test Operator', 'The verified JumpCloud display name should become the operator identity.');
+$assert($oidcIdentity['username'] === 'jumpcloud.operator', 'The verified JumpCloud username should be retained.');
+$assert(count($oidcRequests) === 3, 'JumpCloud authentication should exchange the code, verify JWKS, and confirm UserInfo.');
+$oidcNonceRejected = false;
+try {
+    $jumpCloudProvider->authenticate('test-authorization-code', $oidcVerifier, str_repeat('x', 43));
+} catch (RuntimeException) {
+    $oidcNonceRejected = true;
+}
+$assert($oidcNonceRejected, 'A JumpCloud ID token with a mismatched nonce should be rejected.');
+
 $config = require dirname(__DIR__) . '/config/app.php';
 $view = new View(dirname(__DIR__) . '/views');
 $common = [
@@ -235,15 +316,59 @@ $_SESSION = [];
 $pickupCsrf = new Csrf();
 $pickupCaptcha = new Captcha('pickupsheet-test');
 $pickupConfig = array_merge($config, [
-    'pickup_login_username' => 'edmund.operator',
-    'pickup_login_name' => 'Edmund Operator',
-    'pickup_login_password' => 'test-pickup-password-2026',
+    'jumpcloud_oidc_issuer' => 'https://oauth.id.jumpcloud.com/',
+    'jumpcloud_oidc_client_id' => 'test-client-id-2026',
+    'jumpcloud_oidc_client_secret' => 'test-client-secret-2026',
+    'jumpcloud_oidc_redirect_uri' => 'https://ttechcg.com/pickupsheet/login/callback',
 ]);
+$fakeIdentityProvider = new class implements IdentityProvider {
+    public bool $authenticated = false;
+
+    public function configured(): bool
+    {
+        return true;
+    }
+
+    public function fingerprint(): string
+    {
+        return hash('sha256', 'test-jumpcloud-provider');
+    }
+
+    public function authorizationUrl(string $state, string $nonce, string $codeChallenge): string
+    {
+        return 'https://oauth.id.jumpcloud.com/oauth2/auth?' . http_build_query([
+            'state' => $state,
+            'nonce' => $nonce,
+            'code_challenge' => $codeChallenge,
+            'code_challenge_method' => 'S256',
+        ]);
+    }
+
+    public function authenticate(string $code, string $codeVerifier, string $nonce): array
+    {
+        if ($code !== 'jumpcloud-test-code'
+            || !preg_match('/^[A-Za-z0-9_-]{43,128}$/', $codeVerifier)
+            || !preg_match('/^[A-Za-z0-9_-]{32,200}$/', $nonce)
+        ) {
+            throw new RuntimeException('Invalid fake JumpCloud transaction.');
+        }
+        $this->authenticated = true;
+
+        return [
+            'sub' => 'jumpcloud-user-123',
+            'name' => 'Edmund Operator',
+            'username' => 'edmund.operator',
+            'email' => 'edmund@example.com',
+            'expires_at' => time() + 3600,
+        ];
+    }
+};
 $pickupController = new PickupsheetController(
     new PickupSheetService(new DemoPickupSheetRepository()),
     $view,
     $pickupCsrf,
     $pickupCaptcha,
+    $fakeIdentityProvider,
     $pickupConfig,
     'Demo workspace',
     true,
@@ -252,8 +377,9 @@ $pickupController = new PickupsheetController(
 $lockedPickup = $pickupController->index(new Request('GET', '/pickupsheet', [], [], ''));
 $assert($lockedPickup->status() === 200, 'The private Pickupsheet route should render its login portal.');
 $assert(str_contains($lockedPickup->body(), 'Operator login'), 'The private Pickupsheet route should identify the operator portal.');
-$assert(str_contains($lockedPickup->body(), 'name="username"'), 'The operator portal should request a username.');
-$assert(str_contains($lockedPickup->body(), 'name="password"'), 'The operator portal should request a password.');
+$assert(str_contains($lockedPickup->body(), 'Continue with JumpCloud'), 'The operator portal should delegate authentication to JumpCloud.');
+$assert(!str_contains($lockedPickup->body(), 'name="username"'), 'The application should not collect a JumpCloud username.');
+$assert(!str_contains($lockedPickup->body(), 'name="password"'), 'The application should never collect a JumpCloud password.');
 $assert(!str_contains($lockedPickup->body(), 'data-pickup-form'), 'The pickup form should remain hidden before authentication.');
 $assert(($lockedPickup->headers()['Cache-Control'] ?? '') === 'private, no-store, max-age=0', 'The operator login should not be cached.');
 
@@ -264,10 +390,19 @@ $assert($unauthorizedExport->status() === 303, 'An unauthorised spreadsheet expo
 
 $pickupLoginResponse = $pickupController->login(new Request('POST', '/pickupsheet/login', [], [
     '_token' => $pickupCsrf->token(),
-    'username' => 'edmund.operator',
-    'password' => 'test-pickup-password-2026',
 ], ''));
-$assert($pickupLoginResponse->status() === 303, 'Valid operator credentials should establish the protected session.');
+$assert($pickupLoginResponse->status() === 303, 'Starting login should redirect to JumpCloud.');
+$authorizationLocation = (string) ($pickupLoginResponse->headers()['Location'] ?? '');
+$assert(str_starts_with($authorizationLocation, 'https://oauth.id.jumpcloud.com/oauth2/auth?'), 'The login redirect should target JumpCloud.');
+parse_str((string) parse_url($authorizationLocation, PHP_URL_QUERY), $authorizationQuery);
+$assert(($authorizationQuery['code_challenge_method'] ?? '') === 'S256', 'JumpCloud login should use PKCE S256.');
+$assert(is_string($authorizationQuery['state'] ?? null) && $authorizationQuery['state'] !== '', 'JumpCloud login should include a random state value.');
+$pickupCallbackResponse = $pickupController->loginCallback(new Request('GET', '/pickupsheet/login/callback', [
+    'code' => 'jumpcloud-test-code',
+    'state' => (string) $authorizationQuery['state'],
+], [], ''));
+$assert($pickupCallbackResponse->status() === 303, 'A verified JumpCloud callback should establish the protected session.');
+$assert($fakeIdentityProvider->authenticated, 'The callback should verify the authorization code through JumpCloud.');
 $unlockedPickup = $pickupController->index(new Request('GET', '/pickupsheet', [], [], ''));
 $assert(str_contains($unlockedPickup->body(), 'data-pickup-form'), 'The pickup form should render after operator authentication.');
 $assert(str_contains($unlockedPickup->body(), 'Edmund Operator'), 'The authenticated page should identify the signed-in operator.');
@@ -362,8 +497,8 @@ $assert(is_string($dhlAsset) && !str_contains($dhlAsset, '<text'), 'The disquali
 $partnerSources = file_get_contents(dirname(__DIR__) . '/public/assets/partners/README.md');
 $assert(is_string($partnerSources) && str_contains($partnerSources, 'www.dhl.com/content/dam/dhl/global/core/images/logos/dhl-logo.svg'), 'The official DHL artwork source should be documented.');
 $assert(!str_contains($home, 'href="/pickupsheet"'), 'Pickupsheet should not be discoverable from the public site chrome or homepage.');
-$assert(str_contains($home, 'styles.css?v=20260824-pickup-login'), 'The operator login update should use a cache-safe stylesheet version.');
-$assert(str_contains($home, 'app.js?v=20260824-pickup-login'), 'The operator login update should use a cache-safe application script version.');
+$assert(str_contains($home, 'styles.css?v=20260824-jumpcloud-sso'), 'The JumpCloud SSO update should use a cache-safe stylesheet version.');
+$assert(str_contains($home, 'app.js?v=20260824-jumpcloud-sso'), 'The JumpCloud SSO update should use a cache-safe application script version.');
 $assert(str_contains($home, 'analytics.js?v=20260824-analytics-consent'), 'The consent-aware Google Analytics loader should render on every page.');
 $assert(str_contains($home, 'data-analytics-accept'), 'The site should offer an explicit analytics acceptance control.');
 $assert(str_contains($home, 'data-analytics-decline'), 'The site should offer an explicit analytics decline control.');
@@ -478,8 +613,9 @@ $privacy = $view->render('site/privacy', array_merge($common, [
 $assert(str_contains($privacy, 'Information we collect'), 'The privacy notice should explain collected information.');
 $assert(str_contains($privacy, 'agent name, collection date, consignor, AWB number'), 'The privacy notice should disclose pickup-sheet fields.');
 $assert(str_contains($privacy, 'record and reconcile cash shipment collections'), 'The privacy notice should state the pickup-sheet processing purpose.');
-$assert(str_contains($privacy, 'requires an operator login and protected session'), 'The privacy notice should explain protected sheet access.');
-$assert(str_contains($privacy, 'checker identity is assigned from the signed-in operator account'), 'The privacy notice should explain the authenticated checker identity.');
+$assert(str_contains($privacy, 'requires a JumpCloud-authorised operator and protected session'), 'The privacy notice should explain protected sheet access.');
+$assert(str_contains($privacy, 'checker identity is assigned from the verified JumpCloud account'), 'The privacy notice should explain the authenticated checker identity.');
+$assert(str_contains($privacy, 'never receives the operator’s JumpCloud password'), 'The privacy notice should explain that JumpCloud credentials are not collected by this site.');
 $assert(str_contains($privacy, 'inquiry and pickup-sheet forms require an explicit, unchecked opt-in'), 'Both personal-data forms should require explicit consent.');
 $assert(str_contains($privacy, 'T&amp;Tech Consulting Group'), 'The privacy notice should identify the data controller.');
 $assert(str_contains($privacy, 'We do not sell inquiry information.'), 'The privacy notice should state the use limitation.');
@@ -496,9 +632,10 @@ $assert(str_contains($privacy, 'Cookie settings'), 'The privacy notice should ex
 $environmentExample = file_get_contents(dirname(__DIR__) . '/.env.example');
 $assert(is_string($environmentExample) && str_contains($environmentExample, 'APP_TIMEZONE=Africa/Douala'), 'The environment example should use Cameroon time.');
 $assert(is_string($environmentExample) && str_contains($environmentExample, 'CONTACT_EMAIL=info@ttechcg.com'), 'The environment example should route production inquiries to the company mailbox.');
-$assert(is_string($environmentExample) && str_contains($environmentExample, 'PICKUPSHEET_LOGIN_USERNAME='), 'The environment example should document the operator username.');
-$assert(is_string($environmentExample) && str_contains($environmentExample, 'PICKUPSHEET_LOGIN_NAME='), 'The environment example should document the operator display name.');
-$assert(is_string($environmentExample) && str_contains($environmentExample, 'PICKUPSHEET_LOGIN_PASSWORD='), 'The environment example should document the operator password.');
+$assert(is_string($environmentExample) && str_contains($environmentExample, 'JUMPCLOUD_OIDC_ISSUER='), 'The environment example should document the JumpCloud region issuer.');
+$assert(is_string($environmentExample) && str_contains($environmentExample, 'JUMPCLOUD_OIDC_CLIENT_ID='), 'The environment example should document the JumpCloud client ID.');
+$assert(is_string($environmentExample) && str_contains($environmentExample, 'JUMPCLOUD_OIDC_CLIENT_SECRET='), 'The environment example should document the JumpCloud client secret.');
+$assert(is_string($environmentExample) && str_contains($environmentExample, 'JUMPCLOUD_OIDC_REDIRECT_URI='), 'The environment example should document the JumpCloud callback URI.');
 
 $styles = file_get_contents(dirname(__DIR__) . '/public/assets/styles.css');
 $assert(is_string($styles) && str_contains($styles, '--navy: #0b0b0c;'), 'T&Tech near-black should be the minimal corporate foundation.');
@@ -533,6 +670,7 @@ $assert(is_string($styles) && str_contains($styles, '/* Protected pickup-sheet r
 $assert(is_string($styles) && str_contains($styles, '.pickup-record-actions'), 'Each submitted sheet should style its print and spreadsheet actions.');
 $assert(is_string($styles) && str_contains($styles, '.pickup-checked-by'), 'The authenticated checker identity should have a non-editable presentation.');
 $assert(is_string($styles) && str_contains($styles, '.pickup-operator-identity'), 'The private workspace should identify the logged-in operator.');
+$assert(is_string($styles) && str_contains($styles, '.pickup-idp-note'), 'The JumpCloud login portal should explain its delegated authentication flow.');
 
 $script = file_get_contents(dirname(__DIR__) . '/public/assets/app.js');
 $assert(is_string($script) && str_contains($script, "event.key === 'Escape'"), 'The mobile navigation should close with Escape.');
@@ -574,5 +712,7 @@ $assert(is_string($pickupMysqlRepository) && str_contains($pickupMysqlRepository
 $bootstrap = file_get_contents(dirname(__DIR__) . '/bootstrap/app.php');
 $assert(is_string($bootstrap) && str_contains($bootstrap, "'httponly' => true"), 'The security session cookie should be inaccessible to client-side scripts.');
 $assert(is_string($bootstrap) && str_contains($bootstrap, "'samesite' => 'Lax'"), 'The security session cookie should use a SameSite policy.');
+$assert(is_string($bootstrap) && str_contains($bootstrap, 'new JumpCloudOidcProvider($config)'), 'Pickupsheet should use JumpCloud as its identity provider.');
+$assert(is_string($bootstrap) && str_contains($bootstrap, "'/pickupsheet/login/callback'"), 'The JumpCloud OIDC callback should be routed explicitly.');
 
 echo "All application tests passed.\n";

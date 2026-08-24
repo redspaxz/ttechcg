@@ -1745,6 +1745,13 @@ button, a, input, select, textarea { -webkit-tap-highlight-color: transparent; }
 }
 .pickup-access-form input:focus { border-color: var(--dhl-red); box-shadow: 0 0 0 3px rgba(212, 5, 17, 0.13); }
 .pickup-access-form .button { width: 100%; justify-content: space-between; }
+.pickup-idp-note {
+    margin: 0;
+    color: #655000;
+    font-size: 0.72rem;
+    line-height: 1.6;
+    text-align: center;
+}
 .pickup-submissions-heading {
     display: flex;
     align-items: end;
