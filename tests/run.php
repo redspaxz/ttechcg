@@ -3,7 +3,10 @@
 declare(strict_types=1);
 
 use App\Modules\Contact\Application\InquiryService;
+use App\Modules\Contact\Domain\Inquiry;
+use App\Modules\Contact\Domain\InquiryNotifier;
 use App\Modules\Contact\Infrastructure\DemoInquiryRepository;
+use App\Modules\Contact\Infrastructure\UnavailableInquiryRepository;
 use App\Shared\Http\Request;
 use App\Shared\View\View;
 
@@ -31,6 +34,39 @@ $inquiry = $service->submit([
 ]);
 $assert($inquiry->id === 1, 'Inquiry should receive a demo ID.');
 $assert($inquiry->email === 'operator@example.com', 'Email should be normalized.');
+
+$notifier = new class implements InquiryNotifier {
+    public bool $called = false;
+
+    public function notify(Inquiry $inquiry): bool
+    {
+        $this->called = true;
+        return true;
+    }
+};
+$notifyingService = new InquiryService(new DemoInquiryRepository(), $notifier);
+$notifyingService->submit([
+    'name' => 'Notification Test',
+    'email' => 'notify@example.com',
+    'company' => '',
+    'service' => 'technical-advisory',
+    'message' => 'This inquiry verifies the configured notification workflow.',
+]);
+$assert($notifier->called, 'A persisted inquiry should trigger its notifier.');
+
+$storageFailed = false;
+try {
+    (new InquiryService(new UnavailableInquiryRepository()))->submit([
+        'name' => 'Storage Test',
+        'email' => 'storage@example.com',
+        'company' => '',
+        'service' => 'other',
+        'message' => 'This inquiry should fail instead of being stored in a session.',
+    ]);
+} catch (RuntimeException) {
+    $storageFailed = true;
+}
+$assert($storageFailed, 'Unavailable production storage should fail explicitly.');
 
 $validationFailed = false;
 try {
@@ -68,6 +104,14 @@ $product = $view->render('pickupsheet/show', array_merge($common, [
 ]));
 $assert(str_contains($product, 'pickupsheet'), 'The Pickupsheet product page should render.');
 $assert(str_contains($product, 'One clear view'), 'The Pickupsheet value proposition should render.');
+
+$privacy = $view->render('site/privacy', array_merge($common, [
+    'pageTitle' => 'Privacy notice',
+    'pageDescription' => 'Test description',
+    'activePage' => 'privacy',
+]));
+$assert(str_contains($privacy, 'Information we collect'), 'The privacy notice should explain collected information.');
+$assert(str_contains($privacy, 'We do not sell inquiry information.'), 'The privacy notice should state the use limitation.');
 
 $styles = file_get_contents(dirname(__DIR__) . '/public/assets/styles.css');
 $assert(is_string($styles) && str_contains($styles, '--navy: #080808;'), 'T&Tech black should be the corporate foundation.');

@@ -5,6 +5,7 @@ declare(strict_types=1);
 namespace App\Modules\Contact\Application;
 
 use App\Modules\Contact\Domain\Inquiry;
+use App\Modules\Contact\Domain\InquiryNotifier;
 use App\Modules\Contact\Domain\InquiryRepository;
 use DateTimeImmutable;
 use DateTimeZone;
@@ -14,8 +15,10 @@ final class InquiryService
 {
     private const SERVICES = ['digital-products', 'workflow-automation', 'data-cloud', 'technical-advisory', 'pickupsheet', 'other'];
 
-    public function __construct(private readonly InquiryRepository $repository)
-    {
+    public function __construct(
+        private readonly InquiryRepository $repository,
+        private readonly ?InquiryNotifier $notifier = null,
+    ) {
     }
 
     /** @param array<string, string> $input */
@@ -43,7 +46,7 @@ final class InquiryService
             throw new InvalidArgumentException('Tell us about the opportunity in 20 to 2,000 characters.');
         }
 
-        return $this->repository->create(new Inquiry(
+        $created = $this->repository->create(new Inquiry(
             null,
             $name,
             strtolower($email),
@@ -52,5 +55,11 @@ final class InquiryService
             $message,
             (new DateTimeImmutable('now', new DateTimeZone('UTC')))->format(DATE_ATOM),
         ));
+
+        if ($this->notifier !== null) {
+            $this->notifier->notify($created);
+        }
+
+        return $created;
     }
 }

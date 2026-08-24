@@ -3,6 +3,6 @@ deployment:
   tasks:
     - export DEPLOYPATH=/home/ttecwymc/public_html
     - /bin/rm -f "$DEPLOYPATH/index.html"
-    - /bin/rsync -av --exclude='.git/' --exclude='.env' --exclude='docker-compose.yml' /home/ttecwymc/repositories/ttechcg/ "$DEPLOYPATH/"
+    - /bin/rsync -av --exclude='.git/' --exclude='.github/' --exclude='.env' --exclude='.env.example' --exclude='.cpanel.yml' --exclude='.gitignore' --exclude='bin/' --exclude='tests/' --exclude='storage/*.zip' --exclude='README.md' --exclude='router.php' --exclude='docker-compose.yml' /home/ttecwymc/repositories/ttechcg/ "$DEPLOYPATH/"
     - /bin/test -s "$DEPLOYPATH/index.php"
-
+    - /bin/test -s "$DEPLOYPATH/public/assets/styles.css"

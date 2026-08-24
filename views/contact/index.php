@@ -25,6 +25,9 @@ $services = [
         </div>
 
         <div class="contact-form-wrap" data-reveal>
+            <?php if (!$contactOperational): ?>
+                <div class="notice notice-error" role="alert">Online inquiries are temporarily unavailable. Please try again later.</div>
+            <?php endif; ?>
             <?php if (is_string($flash) && $flash !== ''): ?>
                 <div class="notice notice-success" role="status"><?= $e($flash) ?></div>
             <?php endif; ?>
@@ -46,10 +49,9 @@ $services = [
                     <label><span>Area of interest</span><select name="service" required><option value="">Select one</option><?php foreach ($services as $value => $label): ?><option value="<?= $e($value) ?>" <?= ($old['service'] ?? '') === $value ? 'selected' : '' ?>><?= $e($label) ?></option><?php endforeach; ?></select></label>
                 </div>
                 <label><span>What would you like to move forward?</span><textarea name="message" minlength="20" maxlength="2000" rows="7" required placeholder="A little context on the challenge, desired outcome, and timing."><?= $e($old['message'] ?? '') ?></textarea></label>
-                <button class="button button-primary button-submit" type="submit">Send inquiry <span aria-hidden="true">↗</span></button>
-                <p class="form-note">Your details are used only to respond to this inquiry.</p>
+                <button class="button button-primary button-submit" type="submit" <?= !$contactOperational ? 'disabled' : '' ?>>Send inquiry <span aria-hidden="true">↗</span></button>
+                <p class="form-note">Your details are used only to respond to this inquiry. Read our <a href="<?= $e($basePath) ?>/privacy">privacy notice</a>.</p>
             </form>
         </div>
     </div>
 </section>
-

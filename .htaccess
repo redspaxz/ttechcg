@@ -3,13 +3,13 @@ DirectoryIndex index.php
 
 <IfModule mod_rewrite.c>
     RewriteEngine On
-    RewriteRule ^(?:bin|bootstrap|config|database|src|storage|tests|views|wp-admin|wp-content|wp-includes)(?:/|$) - [F,L]
+    RewriteRule ^(?:\.github|bin|bootstrap|config|database|src|storage|tests|views|wp-admin|wp-content|wp-includes)(?:/|$) - [F,L]
     RewriteCond %{REQUEST_FILENAME} !-f
     RewriteCond %{REQUEST_FILENAME} !-d
     RewriteRule ^ index.php [QSA,L]
 </IfModule>
 
-<FilesMatch "^(\.env|\.gitignore|\.cpanel\.yml|docker-compose\.yml|README\.md|wp-config\.php|wp-login\.php|xmlrpc\.php)$">
+<FilesMatch "^(\.env|\.env\.example|\.gitignore|\.cpanel\.yml|docker-compose\.yml|README\.md|router\.php|wp-.*\.php|xmlrpc\.php)$">
     Require all denied
 </FilesMatch>
 

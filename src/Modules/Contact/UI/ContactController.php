@@ -10,6 +10,7 @@ use App\Shared\Http\Response;
 use App\Shared\Security\Csrf;
 use App\Shared\View\View;
 use InvalidArgumentException;
+use RuntimeException;
 
 final class ContactController
 {
@@ -20,6 +21,7 @@ final class ContactController
         private readonly Csrf $csrf,
         private readonly array $config,
         private readonly string $storageMode,
+        private readonly bool $contactOperational,
     ) {
     }
 
@@ -38,6 +40,7 @@ final class ContactController
             'flash' => $flash,
             'errors' => is_array($errors) ? $errors : [],
             'old' => is_array($old) ? $old : [],
+            'contactOperational' => $this->contactOperational,
         ])));
     }
 
@@ -54,6 +57,12 @@ final class ContactController
             'service' => $request->input('service'),
             'message' => $request->input('message'),
         ];
+
+        if (!$this->contactOperational) {
+            $_SESSION['_errors'] = ['Online inquiries are temporarily unavailable. Please try again later.'];
+            $_SESSION['_old'] = $input;
+            return Response::redirect($request->basePath . '/contact');
+        }
 
         if ($request->input('website') !== '') {
             $_SESSION['_flash'] = 'Thanks. Your message has been received.';
@@ -73,6 +82,10 @@ final class ContactController
             $_SESSION['_last_inquiry_at'] = time();
         } catch (InvalidArgumentException $exception) {
             $_SESSION['_errors'] = [$exception->getMessage()];
+            $_SESSION['_old'] = $input;
+        } catch (RuntimeException $exception) {
+            error_log($exception->__toString());
+            $_SESSION['_errors'] = ['We could not save your inquiry. Please try again later.'];
             $_SESSION['_old'] = $input;
         }
 

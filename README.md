@@ -15,6 +15,8 @@ src/
 
 The site uses MySQL through `pdo_mysql`. Valid database settings enable persistent contact inquiries. When MySQL is unavailable, the public site remains reviewable with a session-backed adapter. Database migrations run idempotently on application boot, which supports cPanel accounts without terminal access.
 
+Production contact submissions require both a working MySQL connection and a valid `CONTACT_EMAIL`. Successful inquiries are stored first and then sent to that address through the hosting account's PHP mail transport. If either dependency is missing, the form is disabled and `/health` returns `503` instead of presenting a false success. Set `CONTACT_FROM_EMAIL` to a same-domain mailbox authorised by the hosting account.
+
 ## Local development
 
 1. Copy `.env.example` to `.env` and adjust the values.
@@ -31,4 +33,3 @@ php tests/run.php
 ## cPanel deployment
 
 The `.cpanel.yml` recipe targets `/home/ttecwymc/public_html`, making this application the root website. It preserves the server-managed `.env`. Back up the existing WordPress files and database before the first root deployment.
-

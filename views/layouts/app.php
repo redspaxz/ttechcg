@@ -63,6 +63,7 @@ $activePage = $activePage ?? '';
                 <a href="<?= $e($url('/about')) ?>">About</a>
                 <a href="<?= $e($url('/pickupsheet')) ?>">Pickupsheet</a>
                 <a href="<?= $e($url('/contact')) ?>">Contact</a>
+                <a href="<?= $e($url('/privacy')) ?>">Privacy</a>
             </nav>
             <p>© <?= $e(date('Y')) ?> T&amp;Tech Consulting Group</p>
         </div>

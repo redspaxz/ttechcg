@@ -15,6 +15,7 @@ final class SiteController
         private readonly View $view,
         private readonly array $config,
         private readonly string $storageMode,
+        private readonly bool $contactOperational,
     ) {
     }
 
@@ -36,14 +37,23 @@ final class SiteController
             'T&Tech brings strategy and delivery into one accountable consulting partnership.');
     }
 
+    public function privacy(Request $request): Response
+    {
+        return $this->page($request, 'site/privacy', 'Privacy notice', 'privacy',
+            'How T&Tech Consulting Group handles information submitted through this website.');
+    }
+
     public function health(Request $request): Response
     {
+        $healthy = $this->config['environment'] !== 'production' || $this->contactOperational;
+
         return Response::json([
-            'status' => 'ok',
+            'status' => $healthy ? 'ok' : 'degraded',
             'application' => $this->config['name'],
             'storage' => $this->storageMode,
+            'contact' => $this->contactOperational ? 'operational' : 'unavailable',
             'time' => date(DATE_ATOM),
-        ]);
+        ], $healthy ? 200 : 503);
     }
 
     public function notFound(Request $request): Response

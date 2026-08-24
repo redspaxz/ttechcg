@@ -179,7 +179,9 @@ h1 em, h2 em { color: var(--copper); font-family: Georgia, "Times New Roman", se
 .contact-form input:focus, .contact-form select:focus, .contact-form textarea:focus { border-color: var(--copper); box-shadow: 0 0 0 2px rgba(212, 5, 17, 0.14); }
 .contact-form textarea { resize: vertical; }
 .button-submit { justify-self: start; cursor: pointer; }
+.button-submit:disabled { cursor: not-allowed; opacity: 0.48; transform: none; }
 .form-note { margin: -8px 0 0; color: var(--muted); font-size: 0.72rem; }
+.form-note a { color: var(--copper); font-weight: 750; }
 .honeypot { position: absolute !important; left: -9999px !important; }
 .notice { display: grid; gap: 6px; margin-bottom: 22px; padding: 14px 16px; border: 1px solid; font-size: 0.85rem; font-weight: 700; }
 .notice-success { background: #e8f4e9; color: #25652b; }
@@ -227,6 +229,15 @@ h1 em, h2 em { color: var(--copper); font-family: Georgia, "Times New Roman", se
 .not-found h1 em { color: var(--copper); font-family: Georgia, serif; font-weight: 400; }
 .not-found p:not(.eyebrow) { margin: 28px 0; color: var(--muted); }
 
+.legal-page { background: var(--paper); }
+.legal-grid { display: grid; grid-template-columns: 0.32fr 1fr; gap: 90px; }
+.legal-grid aside { align-self: start; position: sticky; top: 120px; }
+.legal-grid aside strong { color: var(--navy); font-size: 0.9rem; }
+.legal-copy { max-width: 800px; }
+.legal-copy article { padding: 0 0 34px; margin-bottom: 34px; border-bottom: 1px solid var(--line); }
+.legal-copy h2 { margin: 0 0 14px; color: var(--navy); font-size: 1.55rem; letter-spacing: -0.035em; }
+.legal-copy p { margin: 0; color: var(--muted); line-height: 1.8; }
+
 .site-footer { padding: 95px 0 32px; background: var(--navy); color: #fff; }
 .footer-top { display: flex; align-items: center; justify-content: space-between; padding-bottom: 80px; }
 .footer-statement h2 { margin: 0; font-size: clamp(2.8rem, 5vw, 5rem); letter-spacing: -0.065em; line-height: 0.96; }
@@ -272,6 +283,8 @@ h1 em, h2 em { color: var(--copper); font-family: Georgia, "Times New Roman", se
     .hero-copy h1 { font-size: clamp(3.7rem, 14vw, 6rem); }
     .capability-strip { flex-wrap: wrap; justify-content: flex-start; gap: 18px; padding: 25px 0; }
     .split-heading, .page-hero-grid, .process-grid, .partnership-grid, .contact-grid { grid-template-columns: 1fr; gap: 45px; }
+    .legal-grid { grid-template-columns: 1fr; gap: 45px; }
+    .legal-grid aside { position: static; }
     .service-grid { grid-template-columns: 1fr; }
     .process-intro, .contact-intro { position: static; }
     .page-hero { padding: 80px 0; }

@@ -9,5 +9,5 @@ return [
     'debug' => filter_var(getenv('APP_DEBUG') ?: false, FILTER_VALIDATE_BOOL),
     'timezone' => getenv('APP_TIMEZONE') ?: 'Africa/Lagos',
     'contact_email' => getenv('CONTACT_EMAIL') ?: '',
+    'contact_from_email' => getenv('CONTACT_FROM_EMAIL') ?: 'website@ttechcg.com',
 ];
-
