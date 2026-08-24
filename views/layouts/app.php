@@ -5,6 +5,7 @@ declare(strict_types=1);
 $e = static fn (mixed $value): string => htmlspecialchars((string) $value, ENT_QUOTES, 'UTF-8');
 $url = static fn (string $path): string => ($basePath ?? '') . ($path === '/' ? '/' : $path);
 $activePage = $activePage ?? '';
+$pageRobots = $pageRobots ?? 'index, follow';
 ?>
 <!doctype html>
 <html lang="en">
@@ -13,6 +14,7 @@ $activePage = $activePage ?? '';
     <meta name="viewport" content="width=device-width, initial-scale=1">
     <meta name="theme-color" content="#080808">
     <meta name="description" content="<?= $e($pageDescription ?? 'T&Tech Consulting Group') ?>">
+    <meta name="robots" content="<?= $e($pageRobots) ?>">
     <title><?= $e($pageTitle ?? 'T&Tech Consulting Group') ?> | T&amp;Tech</title>
     <link rel="icon" href="<?= $e($assetBase) ?>/ttechcg-mark.svg" type="image/svg+xml">
     <link rel="stylesheet" href="<?= $e($assetBase) ?>/styles.css?v=20260824-wordmark">
@@ -35,7 +37,6 @@ $activePage = $activePage ?? '';
                 <a href="<?= $e($url('/')) ?>" <?= $activePage === 'home' ? 'aria-current="page"' : '' ?>>Home</a>
                 <a href="<?= $e($url('/services')) ?>" <?= $activePage === 'services' ? 'aria-current="page"' : '' ?>>Services</a>
                 <a href="<?= $e($url('/about')) ?>" <?= $activePage === 'about' ? 'aria-current="page"' : '' ?>>About</a>
-                <a href="<?= $e($url('/pickupsheet')) ?>" <?= $activePage === 'pickupsheet' ? 'aria-current="page"' : '' ?>>Pickupsheet</a>
                 <a class="nav-cta" href="<?= $e($url('/contact')) ?>" <?= $activePage === 'contact' ? 'aria-current="page"' : '' ?>>Start a project <span aria-hidden="true">↗</span></a>
             </nav>
         </div>
@@ -60,7 +61,6 @@ $activePage = $activePage ?? '';
             <nav aria-label="Footer navigation">
                 <a href="<?= $e($url('/services')) ?>">Services</a>
                 <a href="<?= $e($url('/about')) ?>">About</a>
-                <a href="<?= $e($url('/pickupsheet')) ?>">Pickupsheet</a>
                 <a href="<?= $e($url('/contact')) ?>">Contact</a>
                 <a href="<?= $e($url('/privacy')) ?>">Privacy</a>
             </nav>

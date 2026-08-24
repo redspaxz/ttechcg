@@ -58,27 +58,6 @@
     </div>
 </section>
 
-<section class="section product-feature">
-    <div class="container product-grid">
-        <div class="product-copy" data-reveal>
-            <p class="eyebrow eyebrow-red">T&amp;Tech product</p>
-            <div class="product-brand">
-                <img src="<?= htmlspecialchars($assetBase . '/dhl-logo.svg', ENT_QUOTES, 'UTF-8') ?>" alt="DHL">
-                <span aria-hidden="true">—</span><strong>pickupsheet</strong>
-            </div>
-            <h2>Collection operations, kept in motion.</h2>
-            <p>Pickupsheet brings scheduling, handoffs, and collection status into one focused operating view for logistics teams.</p>
-            <a class="button button-red" href="<?= htmlspecialchars($basePath . '/pickupsheet', ENT_QUOTES, 'UTF-8') ?>">Explore Pickupsheet <span aria-hidden="true">→</span></a>
-        </div>
-        <div class="product-preview" aria-label="Pickupsheet interface preview" data-reveal>
-            <div class="preview-bar"><span></span><span></span><span></span><small>Live manifest</small></div>
-            <div class="preview-metrics"><article><small>Total pickups</small><strong>28</strong></article><article><small>Ready now</small><strong>08</strong></article><article><small>In transit</small><strong>12</strong></article></div>
-            <div class="preview-row"><strong>PU-260823-04A</strong><span>Ikeja → Victoria Island</span><i>Ready</i></div>
-            <div class="preview-row"><strong>PU-260823-07C</strong><span>Abuja → Wuse II</span><i>In transit</i></div>
-        </div>
-    </div>
-</section>
-
 <section class="section section-process">
     <div class="container process-grid">
         <div class="process-intro" data-reveal><p class="eyebrow eyebrow-light">How we work</p><h2>Less theatre.<br>More traction.</h2><p>Small, accountable teams. Clear decisions. Useful increments from the start.</p></div>
@@ -90,4 +69,3 @@
         </ol>
     </div>
 </section>
-

@@ -23,6 +23,7 @@ final class PickupsheetController
         return Response::html($this->view->render('pickupsheet/show', [
             'pageTitle' => 'Pickupsheet logistics operations',
             'pageDescription' => 'A focused collection-planning interface from T&Tech.',
+            'pageRobots' => 'noindex, nofollow',
             'activePage' => 'pickupsheet',
             'basePath' => $request->basePath,
             'assetBase' => $request->basePath . '/public/assets',
@@ -31,4 +32,3 @@ final class PickupsheetController
         ]));
     }
 }
-

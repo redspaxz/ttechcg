@@ -8,7 +8,6 @@ $services = [
     'workflow-automation' => 'Workflow automation',
     'data-cloud' => 'Data & cloud systems',
     'technical-advisory' => 'Technical advisory',
-    'pickupsheet' => 'Pickupsheet',
     'other' => 'Something else',
 ];
 ?>

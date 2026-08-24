@@ -94,8 +94,8 @@ $home = $view->render('site/home', array_merge($common, [
 ]));
 $assert(str_contains($home, 'T&amp;Tech'), 'Corporate brand should render.');
 $assert(str_contains($home, 'Digital product engineering'), 'Services should render on the home page.');
-$assert(str_contains($home, 'dhl-logo.svg'), 'Pickupsheet should render as a dedicated product section.');
-$assert(str_contains($home, 'href="/pickupsheet"'), 'Pickupsheet should have a root-domain route.');
+$assert(!str_contains($home, 'href="/pickupsheet"'), 'Pickupsheet should not be discoverable from the public site chrome or homepage.');
+$assert(!str_contains($home, 'dhl-logo.svg'), 'The private Pickupsheet product should not be promoted on the homepage.');
 $assert(str_contains($home, 'styles.css?v=20260824-wordmark'), 'The wordmark design stylesheet should use a cache-safe version.');
 $assert(str_contains($home, '<span class="company-name">T&amp;Tech Consulting Group</span>'), 'The header should render the full company name as text.');
 $headerStart = strpos($home, '<header');
@@ -106,10 +106,14 @@ $assert(!str_contains($headerMarkup, 'ttechcg-mark.svg'), 'The header should not
 $product = $view->render('pickupsheet/show', array_merge($common, [
     'pageTitle' => 'Pickupsheet logistics operations',
     'pageDescription' => 'Test description',
+    'pageRobots' => 'noindex, nofollow',
     'activePage' => 'pickupsheet',
 ]));
 $assert(str_contains($product, 'pickupsheet'), 'The Pickupsheet product page should render.');
 $assert(str_contains($product, 'One clear view'), 'The Pickupsheet value proposition should render.');
+$assert(str_contains($product, '<meta name="robots" content="noindex, nofollow">'), 'The direct Pickupsheet page should not be indexed.');
+$sitemap = file_get_contents(dirname(__DIR__) . '/sitemap.xml');
+$assert(is_string($sitemap) && !str_contains($sitemap, '/pickupsheet'), 'The sitemap should not advertise Pickupsheet.');
 
 $privacy = $view->render('site/privacy', array_merge($common, [
     'pageTitle' => 'Privacy notice',
