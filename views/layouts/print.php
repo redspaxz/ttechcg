@@ -93,8 +93,10 @@ $e = static fn (mixed $value): string => htmlspecialchars((string) $value, ENT_Q
         .paper-shipment-table {
             width: 100%;
             border-collapse: collapse;
-            border: 0.35mm solid #000;
+            border: 1pt solid #000;
             border-spacing: 0;
+            outline: 1pt solid #000;
+            outline-offset: -1pt;
             table-layout: fixed;
             font-size: 8pt;
         }
@@ -102,11 +104,15 @@ $e = static fn (mixed $value): string => htmlspecialchars((string) $value, ENT_Q
         .paper-shipment-table td {
             height: 6.8mm;
             padding: 1.1mm 1.6mm;
-            border: 0.3mm solid #000;
+            border-width: 1pt;
+            border-style: solid;
+            border-color: #000;
             background: #fff;
+            color: #000;
             overflow: hidden;
-            text-align: left;
+            text-align: left !important;
             text-overflow: clip;
+            vertical-align: middle;
             white-space: nowrap;
         }
         .paper-shipment-table thead { display: table-header-group; }
@@ -116,7 +122,8 @@ $e = static fn (mixed $value): string => htmlspecialchars((string) $value, ENT_Q
             font-size: 8pt;
             font-weight: 800;
             line-height: 1.15;
-            vertical-align: top;
+            text-align: left !important;
+            vertical-align: middle;
         }
         .paper-shipment-table tbody tr { break-inside: avoid; page-break-inside: avoid; }
         .paper-col-consignor { width: 25.5%; }
@@ -161,9 +168,16 @@ $e = static fn (mixed $value): string => htmlspecialchars((string) $value, ENT_Q
                 border: 0;
                 box-shadow: none;
             }
-            .paper-shipment-table { border: 0.35mm solid #000 !important; }
+            .paper-shipment-table {
+                border: 1pt solid #000 !important;
+                outline: 1pt solid #000 !important;
+            }
             .paper-shipment-table th,
-            .paper-shipment-table td { border: 0.3mm solid #000 !important; }
+            .paper-shipment-table td {
+                border: 1pt solid #000 !important;
+                text-align: left !important;
+                vertical-align: middle !important;
+            }
         }
     </style>
 </head>

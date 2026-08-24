@@ -311,7 +311,9 @@ $assert(str_contains($printResponse->body(), 'paper-empty-row'), 'The printable 
 $assert(str_contains($printResponse->body(), '@page { size: A4 portrait;'), 'The printable sheet should use the original portrait page orientation.');
 $assert(str_contains($printResponse->body(), 'class="print-preview"'), 'The A4 document should render inside a dedicated centered preview stage.');
 $assert(str_contains($printResponse->body(), 'flex: 0 0 210mm;'), 'The on-screen preview should retain the exact A4 paper width.');
-$assert(str_contains($printResponse->body(), 'border: 0.3mm solid #000 !important;'), 'Every shipment cell should retain a solid black line when printed.');
+$assert(str_contains($printResponse->body(), 'border: 1pt solid #000 !important;'), 'Every shipment cell should retain a solid black line when printed.');
+$assert(str_contains($printResponse->body(), 'text-align: left !important;'), 'Shipment headers and data should be explicitly left-aligned in the PDF.');
+$assert(str_contains($printResponse->body(), 'border="1" rules="all" cellspacing="0"'), 'The shipment table should include a renderer-safe solid-grid fallback.');
 $assert(!str_contains($printResponse->body(), 'A4 landscape'), 'The old landscape print layout should be removed.');
 $assert(!str_contains($printResponse->body(), 'dhl-logo.svg'), 'The printable sheet should not display the DHL logo.');
 $exportResponse = $pickupController->export(new Request('GET', '/dhl/pickupsheet/submissions/export', ['reference' => $savedReference], [], ''));

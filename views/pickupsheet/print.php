@@ -34,7 +34,7 @@ $blankRows = max(0, $minimumRows - $pickupSheet->shipmentCount());
 
     <h2>CASH SHIPMENTS (CLIENTS CASH)</h2>
 
-    <table class="paper-shipment-table">
+    <table class="paper-shipment-table" border="1" rules="all" cellspacing="0">
         <colgroup>
             <col class="paper-col-consignor">
             <col class="paper-col-awb">
