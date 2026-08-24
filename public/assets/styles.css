@@ -606,6 +606,7 @@ h1 em, h2 em { color: var(--copper); font-family: inherit; font-style: normal; f
 html, body { background: var(--paper); color: var(--ink); }
 .site-header { background: rgba(11, 11, 12, 0.96); }
 .site-logo, .site-nav a { color: var(--ink); }
+.site-logo .company-name { color: var(--copper); }
 .site-nav .nav-cta, .button-primary, .button-light { background: var(--ink); color: var(--navy); }
 .site-nav .nav-cta:hover, .button-primary:hover, .button-light:hover { background: var(--copper); color: #fff; }
 .nav-toggle { background: var(--ink); }
