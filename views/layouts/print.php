@@ -109,6 +109,7 @@ $e = static fn (mixed $value): string => htmlspecialchars((string) $value, ENT_Q
         .paper-shipment-table td {
             height: 6.8mm;
             padding: 1.1mm 1.6mm;
+            padding-left: 5px;
             border-width: 1pt;
             border-style: solid;
             border-color: #000;

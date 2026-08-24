@@ -316,6 +316,7 @@ $assert(str_contains($printResponse->body(), 'background: #5b5b5b;'), 'The on-sc
 $assert(str_contains($printResponse->body(), 'background: #fff !important;'), 'The A4 paper should remain solid white on screen and in print output.');
 $assert(str_contains($printResponse->body(), 'border: 1pt solid #000 !important;'), 'Every shipment cell should retain a solid black line when printed.');
 $assert(str_contains($printResponse->body(), 'text-align: left !important;'), 'Shipment headers and data should be explicitly left-aligned in the PDF.');
+$assert(str_contains($printResponse->body(), 'padding-left: 5px;'), 'Printable shipment cells should have five pixels of left padding.');
 $assert(str_contains($printResponse->body(), 'border="1" rules="all" cellspacing="0"'), 'The shipment table should include a renderer-safe solid-grid fallback.');
 $assert(!str_contains($printResponse->body(), 'A4 landscape'), 'The old landscape print layout should be removed.');
 $assert(!str_contains($printResponse->body(), 'dhl-logo.svg'), 'The printable sheet should not display the DHL logo.');
