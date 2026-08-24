@@ -166,20 +166,29 @@ $e = static fn (mixed $value): string => htmlspecialchars((string) $value, ENT_Q
             :root,
             html,
             body { background: #fff !important; }
+            html,
+            body {
+                width: 100%;
+                margin: 0 !important;
+                padding: 0 !important;
+            }
             body { print-color-adjust: exact; -webkit-print-color-adjust: exact; }
             .print-actions { display: none; }
             .print-preview {
                 display: block;
+                width: 190mm;
                 min-height: 0;
+                margin: 0 auto !important;
                 padding: 0;
                 overflow: visible;
                 background: #fff !important;
             }
             .print-sheet {
-                width: 100%;
+                width: 190mm;
+                max-width: 190mm;
                 min-width: 0;
                 min-height: 0;
-                margin: 0;
+                margin: 0 auto !important;
                 padding: 0;
                 border: 0;
                 background: #fff !important;

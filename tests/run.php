@@ -314,6 +314,8 @@ $assert(str_contains($printResponse->body(), 'place-items: start center;'), 'The
 $assert(str_contains($printResponse->body(), 'min-width: 210mm;'), 'The on-screen preview should retain the exact A4 paper width.');
 $assert(str_contains($printResponse->body(), 'background: #5b5b5b;'), 'The on-screen A4 preview should use a clearly gray surround.');
 $assert(str_contains($printResponse->body(), 'background: #fff !important;'), 'The A4 paper should remain solid white on screen and in print output.');
+$assert(str_contains($printResponse->body(), 'width: 190mm;'), 'The printed document should use the exact A4 content width after equal page margins.');
+$assert(str_contains($printResponse->body(), 'margin: 0 auto !important;'), 'The printed document should be explicitly centered between the A4 margins.');
 $assert(str_contains($printResponse->body(), 'border: 1pt solid #000 !important;'), 'Every shipment cell should retain a solid black line when printed.');
 $assert(str_contains($printResponse->body(), 'text-align: left !important;'), 'Shipment headers and data should be explicitly left-aligned in the PDF.');
 $assert(str_contains($printResponse->body(), 'padding-left: 5px;'), 'Printable shipment cells should have five pixels of left padding.');
