@@ -13,6 +13,7 @@ $blankRows = max(0, $minimumRows - $pickupSheet->shipmentCount());
     <a href="<?= $e($basePath) ?>/pickupsheet/submissions">Back to submitted sheets</a>
 </div>
 
+<main class="print-preview" aria-label="A4 pickup sheet preview">
 <article class="print-sheet">
     <header class="paper-header">
         <div class="paper-identity">
@@ -77,3 +78,4 @@ $blankRows = max(0, $minimumRows - $pickupSheet->shipmentCount());
         <div><strong>Total cash received</strong><span><?= $e(number_format($pickupSheet->totalCashReceivedXaf)) ?>XAF</span></div>
     </footer>
 </article>
+</main>

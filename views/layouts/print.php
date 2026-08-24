@@ -28,11 +28,20 @@ $e = static fn (mixed $value): string => htmlspecialchars((string) $value, ENT_Q
             cursor: pointer;
         }
         .print-actions button { background: #111; color: #fff; }
+        .print-preview {
+            display: flex;
+            justify-content: center;
+            width: 100%;
+            padding: 0 16px 32px;
+            overflow-x: auto;
+        }
         .print-sheet {
-            width: min(210mm, calc(100% - 32px));
+            flex: 0 0 210mm;
+            width: 210mm;
             min-height: 297mm;
-            margin: 0 auto 32px;
+            margin: 0;
             padding: 13mm 9mm 12mm;
+            border: 1px solid #c9c9c9;
             background: #fff;
             box-shadow: 0 18px 55px rgba(0, 0, 0, 0.12);
             text-transform: uppercase;
@@ -84,6 +93,8 @@ $e = static fn (mixed $value): string => htmlspecialchars((string) $value, ENT_Q
         .paper-shipment-table {
             width: 100%;
             border-collapse: collapse;
+            border: 0.35mm solid #000;
+            border-spacing: 0;
             table-layout: fixed;
             font-size: 8pt;
         }
@@ -91,7 +102,8 @@ $e = static fn (mixed $value): string => htmlspecialchars((string) $value, ENT_Q
         .paper-shipment-table td {
             height: 6.8mm;
             padding: 1.1mm 1.6mm;
-            border: 0.25mm solid #222;
+            border: 0.3mm solid #000;
+            background: #fff;
             overflow: hidden;
             text-align: left;
             text-overflow: clip;
@@ -134,20 +146,24 @@ $e = static fn (mixed $value): string => htmlspecialchars((string) $value, ENT_Q
             text-align: center;
         }
         @page { size: A4 portrait; margin: 10mm; }
-        @media (max-width: 760px) {
-            .print-sheet { width: calc(100% - 16px); min-height: 0; padding: 22px 14px; overflow-x: auto; }
-            .paper-header { gap: 20px; }
+        @media (max-width: 850px) {
+            .print-preview { justify-content: flex-start; padding-inline: 8px; }
         }
         @media print {
             body { background: #fff; print-color-adjust: exact; -webkit-print-color-adjust: exact; }
             .print-actions { display: none; }
+            .print-preview { display: block; padding: 0; overflow: visible; }
             .print-sheet {
                 width: 100%;
                 min-height: 0;
                 margin: 0;
                 padding: 0;
+                border: 0;
                 box-shadow: none;
             }
+            .paper-shipment-table { border: 0.35mm solid #000 !important; }
+            .paper-shipment-table th,
+            .paper-shipment-table td { border: 0.3mm solid #000 !important; }
         }
     </style>
 </head>
