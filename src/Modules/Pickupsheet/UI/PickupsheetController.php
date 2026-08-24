@@ -71,25 +71,25 @@ final class PickupsheetController
         if (!$this->pickupOperational) {
             $_SESSION['_pickup_errors'] = ['Pickup-sheet storage is temporarily unavailable. Please try again later.'];
             $_SESSION['_pickup_old'] = $input;
-            return Response::redirect($request->basePath . '/pickupsheet/');
+            return Response::redirect($request->basePath . '/dhl/pickupsheet/');
         }
 
         if ($request->input('website') !== '') {
             $_SESSION['_pickup_flash'] = 'Pickup sheet saved.';
-            return Response::redirect($request->basePath . '/pickupsheet/');
+            return Response::redirect($request->basePath . '/dhl/pickupsheet/');
         }
 
         if (!$this->captcha->validate($request->input('captcha_nonce'), $request->input('captcha_answer'))) {
             $_SESSION['_pickup_errors'] = ['Please complete the human verification with the correct answer.'];
             $_SESSION['_pickup_old'] = $input;
-            return Response::redirect($request->basePath . '/pickupsheet/');
+            return Response::redirect($request->basePath . '/dhl/pickupsheet/');
         }
 
         $lastSubmissionAt = (int) ($_SESSION['_last_pickup_sheet_at'] ?? 0);
         if ($lastSubmissionAt > 0 && time() - $lastSubmissionAt < 10) {
             $_SESSION['_pickup_errors'] = ['Please wait a moment before saving another pickup sheet.'];
             $_SESSION['_pickup_old'] = $input;
-            return Response::redirect($request->basePath . '/pickupsheet/');
+            return Response::redirect($request->basePath . '/dhl/pickupsheet/');
         }
 
         try {
@@ -111,7 +111,7 @@ final class PickupsheetController
             $_SESSION['_pickup_old'] = $input;
         }
 
-        return Response::redirect($request->basePath . '/pickupsheet/');
+        return Response::redirect($request->basePath . '/dhl/pickupsheet/');
     }
 
     public function submissions(Request $request): Response

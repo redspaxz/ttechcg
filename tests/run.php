@@ -191,7 +191,7 @@ $assert($pickupStorageFailed, 'Unavailable production pickup storage should fail
 
 $request = new Request('GET', '/products', [], [], '');
 $assert($request->path === '/products', 'Request should retain the routed path.');
-$arrayRequest = new Request('POST', '/pickupsheet', [], ['shipments' => [['awb_number' => '1234567890']]], '');
+$arrayRequest = new Request('POST', '/dhl/pickupsheet', [], ['shipments' => [['awb_number' => '1234567890']]], '');
 $assert(($arrayRequest->arrayInput('shipments')[0]['awb_number'] ?? '') === '1234567890', 'Request should expose nested shipment arrays.');
 
 $config = require dirname(__DIR__) . '/config/app.php';
@@ -244,7 +244,7 @@ $pickupController = new PickupsheetController(
     true,
 );
 
-$openPickup = $pickupController->index(new Request('GET', '/pickupsheet', [], [], ''));
+$openPickup = $pickupController->index(new Request('GET', '/dhl/pickupsheet', [], [], ''));
 $assert($openPickup->status() === 200, 'The direct Pickupsheet route should render without authentication.');
 $assert(str_contains($openPickup->body(), 'data-pickup-form'), 'The pickup form should be immediately available.');
 $assert(!str_contains($openPickup->body(), 'dhl-logo.svg'), 'The pickup form should not display the DHL logo.');
@@ -252,10 +252,10 @@ $assert(str_contains($openPickup->body(), 'name="shipments[0][checked_by]"'), 'T
 $assert(!str_contains($openPickup->body(), 'Operator login'), 'The pickup form should not show an authentication portal.');
 $assert(($openPickup->headers()['Cache-Control'] ?? '') === 'private, no-store, max-age=0', 'The open pickup form should not be cached.');
 
-$openEmptySubmissions = $pickupController->submissions(new Request('GET', '/pickupsheet/submissions', [], [], ''));
+$openEmptySubmissions = $pickupController->submissions(new Request('GET', '/dhl/pickupsheet/submissions', [], [], ''));
 $assert($openEmptySubmissions->status() === 200, 'Submitted sheets should be directly accessible without authentication.');
 $assert(str_contains($openEmptySubmissions->body(), 'No submitted sheets yet.'), 'The open submissions view should show its empty state.');
-$missingExport = $pickupController->export(new Request('GET', '/pickupsheet/submissions/export', ['reference' => 'PS-20260729-AAAAAAAAAAAAAAAA'], [], ''));
+$missingExport = $pickupController->export(new Request('GET', '/dhl/pickupsheet/submissions/export', ['reference' => 'PS-20260729-AAAAAAAAAAAAAAAA'], [], ''));
 $assert($missingExport->status() === 404, 'An unknown direct spreadsheet export should return not found.');
 
 $pickupChallenge = $pickupCaptcha->issue();
@@ -263,7 +263,7 @@ $pickupParts = preg_split('/\s+/', $pickupChallenge['question']);
 $pickupAnswer = is_array($pickupParts) && $pickupParts[1] === '+'
     ? (string) ((int) $pickupParts[0] + (int) $pickupParts[2])
     : (string) ((int) $pickupParts[0] - (int) $pickupParts[2]);
-$pickupControllerResponse = $pickupController->store(new Request('POST', '/pickupsheet', [], [
+$pickupControllerResponse = $pickupController->store(new Request('POST', '/dhl/pickupsheet', [], [
     '_token' => $pickupCsrf->token(),
     'captcha_nonce' => $pickupChallenge['nonce'],
     'captcha_answer' => $pickupAnswer,
@@ -290,7 +290,7 @@ $assert($savedControllerSheet instanceof App\Modules\Pickupsheet\Domain\PickupSh
 $assert(($savedControllerSheet->shipments[0]->checkedBy ?? '') === 'Controller Checker', 'The server should retain the validated checker entered with the shipment.');
 $savedReference = $savedControllerSheet->referenceNumber;
 
-$openSubmissions = $pickupController->submissions(new Request('GET', '/pickupsheet/submissions', [], [], ''));
+$openSubmissions = $pickupController->submissions(new Request('GET', '/dhl/pickupsheet/submissions', [], [], ''));
 $assert(str_contains($openSubmissions->body(), $savedReference), 'The direct table should show each sheet reference.');
 $assert(!str_contains($openSubmissions->body(), 'dhl-logo.svg'), 'The submitted-sheets screen should not display the DHL logo.');
 $assert(str_contains($openSubmissions->body(), 'Controller Client'), 'The direct table should show shipment rows.');
@@ -298,7 +298,7 @@ $assert(str_contains($openSubmissions->body(), 'Print / PDF'), 'Each submitted s
 $assert(str_contains($openSubmissions->body(), 'Export Excel'), 'Each submitted sheet should provide an Excel export action.');
 $assert(($openSubmissions->headers()['Cache-Control'] ?? '') === 'private, no-store, max-age=0', 'Submitted records should not be cached.');
 
-$printResponse = $pickupController->print(new Request('GET', '/pickupsheet/submissions/print', ['reference' => $savedReference], [], ''));
+$printResponse = $pickupController->print(new Request('GET', '/dhl/pickupsheet/submissions/print', ['reference' => $savedReference], [], ''));
 $assert($printResponse->status() === 200, 'A direct pickup sheet should render for printing.');
 $assert(str_contains($printResponse->body(), 'window.print()'), 'The print view should invoke the browser PDF/print workflow.');
 $assert(str_contains($printResponse->body(), $savedReference), 'The printable sheet should display its reference number.');
@@ -314,7 +314,7 @@ $assert(str_contains($printResponse->body(), 'flex: 0 0 210mm;'), 'The on-screen
 $assert(str_contains($printResponse->body(), 'border: 0.3mm solid #000 !important;'), 'Every shipment cell should retain a solid black line when printed.');
 $assert(!str_contains($printResponse->body(), 'A4 landscape'), 'The old landscape print layout should be removed.');
 $assert(!str_contains($printResponse->body(), 'dhl-logo.svg'), 'The printable sheet should not display the DHL logo.');
-$exportResponse = $pickupController->export(new Request('GET', '/pickupsheet/submissions/export', ['reference' => $savedReference], [], ''));
+$exportResponse = $pickupController->export(new Request('GET', '/dhl/pickupsheet/submissions/export', ['reference' => $savedReference], [], ''));
 $assert($exportResponse->status() === 200, 'A direct pickup sheet should export successfully.');
 $assert(str_starts_with($exportResponse->body(), "\xEF\xBB\xBF"), 'The Excel-compatible CSV should include a UTF-8 byte-order mark.');
 $assert(str_contains($exportResponse->body(), 'Controller Client'), 'The spreadsheet export should contain shipment data.');
@@ -351,7 +351,7 @@ $assert(is_string($dhlAsset) && str_contains($dhlAsset, 'viewBox="0 0 143.5 20"'
 $assert(is_string($dhlAsset) && !str_contains($dhlAsset, '<text'), 'The disqualified font-rendered DHL artwork should not remain.');
 $partnerSources = file_get_contents(dirname(__DIR__) . '/public/assets/partners/README.md');
 $assert(is_string($partnerSources) && str_contains($partnerSources, 'www.dhl.com/content/dam/dhl/global/core/images/logos/dhl-logo.svg'), 'The official DHL artwork source should be documented.');
-$assert(!str_contains($home, 'href="/pickupsheet"'), 'Pickupsheet should not be discoverable from the public site chrome or homepage.');
+$assert(!str_contains($home, 'href="/dhl/pickupsheet"'), 'Pickupsheet should not be discoverable from the public site chrome or homepage.');
 $assert(str_contains($home, 'styles.css?v=20260824-original-sheet'), 'The original-sheet update should use a cache-safe stylesheet version.');
 $assert(str_contains($home, 'app.js?v=20260824-original-sheet'), 'The original-sheet update should use a cache-safe application script version.');
 $assert(str_contains($home, 'analytics.js?v=20260824-analytics-consent'), 'The consent-aware Google Analytics loader should render on every page.');
@@ -416,7 +416,7 @@ $products = $view->render('site/products', array_merge($common, [
 $assert(str_contains($products, 'BTSPOS'), 'BTSPOS should be listed in the public product catalogue.');
 $assert(str_contains($products, 'multi-tenant bus ticketing'), 'The BTSPOS operational purpose should be clear.');
 $assert(str_contains($products, 'Discuss BTSPOS'), 'BTSPOS should provide a focused inquiry action.');
-$assert(!str_contains($products, 'href="/pickupsheet"'), 'The private Pickupsheet route should not be listed in the product catalogue.');
+$assert(!str_contains($products, 'href="/dhl/pickupsheet"'), 'The direct Pickupsheet route should not be listed in the product catalogue.');
 
 $product = $view->render('pickupsheet/show', array_merge($common, [
     'pageTitle' => 'Cash shipment pickup sheet',
@@ -437,7 +437,8 @@ $assert(str_contains($product, 'name="agent_name"'), 'The pickup form should col
 $assert(str_contains($product, 'name="collection_date"'), 'The pickup form should collect the sheet date.');
 $assert(str_contains($product, 'Reference number'), 'The pickup form should disclose its automatic reference number.');
 $assert(str_contains($product, 'Assigned when saved'), 'Operators should know when the reference number is generated.');
-$assert(str_contains($product, 'href="/pickupsheet/submissions"'), 'The direct entry screen should link to the submissions table.');
+$assert(str_contains($product, 'href="/dhl/pickupsheet/submissions"'), 'The direct entry screen should link to the submissions table.');
+$assert(str_contains($product, 'action="/dhl/pickupsheet"'), 'The pickup form should submit to its new DHL-namespaced route.');
 $assert(str_contains($product, 'shipments[0][consignor]'), 'The pickup form should collect a consignor for each row.');
 $assert(str_contains($product, 'shipments[0][awb_number]'), 'The pickup form should collect the AWB number from the PDF.');
 $assert(str_contains($product, 'shipments[0][destination]'), 'The pickup form should collect the destination code from the PDF.');
@@ -447,7 +448,7 @@ $assert(str_contains($product, 'shipments[0][weight_kg]'), 'The pickup form shou
 $assert(str_contains($product, 'shipments[0][collection_time]'), 'The pickup form should collect the collection time from the PDF.');
 $assert(str_contains($product, 'shipments[0][checked_by]'), 'The pickup form should collect the checker for each shipment.');
 $assert(str_contains($product, 'placeholder="Checker name"'), 'The checker field should clearly describe the expected value.');
-$assert(!str_contains($product, 'action="/pickupsheet/logout"'), 'The direct workspace should not provide an authentication action.');
+$assert(!str_contains($product, 'action="/dhl/pickupsheet/logout"'), 'The direct workspace should not provide an authentication action.');
 $assert(str_contains($product, 'data-shipment-count'), 'The pickup form should calculate shipments collected.');
 $assert(str_contains($product, 'data-shipment-total'), 'The pickup form should calculate total cash received.');
 $assert(str_contains($product, 'name="captcha_nonce" value="pickup-captcha-nonce"'), 'The pickup form should include first-party human verification.');
@@ -455,7 +456,8 @@ $assert(str_contains($product, 'type="checkbox" name="privacy_consent" value="1"
 $assert(!str_contains($product, 'name="privacy_consent" value="1" required checked'), 'Pickup-sheet consent should not be preselected.');
 $assert(str_contains($product, '<meta name="robots" content="noindex, nofollow">'), 'The direct Pickupsheet page should not be indexed.');
 $sitemap = file_get_contents(dirname(__DIR__) . '/sitemap.xml');
-$assert(is_string($sitemap) && !str_contains($sitemap, '/pickupsheet'), 'The sitemap should not advertise Pickupsheet.');
+$assert(is_string($sitemap) && !str_contains($sitemap, '/dhl/pickupsheet'), 'The sitemap should not advertise the new Pickupsheet route.');
+$assert(is_string($sitemap) && !str_contains($sitemap, '/pickupsheet'), 'The sitemap should not advertise the legacy Pickupsheet route.');
 $assert(is_string($sitemap) && str_contains($sitemap, '/products'), 'The sitemap should advertise the public product catalogue.');
 
 $privacy = $view->render('site/privacy', array_merge($common, [
@@ -560,6 +562,9 @@ $bootstrap = file_get_contents(dirname(__DIR__) . '/bootstrap/app.php');
 $assert(is_string($bootstrap) && str_contains($bootstrap, "'httponly' => true"), 'The security session cookie should be inaccessible to client-side scripts.');
 $assert(is_string($bootstrap) && str_contains($bootstrap, "'samesite' => 'Lax'"), 'The security session cookie should use a SameSite policy.');
 $assert(is_string($bootstrap) && !str_contains($bootstrap, 'JumpCloudOidcProvider'), 'Pickupsheet should not require an identity provider.');
-$assert(is_string($bootstrap) && !str_contains($bootstrap, "'/pickupsheet/login'"), 'Pickupsheet authentication routes should be removed.');
+$assert(is_string($bootstrap) && str_contains($bootstrap, "'/dhl/pickupsheet'"), 'Pickupsheet should be routed under the DHL namespace.');
+$assert(is_string($bootstrap) && str_contains($bootstrap, "'/pickupsheet'"), 'The legacy Pickupsheet entry should retain a permanent redirect.');
+$assert(is_string($bootstrap) && str_contains($bootstrap, 'rawurlencode($reference)'), 'Legacy print and export redirects should preserve the reference query safely.');
+$assert(is_string($bootstrap) && !str_contains($bootstrap, "'/dhl/pickupsheet/login'"), 'Pickupsheet authentication routes should remain removed.');
 
 echo "All application tests passed.\n";

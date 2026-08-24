@@ -15,7 +15,7 @@ $totalXaf = array_reduce(
 <section class="pickup-view-workspace">
     <div class="container pickup-workspace-header">
         <strong class="pickup-wordmark">Pickupsheet</strong>
-        <a class="pickup-back" href="<?= $e($basePath) ?>/pickupsheet/">New pickup sheet <span aria-hidden="true">↗</span></a>
+        <a class="pickup-back" href="<?= $e($basePath) ?>/dhl/pickupsheet/">New pickup sheet <span aria-hidden="true">↗</span></a>
     </div>
 
     <div class="container pickup-submissions-shell">
@@ -54,8 +54,8 @@ $totalXaf = array_reduce(
                         <span><small>Shipments</small><?= $e($pickupSheet->shipmentCount()) ?></span>
                         <strong><?= $e(number_format($pickupSheet->totalCashReceivedXaf)) ?> XAF</strong>
                         <div class="pickup-record-actions">
-                            <a target="_blank" rel="noopener" href="<?= $e($basePath) ?>/pickupsheet/submissions/print?reference=<?= $e($referenceQuery) ?>">Print / PDF</a>
-                            <a href="<?= $e($basePath) ?>/pickupsheet/submissions/export?reference=<?= $e($referenceQuery) ?>">Export Excel</a>
+                            <a target="_blank" rel="noopener" href="<?= $e($basePath) ?>/dhl/pickupsheet/submissions/print?reference=<?= $e($referenceQuery) ?>">Print / PDF</a>
+                            <a href="<?= $e($basePath) ?>/dhl/pickupsheet/submissions/export?reference=<?= $e($referenceQuery) ?>">Export Excel</a>
                         </div>
                     </div>
                     <details class="pickup-record-details">

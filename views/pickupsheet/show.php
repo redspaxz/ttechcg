@@ -37,7 +37,7 @@ $renderShipmentRow = static function (int|string $index, mixed $row = []) use ($
     <div class="container pickup-workspace-header">
         <strong class="pickup-wordmark">Pickupsheet</strong>
         <div class="pickup-header-links">
-            <a class="pickup-back" href="<?= $e($basePath) ?>/pickupsheet/submissions">Submitted sheets <span aria-hidden="true">↗</span></a>
+            <a class="pickup-back" href="<?= $e($basePath) ?>/dhl/pickupsheet/submissions">Submitted sheets <span aria-hidden="true">↗</span></a>
             <a class="pickup-back" href="<?= $e($basePath . '/') ?>">T&amp;Tech home <span aria-hidden="true">↗</span></a>
         </div>
     </div>
@@ -66,7 +66,7 @@ $renderShipmentRow = static function (int|string $index, mixed $row = []) use ($
             </div>
         <?php endif; ?>
 
-        <form class="pickup-form" method="post" action="<?= $e($basePath) ?>/pickupsheet" data-pickup-form>
+        <form class="pickup-form" method="post" action="<?= $e($basePath) ?>/dhl/pickupsheet" data-pickup-form>
             <input type="hidden" name="_token" value="<?= $e($csrfToken) ?>">
             <label class="honeypot" aria-hidden="true">Website<input name="website" tabindex="-1" autocomplete="off"></label>
 

@@ -104,11 +104,24 @@ $router->get('/products', fn (Request $request): Response => $siteController->pr
 $router->get('/about', fn (Request $request): Response => $siteController->about($request));
 $router->get('/contact', fn (Request $request): Response => $contactController->index($request));
 $router->post('/contact', fn (Request $request): Response => $contactController->store($request));
-$router->get('/pickupsheet', fn (Request $request): Response => $pickupsheetController->index($request));
-$router->post('/pickupsheet', fn (Request $request): Response => $pickupsheetController->store($request));
-$router->get('/pickupsheet/submissions', fn (Request $request): Response => $pickupsheetController->submissions($request));
-$router->get('/pickupsheet/submissions/print', fn (Request $request): Response => $pickupsheetController->print($request));
-$router->get('/pickupsheet/submissions/export', fn (Request $request): Response => $pickupsheetController->export($request));
+$router->get('/dhl/pickupsheet', fn (Request $request): Response => $pickupsheetController->index($request));
+$router->post('/dhl/pickupsheet', fn (Request $request): Response => $pickupsheetController->store($request));
+$router->get('/dhl/pickupsheet/submissions', fn (Request $request): Response => $pickupsheetController->submissions($request));
+$router->get('/dhl/pickupsheet/submissions/print', fn (Request $request): Response => $pickupsheetController->print($request));
+$router->get('/dhl/pickupsheet/submissions/export', fn (Request $request): Response => $pickupsheetController->export($request));
+$router->get('/pickupsheet', fn (Request $request): Response => Response::redirect($request->basePath . '/dhl/pickupsheet/', 308));
+$router->post('/pickupsheet', fn (Request $request): Response => Response::redirect($request->basePath . '/dhl/pickupsheet', 308));
+$router->get('/pickupsheet/submissions', fn (Request $request): Response => Response::redirect($request->basePath . '/dhl/pickupsheet/submissions', 308));
+$router->get('/pickupsheet/submissions/print', static function (Request $request): Response {
+    $reference = $request->queryString('reference');
+    $location = $request->basePath . '/dhl/pickupsheet/submissions/print';
+    return Response::redirect($location . ($reference === '' ? '' : '?reference=' . rawurlencode($reference)), 308);
+});
+$router->get('/pickupsheet/submissions/export', static function (Request $request): Response {
+    $reference = $request->queryString('reference');
+    $location = $request->basePath . '/dhl/pickupsheet/submissions/export';
+    return Response::redirect($location . ($reference === '' ? '' : '?reference=' . rawurlencode($reference)), 308);
+});
 $router->get('/privacy', fn (Request $request): Response => $siteController->privacy($request));
 $router->get('/health', fn (Request $request): Response => $siteController->health($request));
 $router->fallback(fn (Request $request): Response => $siteController->notFound($request));
