@@ -19,8 +19,8 @@ final class MysqlInquiryRepository implements InquiryRepository
     public function create(Inquiry $inquiry): Inquiry
     {
         $statement = $this->connection->prepare(
-            'INSERT INTO inquiries (name, email, company, service, message, created_at)
-             VALUES (:name, :email, :company, :service, :message, :created_at)',
+            'INSERT INTO inquiries (name, email, company, service, message, privacy_consent_at, privacy_notice_version, created_at)
+             VALUES (:name, :email, :company, :service, :message, :privacy_consent_at, :privacy_notice_version, :created_at)',
         );
         $statement->execute([
             'name' => $inquiry->name,
@@ -28,6 +28,10 @@ final class MysqlInquiryRepository implements InquiryRepository
             'company' => $inquiry->company !== '' ? $inquiry->company : null,
             'service' => $inquiry->service,
             'message' => $inquiry->message,
+            'privacy_consent_at' => (new DateTimeImmutable($inquiry->privacyConsentAt))
+                ->setTimezone(new DateTimeZone('UTC'))
+                ->format('Y-m-d H:i:s'),
+            'privacy_notice_version' => $inquiry->privacyNoticeVersion,
             'created_at' => (new DateTimeImmutable($inquiry->createdAt))
                 ->setTimezone(new DateTimeZone('UTC'))
                 ->format('Y-m-d H:i:s'),
@@ -40,6 +44,8 @@ final class MysqlInquiryRepository implements InquiryRepository
             $inquiry->company,
             $inquiry->service,
             $inquiry->message,
+            $inquiry->privacyConsentAt,
+            $inquiry->privacyNoticeVersion,
             $inquiry->createdAt,
         );
     }

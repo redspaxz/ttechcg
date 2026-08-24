@@ -21,6 +21,8 @@ final class DemoInquiryRepository implements InquiryRepository
             $inquiry->company,
             $inquiry->service,
             $inquiry->message,
+            $inquiry->privacyConsentAt,
+            $inquiry->privacyNoticeVersion,
             $inquiry->createdAt,
         );
         $rows[] = $created;

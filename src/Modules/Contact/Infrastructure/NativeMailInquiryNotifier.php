@@ -34,6 +34,7 @@ final class NativeMailInquiryNotifier implements InquiryNotifier
             'Company: ' . ($inquiry->company !== '' ? $inquiry->company : 'Not provided'),
             'Service: ' . $this->serviceLabel($inquiry->service),
             'Submitted: ' . $inquiry->createdAt,
+            'Privacy consent: ' . $inquiry->privacyConsentAt . ' (notice ' . $inquiry->privacyNoticeVersion . ')',
             '',
             'Message:',
             $inquiry->message,

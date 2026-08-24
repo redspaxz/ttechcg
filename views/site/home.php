@@ -10,14 +10,9 @@
                 <a class="text-link" href="<?= htmlspecialchars($basePath . '/services', ENT_QUOTES, 'UTF-8') ?>">Explore our services <span aria-hidden="true">&rarr;</span></a>
             </div>
         </div>
-        <div class="hero-visual" aria-label="T and Tech operating model" data-reveal>
-            <div class="signal-orbit orbit-one"></div>
-            <div class="signal-orbit orbit-two"></div>
-            <div class="signal-core"><span>T</span><i>&amp;</i><span>T</span></div>
-            <div class="signal-label label-strategy"><strong>01</strong> Network</div>
-            <div class="signal-label label-systems"><strong>02</strong> Support</div>
-            <div class="signal-label label-delivery"><strong>03</strong> Solutions</div>
-        </div>
+        <figure class="hero-media" data-reveal>
+            <img src="<?= htmlspecialchars($assetBase . '/images/hero-data-center.jpg', ENT_QUOTES, 'UTF-8') ?>" alt="Server infrastructure presented inside a modern data center" width="1920" height="1047" fetchpriority="high" decoding="async">
+        </figure>
     </div>
     <div class="container capability-strip" aria-label="Core capabilities">
         <span>Managed network operations</span><i></i>

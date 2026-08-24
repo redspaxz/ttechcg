@@ -13,6 +13,8 @@ final class Inquiry
         public readonly string $company,
         public readonly string $service,
         public readonly string $message,
+        public readonly string $privacyConsentAt,
+        public readonly string $privacyNoticeVersion,
         public readonly string $createdAt,
     ) {
     }

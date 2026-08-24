@@ -206,6 +206,28 @@ h1 em, h2 em { color: var(--copper); font-family: Georgia, "Times New Roman", se
 .captcha-fieldset label > span { color: var(--ink); font-size: 0.8rem; }
 .contact-form .captcha-fieldset input { min-height: 46px; text-align: center; }
 .captcha-fieldset p { margin: 0; color: var(--muted); font-size: 0.7rem; line-height: 1.5; }
+.contact-form .consent-field {
+    grid-template-columns: 20px minmax(0, 1fr);
+    align-items: start;
+    gap: 12px;
+    padding: 2px 0;
+}
+.contact-form .consent-field input {
+    width: 18px;
+    min-height: 18px;
+    margin: 2px 0 0;
+    padding: 0;
+    accent-color: var(--copper);
+}
+.contact-form .consent-field > span {
+    color: var(--muted);
+    font-size: 0.76rem;
+    font-weight: 600;
+    letter-spacing: 0;
+    line-height: 1.6;
+    text-transform: none;
+}
+.consent-field a { color: var(--copper); font-weight: 750; }
 .honeypot { position: absolute !important; left: -9999px !important; }
 .notice { display: grid; gap: 6px; margin-bottom: 22px; padding: 14px 16px; border: 1px solid; font-size: 0.85rem; font-weight: 700; }
 .notice-success { background: #e8f4e9; color: #25652b; }
@@ -1208,4 +1230,42 @@ button, a, input, select, textarea { -webkit-tap-highlight-color: transparent; }
         border-left: 1px solid var(--line);
     }
     .office-card h3 { font-size: 2rem; }
+}
+
+/* Landing-page hero photography */
+.hero-grid {
+    grid-template-columns: minmax(0, 0.9fr) minmax(460px, 1.1fr);
+    gap: clamp(48px, 5vw, 82px);
+}
+.hero-media {
+    position: relative;
+    width: 100%;
+    aspect-ratio: 16 / 9;
+    margin: 0;
+    overflow: hidden;
+    border: 1px solid var(--line);
+    background: var(--cream);
+}
+.hero-media::after {
+    position: absolute;
+    inset: 0;
+    border: 1px solid rgba(255, 255, 255, 0.08);
+    content: "";
+    pointer-events: none;
+}
+.hero-media img {
+    display: block;
+    width: 100%;
+    height: 100%;
+    object-fit: cover;
+    object-position: center;
+}
+
+@media (max-width: 1050px) {
+    .hero-grid { grid-template-columns: 1fr; }
+    .hero-media { width: 100%; }
+}
+
+@media (max-width: 580px) {
+    .hero-media { border-inline: 0; }
 }

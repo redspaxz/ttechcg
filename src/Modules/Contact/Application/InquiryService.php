@@ -13,6 +13,8 @@ use InvalidArgumentException;
 
 final class InquiryService
 {
+    public const PRIVACY_NOTICE_VERSION = '2026-08-24';
+
     private const SERVICES = [
         'network-outsourcing',
         'managed-infrastructure',
@@ -41,6 +43,7 @@ final class InquiryService
         $company = trim($input['company'] ?? '');
         $service = trim($input['service'] ?? '');
         $message = trim($input['message'] ?? '');
+        $privacyConsent = trim($input['privacy_consent'] ?? '');
 
         if (strlen($name) < 2 || strlen($name) > 100) {
             throw new InvalidArgumentException('Please provide your full name.');
@@ -57,6 +60,11 @@ final class InquiryService
         if (strlen($message) < 20 || strlen($message) > 2000) {
             throw new InvalidArgumentException('Tell us about the opportunity in 20 to 2,000 characters.');
         }
+        if ($privacyConsent !== '1') {
+            throw new InvalidArgumentException('Please opt in to the privacy notice before sending your inquiry.');
+        }
+
+        $submittedAt = (new DateTimeImmutable('now', new DateTimeZone('UTC')))->format(DATE_ATOM);
 
         $created = $this->repository->create(new Inquiry(
             null,
@@ -65,7 +73,9 @@ final class InquiryService
             $company,
             $service,
             $message,
-            (new DateTimeImmutable('now', new DateTimeZone('UTC')))->format(DATE_ATOM),
+            $submittedAt,
+            self::PRIVACY_NOTICE_VERSION,
+            $submittedAt,
         ));
 
         if ($this->notifier !== null) {

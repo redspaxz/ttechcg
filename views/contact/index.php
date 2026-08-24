@@ -64,8 +64,12 @@ $locations = is_array($config['locations'] ?? null) ? $config['locations'] : [];
                     </label>
                     <p id="captcha-help">Answer this short calculation to confirm you are human.</p>
                 </fieldset>
+                <label class="consent-field">
+                    <input type="checkbox" name="privacy_consent" value="1" required <?= ($old['privacy_consent'] ?? '') === '1' ? 'checked' : '' ?>>
+                    <span>I consent to T&amp;Tech processing the personal information in this form to respond to my inquiry, as described in the <a href="<?= $e($basePath) ?>/privacy" target="_blank" rel="noopener">privacy notice</a>.</span>
+                </label>
                 <button class="button button-primary button-submit" type="submit" <?= !$contactOperational ? 'disabled' : '' ?>>Send inquiry <span aria-hidden="true">↗</span></button>
-                <p class="form-note">Inquiries are securely stored and forwarded to <a href="mailto:<?= $e($contactEmail) ?>"><?= $e($contactEmail) ?></a>. Read our <a href="<?= $e($basePath) ?>/privacy">privacy notice</a>.</p>
+                <p class="form-note">Your inquiry and consent record are securely stored and forwarded to <a href="mailto:<?= $e($contactEmail) ?>"><?= $e($contactEmail) ?></a>.</p>
             </form>
         </div>
     </div>

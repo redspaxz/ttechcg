@@ -46,9 +46,12 @@ $inquiry = $service->submit([
     'company' => 'Test Company',
     'service' => 'network-outsourcing',
     'message' => 'We need reliable network operations across our field locations.',
+    'privacy_consent' => '1',
 ]);
 $assert($inquiry->id === 1, 'Inquiry should receive a demo ID.');
 $assert($inquiry->email === 'operator@example.com', 'Email should be normalized.');
+$assert($inquiry->privacyNoticeVersion === InquiryService::PRIVACY_NOTICE_VERSION, 'Accepted inquiries should retain the privacy-notice version.');
+$assert($inquiry->privacyConsentAt !== '', 'Accepted inquiries should retain the consent timestamp.');
 
 $notifier = new class implements InquiryNotifier {
     public bool $called = false;
@@ -66,6 +69,7 @@ $notifyingService->submit([
     'company' => '',
     'service' => 'btspos',
     'message' => 'This inquiry verifies the configured notification workflow.',
+    'privacy_consent' => '1',
 ]);
 $assert($notifier->called, 'A persisted inquiry should trigger its notifier.');
 
@@ -77,6 +81,7 @@ try {
         'company' => '',
         'service' => 'other',
         'message' => 'This inquiry should fail instead of being stored in a session.',
+        'privacy_consent' => '1',
     ]);
 } catch (RuntimeException) {
     $storageFailed = true;
@@ -90,6 +95,21 @@ try {
     $validationFailed = true;
 }
 $assert($validationFailed, 'Invalid inquiries should be rejected.');
+
+$consentFailed = false;
+try {
+    $service->submit([
+        'name' => 'Consent Test',
+        'email' => 'consent@example.com',
+        'company' => '',
+        'service' => 'network-outsourcing',
+        'message' => 'This otherwise valid inquiry omits the required privacy opt-in.',
+        'privacy_consent' => '',
+    ]);
+} catch (InvalidArgumentException $exception) {
+    $consentFailed = str_contains($exception->getMessage(), 'opt in');
+}
+$assert($consentFailed, 'An inquiry without explicit privacy consent should be rejected server-side.');
 
 $request = new Request('GET', '/products', [], [], '');
 $assert($request->path === '/products', 'Request should retain the routed path.');
@@ -126,6 +146,7 @@ $controllerResponse = $controller->store(new Request('POST', '/contact', [], [
     'company' => '',
     'service' => 'network-outsourcing',
     'message' => 'This valid inquiry should be rejected by the incorrect CAPTCHA answer.',
+    'privacy_consent' => '1',
 ], ''));
 $assert($controllerResponse->status() === 303, 'An incorrect CAPTCHA should return to the contact form.');
 $assert(str_contains((string) ($_SESSION['_errors'][0] ?? ''), 'human verification'), 'An incorrect CAPTCHA should produce a useful form error.');
@@ -161,10 +182,18 @@ $assert(is_string($dhlAsset) && !str_contains($dhlAsset, '<text'), 'The disquali
 $partnerSources = file_get_contents(dirname(__DIR__) . '/public/assets/partners/README.md');
 $assert(is_string($partnerSources) && str_contains($partnerSources, 'www.dhl.com/content/dam/dhl/global/core/images/logos/dhl-logo.svg'), 'The official DHL artwork source should be documented.');
 $assert(!str_contains($home, 'href="/pickupsheet"'), 'Pickupsheet should not be discoverable from the public site chrome or homepage.');
-$assert(str_contains($home, 'styles.css?v=20260824-dhl-captcha'), 'The DHL and CAPTCHA update should use a cache-safe stylesheet version.');
-$assert(str_contains($home, 'app.js?v=20260824-dhl-captcha'), 'The DHL and CAPTCHA update should use a cache-safe script version.');
+$assert(str_contains($home, 'styles.css?v=20260824-hero-gdpr'), 'The landing hero and privacy update should use a cache-safe stylesheet version.');
+$assert(str_contains($home, 'app.js?v=20260824-hero-gdpr'), 'The landing hero and privacy update should use a cache-safe script version.');
 $assert(str_contains($home, 'viewport-fit=cover'), 'The viewport should support mobile safe areas.');
 $assert(str_contains($home, 'loading="lazy" decoding="async"'), 'Below-the-fold partner logos should load efficiently on mobile.');
+$assert(str_contains($home, '/images/hero-data-center.jpg'), 'The supplied data-center photograph should render in the landing hero.');
+$assert(str_contains($home, 'width="1920" height="1047" fetchpriority="high"'), 'The hero image should reserve its source dimensions and receive high loading priority.');
+$assert(str_contains($home, 'class="hero-media"'), 'The landing page should render a dedicated hero media frame.');
+$assert(!str_contains($home, 'class="signal-core"'), 'The abstract operating-model graphic should be removed from the hero.');
+$heroAssetPath = dirname(__DIR__) . '/public/assets/images/hero-data-center.jpg';
+$assert(is_file($heroAssetPath) && filesize($heroAssetPath) > 100000, 'The supplied hero photograph should be bundled as a non-empty local asset.');
+$heroDimensions = getimagesize($heroAssetPath);
+$assert(is_array($heroDimensions) && $heroDimensions[0] === 1920 && $heroDimensions[1] === 1047, 'The bundled hero should preserve the supplied source resolution.');
 $assert(str_contains($home, '<span class="company-name">T&amp;Tech Consulting Group</span>'), 'The header should render the full company name as text.');
 $headerStart = strpos($home, '<header');
 $headerEnd = strpos($home, '</header>');
@@ -200,6 +229,9 @@ $assert(str_contains($contact, 'method="post" action="/contact"'), 'The contact 
 $assert(str_contains($contact, 'name="captcha_nonce" value="test-captcha-nonce"'), 'The contact form should include the server-issued CAPTCHA nonce.');
 $assert(str_contains($contact, 'What is 7 + 4?'), 'The contact form should present the CAPTCHA challenge.');
 $assert(str_contains($contact, 'name="captcha_answer"'), 'The contact form should require a CAPTCHA answer.');
+$assert(str_contains($contact, 'type="checkbox" name="privacy_consent" value="1" required'), 'The contact form should include an unchecked, required privacy opt-in.');
+$assert(str_contains($contact, 'I consent to T&amp;Tech processing'), 'The privacy opt-in should state its specific purpose.');
+$assert(!str_contains($contact, 'name="privacy_consent" value="1" required checked'), 'The privacy opt-in should not be preselected.');
 
 $products = $view->render('site/products', array_merge($common, [
     'pageTitle' => 'Technology products for real operations',
@@ -230,8 +262,13 @@ $privacy = $view->render('site/privacy', array_merge($common, [
     'activePage' => 'privacy',
 ]));
 $assert(str_contains($privacy, 'Information we collect'), 'The privacy notice should explain collected information.');
+$assert(str_contains($privacy, 'T&amp;Tech Consulting Group'), 'The privacy notice should identify the data controller.');
 $assert(str_contains($privacy, 'We do not sell inquiry information.'), 'The privacy notice should state the use limitation.');
 $assert(str_contains($privacy, 'forwarded by email to info@ttechcg.com'), 'The privacy notice should disclose the inquiry destination.');
+$assert(str_contains($privacy, 'requires an explicit, unchecked opt-in'), 'The privacy notice should explain the consent control.');
+$assert(str_contains($privacy, 'withdraw that consent'), 'The privacy notice should explain how consent can be withdrawn.');
+$assert(str_contains($privacy, 'one first-party session cookie'), 'The privacy notice should disclose the essential security cookie.');
+$assert(str_contains($privacy, 'not used for advertising or cross-site tracking'), 'The privacy notice should state the essential cookie limitation.');
 
 $environmentExample = file_get_contents(dirname(__DIR__) . '/.env.example');
 $assert(is_string($environmentExample) && str_contains($environmentExample, 'APP_TIMEZONE=Africa/Douala'), 'The environment example should use Cameroon time.');
@@ -256,6 +293,10 @@ $assert(is_string($styles) && str_contains($styles, 'font-size: 16px;'), 'Mobile
 $assert(is_string($styles) && str_contains($styles, '.contact-destination'), 'The direct inquiry destination should have a responsive presentation.');
 $assert(is_string($styles) && str_contains($styles, '.office-grid'), 'The two Cameroon offices should use the responsive location layout.');
 $assert(is_string($styles) && str_contains($styles, '.captcha-fieldset'), 'The human verification control should have responsive form styling.');
+$assert(is_string($styles) && str_contains($styles, '.hero-media'), 'The landing hero photograph should have a dedicated responsive frame.');
+$assert(is_string($styles) && str_contains($styles, 'aspect-ratio: 16 / 9;'), 'The landing hero photograph should display at a 16:9 ratio.');
+$assert(is_string($styles) && str_contains($styles, 'object-fit: cover;'), 'The landing hero photograph should fill its 16:9 frame without distortion.');
+$assert(is_string($styles) && str_contains($styles, '.consent-field'), 'The required privacy opt-in should have accessible responsive styling.');
 
 $script = file_get_contents(dirname(__DIR__) . '/public/assets/app.js');
 $assert(is_string($script) && str_contains($script, "event.key === 'Escape'"), 'The mobile navigation should close with Escape.');
@@ -264,5 +305,14 @@ $assert(is_string($script) && str_contains($script, "matchMedia('(min-width: 821
 
 $database = file_get_contents(dirname(__DIR__) . '/src/Shared/Infrastructure/Database.php');
 $assert(is_string($database) && str_contains($database, "extension_loaded('pdo_mysql')"), 'The application should use PDO MySQL.');
+
+$consentMigration = file_get_contents(dirname(__DIR__) . '/database/migrations/002_add_inquiry_privacy_consent.sql');
+$assert(is_string($consentMigration) && str_contains($consentMigration, 'privacy_consent_at'), 'The database should retain inquiry consent timestamps.');
+$assert(is_string($consentMigration) && str_contains($consentMigration, 'privacy_notice_version'), 'The database should retain privacy-notice versions.');
+$mysqlRepository = file_get_contents(dirname(__DIR__) . '/src/Modules/Contact/Infrastructure/MysqlInquiryRepository.php');
+$assert(is_string($mysqlRepository) && str_contains($mysqlRepository, ':privacy_consent_at'), 'MySQL inquiry persistence should write the consent timestamp.');
+$bootstrap = file_get_contents(dirname(__DIR__) . '/bootstrap/app.php');
+$assert(is_string($bootstrap) && str_contains($bootstrap, "'httponly' => true"), 'The security session cookie should be inaccessible to client-side scripts.');
+$assert(is_string($bootstrap) && str_contains($bootstrap, "'samesite' => 'Lax'"), 'The security session cookie should use a SameSite policy.');
 
 echo "All application tests passed.\n";

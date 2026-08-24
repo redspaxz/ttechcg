@@ -31,6 +31,13 @@ date_default_timezone_set((string) $config['timezone']);
 if (session_status() !== PHP_SESSION_ACTIVE) {
     session_save_path($root . '/storage/sessions');
     session_name('ttechcg_session');
+    session_set_cookie_params([
+        'lifetime' => 0,
+        'path' => '/',
+        'secure' => isset($_SERVER['HTTPS']) && $_SERVER['HTTPS'] !== 'off',
+        'httponly' => true,
+        'samesite' => 'Lax',
+    ]);
     session_start();
 }
 

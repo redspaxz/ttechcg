@@ -59,6 +59,7 @@ final class ContactController
             'company' => $request->input('company'),
             'service' => $request->input('service'),
             'message' => $request->input('message'),
+            'privacy_consent' => $request->input('privacy_consent'),
         ];
 
         if (!$this->contactOperational) {
