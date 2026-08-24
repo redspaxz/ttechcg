@@ -17,8 +17,9 @@ $pageRobots = $pageRobots ?? 'index, follow';
     <meta name="robots" content="<?= $e($pageRobots) ?>">
     <title><?= $e($pageTitle ?? 'T&Tech Consulting Group') ?> | T&amp;Tech</title>
     <link rel="icon" href="<?= $e($assetBase) ?>/ttechcg-mark.svg" type="image/svg+xml">
-    <link rel="stylesheet" href="<?= $e($assetBase) ?>/styles.css?v=20260824-hero-gdpr">
-    <script src="<?= $e($assetBase) ?>/app.js?v=20260824-hero-gdpr" defer></script>
+    <link rel="stylesheet" href="<?= $e($assetBase) ?>/styles.css?v=20260824-analytics-consent">
+    <script src="<?= $e($assetBase) ?>/app.js?v=20260824-analytics-consent" defer></script>
+    <script src="<?= $e($assetBase) ?>/analytics.js?v=20260824-analytics-consent" defer></script>
 </head>
 <body>
     <a class="skip-link" href="#main-content">Skip to content</a>
@@ -65,9 +66,22 @@ $pageRobots = $pageRobots ?? 'index, follow';
                 <a href="<?= $e($url('/about')) ?>">About</a>
                 <a href="<?= $e($url('/contact')) ?>">Contact</a>
                 <a href="<?= $e($url('/privacy')) ?>">Privacy</a>
+                <button class="footer-link-button" type="button" data-analytics-settings>Cookie settings</button>
             </nav>
             <p>© <?= $e(date('Y')) ?> T&amp;Tech Consulting Group</p>
         </div>
     </footer>
+
+    <section class="analytics-consent" data-analytics-consent hidden role="dialog" aria-labelledby="analytics-consent-title" aria-describedby="analytics-consent-description">
+        <div>
+            <p class="eyebrow" id="analytics-consent-title">Analytics choice</p>
+            <p id="analytics-consent-description">May we use Google Analytics cookies to understand site usage and improve this website? Analytics stays off unless you accept.</p>
+        </div>
+        <div class="analytics-consent-actions">
+            <button class="button button-primary" type="button" data-analytics-accept>Accept analytics</button>
+            <button class="button button-secondary" type="button" data-analytics-decline>Decline</button>
+            <a href="<?= $e($url('/privacy')) ?>">Privacy details</a>
+        </div>
+    </section>
 </body>
 </html>

@@ -41,3 +41,9 @@ jobs:
 
       - name: Run application tests
         run: php tests/run.php
+
+      - name: Verify browser scripts
+        run: |
+          node --check public/assets/app.js
+          node --check public/assets/analytics.js
+          node tests/analytics-consent.test.js

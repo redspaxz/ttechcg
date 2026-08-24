@@ -1269,3 +1269,58 @@ button, a, input, select, textarea { -webkit-tap-highlight-color: transparent; }
 @media (max-width: 580px) {
     .hero-media { border-inline: 0; }
 }
+
+/* Analytics consent */
+.footer-link-button {
+    border: 0;
+    background: transparent;
+    color: #c5c5c5;
+    font: inherit;
+    font-size: 0.7rem;
+    cursor: pointer;
+    padding: 0;
+}
+.footer-link-button:hover { color: var(--ink); }
+.analytics-consent[hidden] { display: none; }
+.analytics-consent {
+    position: fixed;
+    z-index: 1000;
+    right: max(20px, env(safe-area-inset-right));
+    bottom: max(20px, env(safe-area-inset-bottom));
+    left: max(20px, env(safe-area-inset-left));
+    display: grid;
+    grid-template-columns: minmax(0, 1fr) auto;
+    align-items: center;
+    gap: 32px;
+    width: min(920px, calc(100% - 40px));
+    margin-inline: auto;
+    padding: 24px;
+    border: 1px solid #3a3a3e;
+    background: #111113;
+    box-shadow: 0 24px 80px rgba(0, 0, 0, 0.48);
+    color: var(--ink);
+}
+.analytics-consent .eyebrow { margin: 0 0 8px; }
+.analytics-consent p:last-child { max-width: 620px; margin: 0; color: var(--muted); font-size: 0.83rem; line-height: 1.6; }
+.analytics-consent-actions { display: flex; align-items: center; gap: 10px; }
+.analytics-consent .button { min-height: 44px; padding: 12px 16px; white-space: nowrap; }
+.analytics-consent .button-secondary { border: 1px solid #4a4a4f; background: transparent; color: var(--ink); }
+.analytics-consent .button-secondary:hover { border-color: var(--ink); }
+.analytics-consent-actions > a { color: var(--muted); font-size: 0.7rem; white-space: nowrap; }
+
+@media (max-width: 820px) {
+    .analytics-consent { grid-template-columns: 1fr; gap: 20px; }
+}
+
+@media (max-width: 580px) {
+    .analytics-consent {
+        right: max(10px, env(safe-area-inset-right));
+        bottom: max(10px, env(safe-area-inset-bottom));
+        left: max(10px, env(safe-area-inset-left));
+        width: calc(100% - 20px);
+        padding: 20px 16px;
+    }
+    .analytics-consent-actions { display: grid; grid-template-columns: 1fr 1fr; }
+    .analytics-consent .button { width: 100%; }
+    .analytics-consent-actions > a { grid-column: 1 / -1; }
+}

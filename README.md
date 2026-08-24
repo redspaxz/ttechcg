@@ -19,6 +19,8 @@ Production contact submissions require both a working MySQL connection and a val
 
 The contact workflow uses CSRF validation, a honeypot, session rate limiting, a first-party arithmetic CAPTCHA, and an explicit privacy opt-in. The CAPTCHA requires no external keys or tracking service and expires after 15 minutes. Accepted inquiries retain the consent timestamp and privacy-notice version for auditability.
 
+Google Analytics measurement ID `G-WVFXFB5H3M` is integrated using Basic Consent Mode. The Google tag is not requested until a visitor explicitly accepts analytics cookies, advertising consent remains denied, and visitors can reopen their choice from the footer.
+
 ## Local development
 
 1. Copy `.env.example` to `.env` and adjust the values.

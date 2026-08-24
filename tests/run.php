@@ -182,8 +182,13 @@ $assert(is_string($dhlAsset) && !str_contains($dhlAsset, '<text'), 'The disquali
 $partnerSources = file_get_contents(dirname(__DIR__) . '/public/assets/partners/README.md');
 $assert(is_string($partnerSources) && str_contains($partnerSources, 'www.dhl.com/content/dam/dhl/global/core/images/logos/dhl-logo.svg'), 'The official DHL artwork source should be documented.');
 $assert(!str_contains($home, 'href="/pickupsheet"'), 'Pickupsheet should not be discoverable from the public site chrome or homepage.');
-$assert(str_contains($home, 'styles.css?v=20260824-hero-gdpr'), 'The landing hero and privacy update should use a cache-safe stylesheet version.');
-$assert(str_contains($home, 'app.js?v=20260824-hero-gdpr'), 'The landing hero and privacy update should use a cache-safe script version.');
+$assert(str_contains($home, 'styles.css?v=20260824-analytics-consent'), 'The analytics consent update should use a cache-safe stylesheet version.');
+$assert(str_contains($home, 'app.js?v=20260824-analytics-consent'), 'The analytics consent update should use a cache-safe application script version.');
+$assert(str_contains($home, 'analytics.js?v=20260824-analytics-consent'), 'The consent-aware Google Analytics loader should render on every page.');
+$assert(str_contains($home, 'data-analytics-accept'), 'The site should offer an explicit analytics acceptance control.');
+$assert(str_contains($home, 'data-analytics-decline'), 'The site should offer an explicit analytics decline control.');
+$assert(str_contains($home, 'data-analytics-settings'), 'Visitors should be able to reopen analytics settings from the footer.');
+$assert(!str_contains($home, '<script async src="https://www.googletagmanager.com'), 'The remote Google tag should not load in HTML before consent.');
 $assert(str_contains($home, 'viewport-fit=cover'), 'The viewport should support mobile safe areas.');
 $assert(str_contains($home, 'loading="lazy" decoding="async"'), 'Below-the-fold partner logos should load efficiently on mobile.');
 $assert(str_contains($home, '/images/hero-data-center.jpg'), 'The supplied data-center photograph should render in the landing hero.');
@@ -269,6 +274,10 @@ $assert(str_contains($privacy, 'requires an explicit, unchecked opt-in'), 'The p
 $assert(str_contains($privacy, 'withdraw that consent'), 'The privacy notice should explain how consent can be withdrawn.');
 $assert(str_contains($privacy, 'one first-party session cookie'), 'The privacy notice should disclose the essential security cookie.');
 $assert(str_contains($privacy, 'not used for advertising or cross-site tracking'), 'The privacy notice should state the essential cookie limitation.');
+$assert(str_contains($privacy, 'Optional Google Analytics'), 'The privacy notice should disclose the analytics service.');
+$assert(str_contains($privacy, 'G-WVFXFB5H3M'), 'The privacy notice should identify the configured Analytics property.');
+$assert(str_contains($privacy, 'declining sends no analytics data to Google'), 'The privacy notice should explain the effect of declining analytics.');
+$assert(str_contains($privacy, 'Cookie settings'), 'The privacy notice should explain how to change the analytics choice.');
 
 $environmentExample = file_get_contents(dirname(__DIR__) . '/.env.example');
 $assert(is_string($environmentExample) && str_contains($environmentExample, 'APP_TIMEZONE=Africa/Douala'), 'The environment example should use Cameroon time.');
@@ -297,11 +306,20 @@ $assert(is_string($styles) && str_contains($styles, '.hero-media'), 'The landing
 $assert(is_string($styles) && str_contains($styles, 'aspect-ratio: 16 / 9;'), 'The landing hero photograph should display at a 16:9 ratio.');
 $assert(is_string($styles) && str_contains($styles, 'object-fit: cover;'), 'The landing hero photograph should fill its 16:9 frame without distortion.');
 $assert(is_string($styles) && str_contains($styles, '.consent-field'), 'The required privacy opt-in should have accessible responsive styling.');
+$assert(is_string($styles) && str_contains($styles, '.analytics-consent'), 'The analytics preference panel should have responsive styling.');
 
 $script = file_get_contents(dirname(__DIR__) . '/public/assets/app.js');
 $assert(is_string($script) && str_contains($script, "event.key === 'Escape'"), 'The mobile navigation should close with Escape.');
 $assert(is_string($script) && str_contains($script, "toggleAttribute('inert', open)"), 'The open mobile navigation should isolate background content.');
 $assert(is_string($script) && str_contains($script, "matchMedia('(min-width: 821px)')"), 'The navigation state should reset when returning to desktop width.');
+
+$analyticsScript = file_get_contents(dirname(__DIR__) . '/public/assets/analytics.js');
+$assert(is_string($analyticsScript) && str_contains($analyticsScript, "const measurementId = 'G-WVFXFB5H3M'"), 'The supplied Google Analytics measurement ID should be configured exactly.');
+$assert(is_string($analyticsScript) && str_contains($analyticsScript, 'https://www.googletagmanager.com/gtag/js?id=${measurementId}'), 'The consent loader should use the official Google tag endpoint.');
+$assert(is_string($analyticsScript) && str_contains($analyticsScript, "analytics_storage: 'denied'"), 'Analytics storage should be denied by default.');
+$assert(is_string($analyticsScript) && str_contains($analyticsScript, "ad_storage: 'denied'"), 'Advertising storage should remain denied.');
+$assert(is_string($analyticsScript) && str_contains($analyticsScript, "window.gtag('config', measurementId)"), 'The accepted tag should configure the supplied measurement ID.');
+$assert(is_string($analyticsScript) && str_contains($analyticsScript, "preference === 'granted'"), 'The Google tag should load automatically only after a saved grant.');
 
 $database = file_get_contents(dirname(__DIR__) . '/src/Shared/Infrastructure/Database.php');
 $assert(is_string($database) && str_contains($database, "extension_loaded('pdo_mysql')"), 'The application should use PDO MySQL.');
