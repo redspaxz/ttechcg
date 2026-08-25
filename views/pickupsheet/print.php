@@ -15,7 +15,7 @@ $minimumRows = 22;
 $blankRows = max(0, $minimumRows - $pickupSheet->shipmentCount());
 ?>
 <div class="print-actions">
-    <button type="button" onclick="window.print()">Print / Save as PDF</button>
+    <button type="button" data-print-pickup>Print / Save as PDF</button>
     <a href="<?= $e($basePath) ?>/dhl/pickupsheet/submissions">Back to submitted sheets</a>
 </div>
 
