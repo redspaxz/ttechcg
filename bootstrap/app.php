@@ -23,6 +23,9 @@ use App\Shared\Infrastructure\Environment;
 use App\Shared\Infrastructure\MigrationRunner;
 use App\Shared\Security\Captcha;
 use App\Shared\Security\Csrf;
+use App\Shared\Security\RateLimiter;
+use App\Shared\Security\RecordsAccess;
+use App\Shared\Security\SecurityLogger;
 use App\Shared\View\View;
 
 require __DIR__ . '/autoload.php';
@@ -31,14 +34,20 @@ $root = dirname(__DIR__);
 Environment::load($root . '/.env');
 $config = require $root . '/config/app.php';
 date_default_timezone_set((string) $config['timezone']);
+$isProduction = $config['environment'] === 'production';
 
 if (session_status() !== PHP_SESSION_ACTIVE) {
+    ini_set('session.use_strict_mode', '1');
+    ini_set('session.use_only_cookies', '1');
+    ini_set('session.use_trans_sid', '0');
+    ini_set('session.sid_length', '48');
+    ini_set('session.sid_bits_per_character', '6');
     session_save_path($root . '/storage/sessions');
-    session_name('ttechcg_session');
+    session_name($isProduction ? '__Host-ttechcg_session' : 'ttechcg_session');
     session_set_cookie_params([
         'lifetime' => 0,
         'path' => '/',
-        'secure' => isset($_SERVER['HTTPS']) && $_SERVER['HTTPS'] !== 'off',
+        'secure' => $isProduction || (isset($_SERVER['HTTPS']) && $_SERVER['HTTPS'] !== 'off'),
         'httponly' => true,
         'samesite' => 'Lax',
     ]);
@@ -46,7 +55,8 @@ if (session_status() !== PHP_SESSION_ACTIVE) {
 }
 
 $connection = Database::connect();
-if ($connection !== null) {
+$runMigrations = filter_var(getenv('RUN_MIGRATIONS') ?: !$isProduction, FILTER_VALIDATE_BOOL);
+if ($connection !== null && $runMigrations) {
     try {
         MigrationRunner::run($connection, $root . '/database/migrations');
     } catch (Throwable $exception) {
@@ -54,7 +64,6 @@ if ($connection !== null) {
         $connection = null;
     }
 }
-$isProduction = $config['environment'] === 'production';
 $inquiryRepository = match (true) {
     $connection !== null => new MysqlInquiryRepository($connection),
     $isProduction => new UnavailableInquiryRepository(),
@@ -75,6 +84,9 @@ $pickupOperational = !$isProduction || $connection !== null;
 
 $view = new View($root . '/views');
 $csrf = new Csrf();
+$rateLimiter = new RateLimiter($root . '/storage/security');
+$securityLogger = new SecurityLogger();
+$recordsAccess = RecordsAccess::fromEnvironment();
 $contactCaptcha = new Captcha('contact');
 $pickupCaptcha = new Captcha('pickupsheet');
 $siteController = new SiteController($view, $config, $storageMode, $contactOperational);
@@ -86,6 +98,8 @@ $contactController = new ContactController(
     $config,
     $storageMode,
     $contactOperational,
+    $rateLimiter,
+    $securityLogger,
 );
 $pickupsheetController = new PickupsheetController(
     new PickupSheetService($pickupSheetRepository),
@@ -95,6 +109,9 @@ $pickupsheetController = new PickupsheetController(
     $config,
     $storageMode,
     $pickupOperational,
+    $recordsAccess,
+    $rateLimiter,
+    $securityLogger,
 );
 
 $router = new Router();

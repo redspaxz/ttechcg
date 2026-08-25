@@ -29,7 +29,7 @@ final class PickupSheetService
     public function findByReference(string $referenceNumber): ?PickupSheet
     {
         $referenceNumber = strtoupper(trim($referenceNumber));
-        if (!preg_match('/^PS-[0-9]{8}-(?:[A-F0-9]{16}|LEGACY-[0-9]+)$/', $referenceNumber)) {
+        if (!preg_match('/^PS-[0-9]{8}-(?:[A-F0-9]{16}|[A-F0-9]{32}|LEGACY-[0-9]+)$/', $referenceNumber)) {
             return null;
         }
 
@@ -131,7 +131,7 @@ final class PickupSheetService
         return sprintf(
             'PS-%s-%s',
             str_replace('-', '', $collectionDate),
-            strtoupper(bin2hex(random_bytes(8))),
+            strtoupper(bin2hex(random_bytes(16))),
         );
     }
 

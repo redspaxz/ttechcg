@@ -55,11 +55,9 @@ final class SiteController
 
         return Response::json([
             'status' => $healthy ? 'ok' : 'degraded',
-            'application' => $this->config['name'],
-            'storage' => $this->storageMode,
-            'contact' => $this->contactOperational ? 'operational' : 'unavailable',
-            'time' => date(DATE_ATOM),
-        ], $healthy ? 200 : 503);
+        ], $healthy ? 200 : 503, [
+            'Cache-Control' => 'no-store',
+        ]);
     }
 
     public function notFound(Request $request): Response

@@ -6,12 +6,13 @@ $e = static fn (mixed $value): string => htmlspecialchars((string) $value, ENT_Q
 $url = static fn (string $path): string => ($basePath ?? '') . ($path === '/' ? '/' : $path);
 $activePage = $activePage ?? '';
 $pageRobots = $pageRobots ?? 'index, follow';
+$analyticsPageView = $activePage === 'pickupsheet' ? 'disabled' : 'enabled';
 ?>
 <!doctype html>
-<html lang="en">
+<html lang="en" data-analytics-page-view="<?= $analyticsPageView ?>">
 <head>
     <script async src="https://www.googletagmanager.com/gtag/js?id=G-WVFXFB5H3M"></script>
-    <script src="<?= $e($assetBase) ?>/google-tag.js?v=20260825-google-tag"></script>
+    <script src="<?= $e($assetBase) ?>/google-tag.js?v=20260825-security-hardening"></script>
     <meta charset="utf-8">
     <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
     <meta name="theme-color" content="#080808">
@@ -21,7 +22,7 @@ $pageRobots = $pageRobots ?? 'index, follow';
     <link rel="icon" href="<?= $e($assetBase) ?>/ttechcg-mark.svg" type="image/svg+xml">
     <link rel="stylesheet" href="<?= $e($assetBase) ?>/styles.css?v=20260824-original-sheet">
     <script src="<?= $e($assetBase) ?>/app.js?v=20260824-original-sheet" defer></script>
-    <script src="<?= $e($assetBase) ?>/analytics.js?v=20260825-google-tag" defer></script>
+    <script src="<?= $e($assetBase) ?>/analytics.js?v=20260825-security-hardening" defer></script>
 </head>
 <body>
     <a class="skip-link" href="#main-content">Skip to content</a>

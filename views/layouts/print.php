@@ -5,10 +5,10 @@ declare(strict_types=1);
 $e = static fn (mixed $value): string => htmlspecialchars((string) $value, ENT_QUOTES, 'UTF-8');
 ?>
 <!doctype html>
-<html lang="en">
+<html lang="en" data-analytics-page-view="disabled">
 <head>
     <script async src="https://www.googletagmanager.com/gtag/js?id=G-WVFXFB5H3M"></script>
-    <script src="<?= $e($assetBase) ?>/google-tag.js?v=20260825-google-tag"></script>
+    <script src="<?= $e($assetBase) ?>/google-tag.js?v=20260825-security-hardening"></script>
     <meta charset="utf-8">
     <meta name="viewport" content="width=device-width, initial-scale=1">
     <meta name="robots" content="noindex, nofollow">

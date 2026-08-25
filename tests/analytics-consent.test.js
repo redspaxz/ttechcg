@@ -7,17 +7,42 @@ const vm = require('node:vm');
 const tagSource = fs.readFileSync('public/assets/google-tag.js', 'utf8');
 const consentSource = fs.readFileSync('public/assets/analytics.js', 'utf8');
 
-const tagWindow = { dataLayer: [] };
-vm.runInNewContext(tagSource, { window: tagWindow, Date });
-assert.equal(tagWindow.dataLayer[0][0], 'consent');
-assert.equal(tagWindow.dataLayer[0][1], 'default');
-assert.equal(tagWindow.dataLayer[0][2].analytics_storage, 'denied');
-assert.equal(tagWindow.dataLayer[0][2].ad_storage, 'denied');
-assert.equal(tagWindow.dataLayer[1][0], 'js');
-assert.equal(tagWindow.dataLayer[2][0], 'config');
-assert.equal(tagWindow.dataLayer[2][1], 'G-WVFXFB5H3M');
+const runGoogleTag = (pageView = 'enabled') => {
+    const document = {
+        documentElement: { dataset: { analyticsPageView: pageView } },
+    };
+    const window = {
+        dataLayer: [],
+        location: {
+            origin: 'https://ttechcg.com',
+            pathname: '/dhl/pickupsheet/submissions/print',
+            search: '?reference=PS-SECRET-REFERENCE',
+        },
+    };
 
-const runConsentController = (savedPreference = null) => {
+    vm.runInNewContext(tagSource, { window, document, Date });
+    return window.dataLayer;
+};
+
+const publicTagCalls = runGoogleTag();
+assert.equal(publicTagCalls[0][0], 'consent');
+assert.equal(publicTagCalls[0][1], 'default');
+assert.equal(publicTagCalls[0][2].analytics_storage, 'denied');
+assert.equal(publicTagCalls[0][2].ad_storage, 'denied');
+assert.equal(publicTagCalls[1][0], 'js');
+assert.equal(publicTagCalls[2][0], 'config');
+assert.equal(publicTagCalls[2][1], 'G-WVFXFB5H3M');
+
+const sensitiveTagCalls = runGoogleTag('disabled');
+assert.equal(sensitiveTagCalls[2][0], 'set');
+assert.equal(sensitiveTagCalls[2][1].page_location, 'https://ttechcg.com/dhl/pickupsheet/submissions/print');
+assert.equal(sensitiveTagCalls[2][1].page_location.includes('reference='), false);
+assert.equal(sensitiveTagCalls[3][0], 'config');
+assert.equal(sensitiveTagCalls[3][1], 'G-WVFXFB5H3M');
+assert.equal(sensitiveTagCalls[3][2].send_page_view, false);
+assert.equal(sensitiveTagCalls[3][2].page_referrer, '');
+
+const runConsentController = (savedPreference = null, pageView = 'enabled') => {
     const listeners = new Map();
     const panel = { hidden: true };
     const accept = {
@@ -38,6 +63,7 @@ const runConsentController = (savedPreference = null) => {
 
     const document = {
         cookie: '',
+        documentElement: { dataset: { analyticsPageView: pageView } },
         querySelector: (selector) => ({
             '[data-analytics-consent]': panel,
             '[data-analytics-accept]': accept,
@@ -82,5 +108,8 @@ assert.equal(denied.panel.hidden, true, 'A saved choice should keep the panel cl
 const granted = runConsentController('granted');
 assert.equal(granted.consentCalls.length, 1, 'A saved grant should restore analytics consent once.');
 assert.equal(granted.consentCalls[0][2].analytics_storage, 'granted');
+
+const sensitiveGranted = runConsentController('granted', 'disabled');
+assert.equal(sensitiveGranted.consentCalls.length, 0, 'Saved consent must not re-enable Analytics on pickup-sheet operational pages.');
 
 console.log('Analytics consent tests passed.');

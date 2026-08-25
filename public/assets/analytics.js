@@ -6,6 +6,7 @@
     const acceptButton = document.querySelector('[data-analytics-accept]');
     const declineButton = document.querySelector('[data-analytics-decline]');
     const settingsButtons = document.querySelectorAll('[data-analytics-settings]');
+    const analyticsSuppressed = document.documentElement.dataset.analyticsPageView === 'disabled';
 
     const readPreference = () => {
         try {
@@ -47,6 +48,10 @@
     };
 
     const grantGoogleAnalytics = () => {
+        if (analyticsSuppressed) {
+            return;
+        }
+
         window.gtag('consent', 'update', {
             analytics_storage: 'granted',
             ad_storage: 'denied',

@@ -12,9 +12,13 @@ use App\Modules\Pickupsheet\Application\PickupSheetService;
 use App\Modules\Pickupsheet\Infrastructure\DemoPickupSheetRepository;
 use App\Modules\Pickupsheet\Infrastructure\UnavailablePickupSheetRepository;
 use App\Modules\Pickupsheet\UI\PickupsheetController;
+use App\Modules\Site\UI\SiteController;
 use App\Shared\Http\Request;
 use App\Shared\Security\Captcha;
 use App\Shared\Security\Csrf;
+use App\Shared\Security\RateLimiter;
+use App\Shared\Security\RecordsAccess;
+use App\Shared\Security\SecurityLogger;
 use App\Shared\View\View;
 
 require dirname(__DIR__) . '/bootstrap/autoload.php';
@@ -144,7 +148,7 @@ $pickupSheet = $pickupService->submit([
     ],
 ]);
 $assert($pickupSheet->id === 1, 'A pickup sheet should receive a repository ID.');
-$assert((bool) preg_match('/^PS-20260729-[A-F0-9]{16}$/', $pickupSheet->referenceNumber), 'A pickup sheet should receive a date-based unique reference number.');
+$assert((bool) preg_match('/^PS-20260729-[A-F0-9]{32}$/', $pickupSheet->referenceNumber), 'A pickup sheet should receive a 128-bit date-based reference number.');
 $assert($pickupSheet->shipmentCount() === 2, 'All completed shipment rows should be collected.');
 $assert($pickupSheet->totalCashReceivedXaf === 115700, 'The XAF total should be recalculated from shipment rows.');
 $assert($pickupSheet->shipments[0]->destination === 'DCA', 'Destination codes should be normalized to uppercase.');
@@ -193,9 +197,38 @@ $request = new Request('GET', '/products', [], [], '');
 $assert($request->path === '/products', 'Request should retain the routed path.');
 $arrayRequest = new Request('POST', '/dhl/pickupsheet', [], ['shipments' => [['awb_number' => '1234567890']]], '');
 $assert(($arrayRequest->arrayInput('shipments')[0]['awb_number'] ?? '') === '1234567890', 'Request should expose nested shipment arrays.');
+$basicRequest = new Request('GET', '/protected', [], [], '', [
+    'HTTP_AUTHORIZATION' => 'Basic ' . base64_encode('records-admin:test-password'),
+    'HTTP_CF_CONNECTING_IP' => '203.0.113.15',
+]);
+$assert($basicRequest->basicCredentials() === ['records-admin', 'test-password'], 'Request should safely parse a Basic authorization header.');
+$assert($basicRequest->clientIdentifier() === hash('sha256', '203.0.113.15'), 'Request should hash the validated Cloudflare client address.');
+
+$rateLimitDirectory = sys_get_temp_dir() . DIRECTORY_SEPARATOR . 'ttechcg-rate-limit-' . bin2hex(random_bytes(8));
+$rateLimiterTest = new RateLimiter($rateLimitDirectory);
+$assert($rateLimiterTest->consume('test', 'client', 2, 60) === 0, 'The first rate-limited request should be allowed.');
+$assert($rateLimiterTest->consume('test', 'client', 2, 60) === 0, 'Requests within the persistent limit should be allowed.');
+$assert($rateLimiterTest->consume('test', 'client', 2, 60) > 0, 'Requests beyond the persistent limit should be denied with a retry time.');
+foreach (glob($rateLimitDirectory . DIRECTORY_SEPARATOR . '*') ?: [] as $rateLimitFile) {
+    unlink($rateLimitFile);
+}
+rmdir($rateLimitDirectory);
 
 $config = require dirname(__DIR__) . '/config/app.php';
 $view = new View(dirname(__DIR__) . '/views');
+$healthResponse = (new SiteController($view, $config, 'MySQL connected', true))->health(new Request('GET', '/health'));
+$assert($healthResponse->body() === '{"status":"ok"}', 'The public health endpoint should not expose backend component details.');
+$assert(($healthResponse->headers()['Cache-Control'] ?? '') === 'no-store', 'Health status should not be cached.');
+$disabledRateLimiter = new RateLimiter('', false);
+$disabledSecurityLogger = new SecurityLogger(false);
+$recordsUsername = 'records-admin';
+$recordsPassword = 'test-records-password';
+$recordsAccess = new RecordsAccess($recordsUsername, password_hash($recordsPassword, PASSWORD_DEFAULT));
+$recordsServer = [
+    'PHP_AUTH_USER' => $recordsUsername,
+    'PHP_AUTH_PW' => $recordsPassword,
+    'REMOTE_ADDR' => '203.0.113.20',
+];
 $common = [
     'basePath' => '',
     'assetBase' => '/public/assets',
@@ -214,6 +247,8 @@ $controller = new ContactController(
     $config,
     'Demo workspace',
     true,
+    $disabledRateLimiter,
+    $disabledSecurityLogger,
 );
 $controllerChallenge = $captchaService->issue();
 $controllerResponse = $controller->store(new Request('POST', '/contact', [], [
@@ -242,6 +277,9 @@ $pickupController = new PickupsheetController(
     $config,
     'Demo workspace',
     true,
+    $recordsAccess,
+    $disabledRateLimiter,
+    $disabledSecurityLogger,
 );
 
 $openPickup = $pickupController->index(new Request('GET', '/dhl/pickupsheet', [], [], ''));
@@ -252,11 +290,22 @@ $assert(str_contains($openPickup->body(), 'name="shipments[0][checked_by]"'), 'T
 $assert(!str_contains($openPickup->body(), 'Operator login'), 'The pickup form should not show an authentication portal.');
 $assert(($openPickup->headers()['Cache-Control'] ?? '') === 'private, no-store, max-age=0', 'The open pickup form should not be cached.');
 
-$openEmptySubmissions = $pickupController->submissions(new Request('GET', '/dhl/pickupsheet/submissions', [], [], ''));
-$assert($openEmptySubmissions->status() === 200, 'Submitted sheets should be directly accessible without authentication.');
-$assert(str_contains($openEmptySubmissions->body(), 'No submitted sheets yet.'), 'The open submissions view should show its empty state.');
-$missingExport = $pickupController->export(new Request('GET', '/dhl/pickupsheet/submissions/export', ['reference' => 'PS-20260729-AAAAAAAAAAAAAAAA'], [], ''));
-$assert($missingExport->status() === 404, 'An unknown direct spreadsheet export should return not found.');
+$deniedSubmissions = $pickupController->submissions(new Request('GET', '/dhl/pickupsheet/submissions', [], [], '', [
+    'REMOTE_ADDR' => '203.0.113.21',
+]));
+$assert($deniedSubmissions->status() === 401, 'Submitted sheets should fail closed without records credentials.');
+$assert(str_starts_with($deniedSubmissions->headers()['WWW-Authenticate'] ?? '', 'Basic realm='), 'Protected records should issue an HTTPS Basic challenge.');
+$deniedExport = $pickupController->export(new Request('GET', '/dhl/pickupsheet/submissions/export', ['reference' => 'PS-20260729-AAAAAAAAAAAAAAAA'], [], '', [
+    'PHP_AUTH_USER' => $recordsUsername,
+    'PHP_AUTH_PW' => 'incorrect-password',
+    'REMOTE_ADDR' => '203.0.113.22',
+]));
+$assert($deniedExport->status() === 401, 'Incorrect records credentials should not expose exports.');
+$openEmptySubmissions = $pickupController->submissions(new Request('GET', '/dhl/pickupsheet/submissions', [], [], '', $recordsServer));
+$assert($openEmptySubmissions->status() === 200, 'Valid records credentials should open the submissions view.');
+$assert(str_contains($openEmptySubmissions->body(), 'No submitted sheets yet.'), 'The authorised submissions view should show its empty state.');
+$missingExport = $pickupController->export(new Request('GET', '/dhl/pickupsheet/submissions/export', ['reference' => 'PS-20260729-AAAAAAAAAAAAAAAA'], [], '', $recordsServer));
+$assert($missingExport->status() === 404, 'An authorised unknown spreadsheet export should return not found.');
 
 $pickupChallenge = $pickupCaptcha->issue();
 $pickupParts = preg_split('/\s+/', $pickupChallenge['question']);
@@ -290,7 +339,7 @@ $assert($savedControllerSheet instanceof App\Modules\Pickupsheet\Domain\PickupSh
 $assert(($savedControllerSheet->shipments[0]->checkedBy ?? '') === 'Controller Checker', 'The server should retain the validated checker entered with the shipment.');
 $savedReference = $savedControllerSheet->referenceNumber;
 
-$openSubmissions = $pickupController->submissions(new Request('GET', '/dhl/pickupsheet/submissions', [], [], ''));
+$openSubmissions = $pickupController->submissions(new Request('GET', '/dhl/pickupsheet/submissions', [], [], '', $recordsServer));
 $assert(str_contains($openSubmissions->body(), $savedReference), 'The direct table should show each sheet reference.');
 $assert(!str_contains($openSubmissions->body(), 'dhl-logo.svg'), 'The submitted-sheets screen should not display the DHL logo.');
 $assert(str_contains($openSubmissions->body(), 'Controller Client'), 'The direct table should show shipment rows.');
@@ -298,7 +347,7 @@ $assert(str_contains($openSubmissions->body(), 'Print / PDF'), 'Each submitted s
 $assert(str_contains($openSubmissions->body(), 'Export Excel'), 'Each submitted sheet should provide an Excel export action.');
 $assert(($openSubmissions->headers()['Cache-Control'] ?? '') === 'private, no-store, max-age=0', 'Submitted records should not be cached.');
 
-$printResponse = $pickupController->print(new Request('GET', '/dhl/pickupsheet/submissions/print', ['reference' => $savedReference], [], ''));
+$printResponse = $pickupController->print(new Request('GET', '/dhl/pickupsheet/submissions/print', ['reference' => $savedReference], [], '', $recordsServer));
 $printStyles = file_get_contents(dirname(__DIR__) . '/public/assets/print.css');
 $printScript = file_get_contents(dirname(__DIR__) . '/public/assets/print.js');
 $assert($printResponse->status() === 200, 'A direct pickup sheet should render for printing.');
@@ -331,7 +380,8 @@ $assert(str_contains($printResponse->body(), 'border="1" rules="all" cellspacing
 $assert(is_string($printStyles) && !str_contains($printStyles, 'A4 landscape'), 'The old landscape print layout should be removed.');
 $assert(!str_contains($printResponse->body(), 'dhl-logo.svg'), 'The printable sheet should not display the DHL logo.');
 $assert(substr_count($printResponse->body(), 'https://www.googletagmanager.com/gtag/js?id=G-WVFXFB5H3M') === 1, 'The print page should contain exactly one Google tag.');
-$exportResponse = $pickupController->export(new Request('GET', '/dhl/pickupsheet/submissions/export', ['reference' => $savedReference], [], ''));
+$assert(str_contains($printResponse->body(), 'data-analytics-page-view="disabled"'), 'Printable records should suppress Analytics page views and reference-query collection.');
+$exportResponse = $pickupController->export(new Request('GET', '/dhl/pickupsheet/submissions/export', ['reference' => $savedReference], [], '', $recordsServer));
 $assert($exportResponse->status() === 200, 'A direct pickup sheet should export successfully.');
 $assert(str_starts_with($exportResponse->body(), "\xEF\xBB\xBF"), 'The Excel-compatible CSV should include a UTF-8 byte-order mark.');
 $assert(str_contains($exportResponse->body(), 'Controller Client'), 'The spreadsheet export should contain shipment data.');
@@ -371,13 +421,14 @@ $assert(is_string($partnerSources) && str_contains($partnerSources, 'www.dhl.com
 $assert(!str_contains($home, 'href="/dhl/pickupsheet"'), 'Pickupsheet should not be discoverable from the public site chrome or homepage.');
 $assert(str_contains($home, 'styles.css?v=20260824-original-sheet'), 'The original-sheet update should use a cache-safe stylesheet version.');
 $assert(str_contains($home, 'app.js?v=20260824-original-sheet'), 'The original-sheet update should use a cache-safe application script version.');
-$assert(str_contains($home, 'analytics.js?v=20260825-google-tag'), 'The current consent-aware Google Analytics loader should render on every page.');
+$assert(str_contains($home, 'analytics.js?v=20260825-security-hardening'), 'The current consent-aware Google Analytics loader should render on every page.');
 $assert(str_contains($home, 'data-analytics-accept'), 'The site should offer an explicit analytics acceptance control.');
 $assert(str_contains($home, 'data-analytics-decline'), 'The site should offer an explicit analytics decline control.');
 $assert(str_contains($home, 'data-analytics-settings'), 'Visitors should be able to reopen analytics settings from the footer.');
 $assert((bool) preg_match('/<head>\s*<script async src="https:\/\/www\.googletagmanager\.com\/gtag\/js\?id=G-WVFXFB5H3M"><\/script>/', $home), 'The supplied Google tag should appear immediately after the head element.');
 $assert(substr_count($home, 'https://www.googletagmanager.com/gtag/js?id=G-WVFXFB5H3M') === 1, 'Each standard page should contain exactly one Google tag.');
-$assert(str_contains($home, 'google-tag.js?v=20260825-google-tag'), 'Each page should load the CSP-compatible Google tag initializer once.');
+$assert(str_contains($home, 'google-tag.js?v=20260825-security-hardening'), 'Each page should load the CSP-compatible Google tag initializer once.');
+$assert(str_contains($home, 'data-analytics-page-view="enabled"'), 'Public corporate pages should permit consent-aware Analytics page views.');
 $assert(str_contains($home, 'viewport-fit=cover'), 'The viewport should support mobile safe areas.');
 $assert(str_contains($home, 'loading="lazy" decoding="async"'), 'Below-the-fold partner logos should load efficiently on mobile.');
 $assert(str_contains($home, '/images/hero-data-center.jpg'), 'The supplied data-center photograph should render in the landing hero.');
@@ -474,6 +525,7 @@ $assert(str_contains($product, 'name="captcha_nonce" value="pickup-captcha-nonce
 $assert(str_contains($product, 'type="checkbox" name="privacy_consent" value="1" required'), 'The pickup form should require explicit privacy consent.');
 $assert(!str_contains($product, 'name="privacy_consent" value="1" required checked'), 'Pickup-sheet consent should not be preselected.');
 $assert(str_contains($product, '<meta name="robots" content="noindex, nofollow">'), 'The direct Pickupsheet page should not be indexed.');
+$assert(str_contains($product, 'data-analytics-page-view="disabled"'), 'Pickup-sheet operational pages should suppress Analytics page views.');
 $sitemap = file_get_contents(dirname(__DIR__) . '/sitemap.xml');
 $assert(is_string($sitemap) && !str_contains($sitemap, '/dhl/pickupsheet'), 'The sitemap should not advertise the new Pickupsheet route.');
 $assert(is_string($sitemap) && !str_contains($sitemap, '/pickupsheet'), 'The sitemap should not advertise the legacy Pickupsheet route.');
@@ -488,8 +540,8 @@ $assert(str_contains($privacy, 'Information we collect'), 'The privacy notice sh
 $assert(str_contains($privacy, 'agent name, collection date, consignor, AWB number'), 'The privacy notice should disclose pickup-sheet fields.');
 $assert(str_contains($privacy, 'record and reconcile cash shipment collections'), 'The privacy notice should state the pickup-sheet processing purpose.');
 $assert(str_contains($privacy, 'checker identity entered for each shipment'), 'The privacy notice should explain the entered checker identity.');
-$assert(str_contains($privacy, 'Pickupsheet routes do not require an account'), 'The privacy notice should disclose open Pickupsheet access.');
-$assert(str_contains($privacy, 'Anyone with the direct submissions URL can view, print, or export'), 'The privacy notice should disclose direct record access.');
+$assert(str_contains($privacy, 'pickup-sheet entry form is public'), 'The privacy notice should disclose public pickup-sheet entry.');
+$assert(str_contains($privacy, 'submitted records, print views, and exports require authorised staff credentials'), 'The privacy notice should disclose protected record access.');
 $assert(str_contains($privacy, 'inquiry and pickup-sheet forms require an explicit, unchecked opt-in'), 'Both personal-data forms should require explicit consent.');
 $assert(str_contains($privacy, 'T&amp;Tech Consulting Group'), 'The privacy notice should identify the data controller.');
 $assert(str_contains($privacy, 'We do not sell inquiry information.'), 'The privacy notice should state the use limitation.');
@@ -502,11 +554,14 @@ $assert(str_contains($privacy, 'Optional Google Analytics'), 'The privacy notice
 $assert(str_contains($privacy, 'G-WVFXFB5H3M'), 'The privacy notice should identify the configured Analytics property.');
 $assert(str_contains($privacy, 'Declining keeps analytics storage denied'), 'The privacy notice should explain the effect of declining analytics.');
 $assert(str_contains($privacy, 'cookieless consent-state pings'), 'The privacy notice should disclose pre-consent Consent Mode pings.');
+$assert(str_contains($privacy, 'Analytics page views are suppressed on pickup-sheet operational pages'), 'The privacy notice should disclose sensitive-route Analytics suppression.');
 $assert(str_contains($privacy, 'Cookie settings'), 'The privacy notice should explain how to change the analytics choice.');
 
 $environmentExample = file_get_contents(dirname(__DIR__) . '/.env.example');
 $assert(is_string($environmentExample) && str_contains($environmentExample, 'APP_TIMEZONE=Africa/Douala'), 'The environment example should use Cameroon time.');
 $assert(is_string($environmentExample) && str_contains($environmentExample, 'CONTACT_EMAIL=info@ttechcg.com'), 'The environment example should route production inquiries to the company mailbox.');
+$assert(is_string($environmentExample) && str_contains($environmentExample, 'PICKUPSHEET_RECORDS_PASSWORD_HASH=replace-with-password-hash'), 'The environment example should require a server-managed records password hash.');
+$assert(is_string($environmentExample) && str_contains($environmentExample, 'RUN_MIGRATIONS=true'), 'The environment example should explicitly document migration execution.');
 $assert(is_string($environmentExample) && !str_contains($environmentExample, 'JUMPCLOUD_'), 'The environment example should not require identity-provider configuration.');
 
 $styles = file_get_contents(dirname(__DIR__) . '/public/assets/styles.css');
@@ -555,12 +610,29 @@ $assert(is_string($googleTagScript) && str_contains($googleTagScript, "window.gt
 $assert(is_string($googleTagScript) && str_contains($googleTagScript, "window.gtag('js', new Date())"), 'The supplied Google tag should initialize gtag.js.');
 $assert(is_string($googleTagScript) && str_contains($googleTagScript, "analytics_storage: 'denied'"), 'Analytics storage should be denied by default.');
 $assert(is_string($googleTagScript) && str_contains($googleTagScript, "ad_storage: 'denied'"), 'Advertising storage should remain denied.');
+$assert(is_string($googleTagScript) && str_contains($googleTagScript, 'send_page_view: false'), 'Sensitive pickup-sheet routes should suppress Analytics page views.');
+$assert(is_string($googleTagScript) && str_contains($googleTagScript, 'window.location.origin}${window.location.pathname}'), 'Sensitive Analytics configuration should remove record-reference query values.');
 $assert(is_string($analyticsScript) && str_contains($analyticsScript, "analytics_storage: 'granted'"), 'The consent controller should grant analytics storage only after acceptance.');
+$assert(is_string($analyticsScript) && str_contains($analyticsScript, 'analyticsSuppressed'), 'Consent acceptance should not re-enable Analytics on sensitive routes.');
 $assert(is_string($analyticsScript) && str_contains($analyticsScript, "preference === 'granted'"), 'A saved grant should restore accepted analytics consent.');
 $htaccess = file_get_contents(dirname(__DIR__) . '/.htaccess');
 $assert(is_string($htaccess) && str_contains($htaccess, "script-src 'self' https://www.googletagmanager.com"), 'The CSP should permit the supplied Google tag script after consent.');
 $assert(is_string($htaccess) && str_contains($htaccess, "connect-src 'self' https://www.googletagmanager.com https://www.google-analytics.com https://*.google-analytics.com"), 'The CSP should permit Google Analytics measurement requests after consent.');
 $assert(is_string($htaccess) && !str_contains($htaccess, "script-src 'self' 'unsafe-inline'"), 'The Google tag integration should not weaken CSP with inline-script permission.');
+$assert(is_string($htaccess) && str_contains($htaccess, "base-uri 'none'"), 'The CSP should disallow document base URL changes.');
+$assert(is_string($htaccess) && str_contains($htaccess, 'Strict-Transport-Security "max-age=31536000"'), 'Production should enforce HTTPS with one year of HSTS.');
+$assert(is_string($htaccess) && str_contains($htaccess, 'Header always unset X-Powered-By'), 'Production should suppress backend version disclosure.');
+$assert(is_string($htaccess) && str_contains($htaccess, 'Cross-Origin-Opener-Policy "same-origin"'), 'Production documents should receive cross-origin opener isolation.');
+$assert(is_string($htaccess) && str_contains($htaccess, 'https://ttechcg.com%{REQUEST_URI} [R=308,L,NE]'), 'Production should redirect the first request to canonical HTTPS before credentials can reach PHP.');
+$assert(is_string($htaccess) && str_contains($htaccess, 'E=HTTP_AUTHORIZATION:%1'), 'Apache should forward HTTPS Basic credentials to PHP safely.');
+
+$cpanelDeployment = file_get_contents(dirname(__DIR__) . '/.cpanel.yml');
+$assert(is_string($cpanelDeployment) && str_contains($cpanelDeployment, 'chmod 700 ${DEPLOYPATH}storage/sessions ${DEPLOYPATH}storage/security'), 'Deployment should restrict writable runtime storage to the account owner.');
+$assert(is_string($cpanelDeployment) && str_contains($cpanelDeployment, 'test -w ${DEPLOYPATH}storage/security'), 'Deployment should fail if persistent security storage is not writable.');
+
+$verificationWorkflow = file_get_contents(dirname(__DIR__) . '/.github/workflows/verify.yml');
+$assert(is_string($verificationWorkflow) && str_contains($verificationWorkflow, 'actions/checkout@11d5960a326750d5838078e36cf38b85af677262'), 'CI dependencies should be pinned to an immutable commit.');
+$assert(is_string($verificationWorkflow) && !str_contains($verificationWorkflow, 'actions/checkout@v4'), 'CI should not execute a mutable action tag.');
 
 $database = file_get_contents(dirname(__DIR__) . '/src/Shared/Infrastructure/Database.php');
 $assert(is_string($database) && str_contains($database, "extension_loaded('pdo_mysql')"), 'The application should use PDO MySQL.');
@@ -586,6 +658,10 @@ $assert(is_string($pickupMysqlRepository) && str_contains($pickupMysqlRepository
 $bootstrap = file_get_contents(dirname(__DIR__) . '/bootstrap/app.php');
 $assert(is_string($bootstrap) && str_contains($bootstrap, "'httponly' => true"), 'The security session cookie should be inaccessible to client-side scripts.');
 $assert(is_string($bootstrap) && str_contains($bootstrap, "'samesite' => 'Lax'"), 'The security session cookie should use a SameSite policy.');
+$assert(is_string($bootstrap) && str_contains($bootstrap, "session.use_strict_mode', '1'"), 'PHP should reject uninitialized attacker-selected session identifiers.');
+$assert(is_string($bootstrap) && str_contains($bootstrap, "'__Host-ttechcg_session'"), 'The production session cookie should use the host-only secure prefix.');
+$assert(is_string($bootstrap) && str_contains($bootstrap, '$connection !== null && $runMigrations'), 'Production migrations should require an explicit environment switch.');
+$assert(is_string($bootstrap) && str_contains($bootstrap, 'RecordsAccess::fromEnvironment()'), 'Stored pickup-sheet records should use fail-closed environment-backed access control.');
 $assert(is_string($bootstrap) && !str_contains($bootstrap, 'JumpCloudOidcProvider'), 'Pickupsheet should not require an identity provider.');
 $assert(is_string($bootstrap) && str_contains($bootstrap, "'/dhl/pickupsheet'"), 'Pickupsheet should be routed under the DHL namespace.');
 $assert(is_string($bootstrap) && str_contains($bootstrap, "'/pickupsheet'"), 'The legacy Pickupsheet entry should retain a permanent redirect.');

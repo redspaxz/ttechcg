@@ -32,13 +32,13 @@ final class Response
         ]);
     }
 
-    /** @param array<string, mixed> $data */
-    public static function json(array $data, int $status = 200): self
+    /** @param array<string, mixed> $data @param array<string, string> $headers */
+    public static function json(array $data, int $status = 200, array $headers = []): self
     {
         return new self(
             (string) json_encode($data, JSON_UNESCAPED_SLASHES | JSON_UNESCAPED_UNICODE),
             $status,
-            ['Content-Type' => 'application/json; charset=UTF-8'],
+            array_merge(['Content-Type' => 'application/json; charset=UTF-8'], $headers),
         );
     }
 

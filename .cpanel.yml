@@ -7,6 +7,7 @@ deployment:
     - /bin/rm -f ${DEPLOYPATH}.env.example ${DEPLOYPATH}.gitignore ${DEPLOYPATH}.cpanel.yml ${DEPLOYPATH}README.md ${DEPLOYPATH}router.php ${DEPLOYPATH}docker-compose.yml
     - /bin/rsync -av --chmod=D755,F644 --exclude=.git/ --exclude=.github/ --exclude=.env --exclude=.env.example --exclude=.cpanel.yml --exclude=.gitignore --exclude=bin/ --exclude=tests/ --exclude=README.md --exclude=router.php --exclude=docker-compose.yml ./ $DEPLOYPATH
     - /bin/chmod 755 $DEPLOYPATH
+    - /bin/chmod 700 ${DEPLOYPATH}storage/sessions ${DEPLOYPATH}storage/security
     - /bin/chmod 644 ${DEPLOYPATH}.htaccess ${DEPLOYPATH}index.php ${DEPLOYPATH}public/assets/styles.css ${DEPLOYPATH}public/assets/google-tag.js ${DEPLOYPATH}public/assets/print.css ${DEPLOYPATH}public/assets/print.js
     - /bin/test -r ${DEPLOYPATH}.htaccess
     - /bin/test -s ${DEPLOYPATH}index.php
@@ -14,3 +15,5 @@ deployment:
     - /bin/test -s ${DEPLOYPATH}public/assets/google-tag.js
     - /bin/test -s ${DEPLOYPATH}public/assets/print.css
     - /bin/test -s ${DEPLOYPATH}public/assets/print.js
+    - /bin/test -w ${DEPLOYPATH}storage/sessions
+    - /bin/test -w ${DEPLOYPATH}storage/security

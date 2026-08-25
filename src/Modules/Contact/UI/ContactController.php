@@ -9,6 +9,8 @@ use App\Shared\Http\Request;
 use App\Shared\Http\Response;
 use App\Shared\Security\Captcha;
 use App\Shared\Security\Csrf;
+use App\Shared\Security\RateLimiter;
+use App\Shared\Security\SecurityLogger;
 use App\Shared\View\View;
 use InvalidArgumentException;
 use RuntimeException;
@@ -24,6 +26,8 @@ final class ContactController
         private readonly array $config,
         private readonly string $storageMode,
         private readonly bool $contactOperational,
+        private readonly RateLimiter $rateLimiter,
+        private readonly SecurityLogger $securityLogger,
     ) {
     }
 
@@ -49,7 +53,13 @@ final class ContactController
 
     public function store(Request $request): Response
     {
+        $rateLimitResponse = $this->rateLimit($request);
+        if ($rateLimitResponse !== null) {
+            return $rateLimitResponse;
+        }
+
         if (!$this->csrf->validate($request->input('_token'))) {
+            $this->securityLogger->event('contact.csrf', $request, 'denied');
             return Response::html('Invalid or expired form token.', 419);
         }
 
@@ -69,11 +79,13 @@ final class ContactController
         }
 
         if ($request->input('website') !== '') {
+            $this->securityLogger->event('contact.honeypot', $request, 'blocked');
             $_SESSION['_flash'] = 'Thanks. Your message has been received.';
             return Response::redirect($request->basePath . '/contact');
         }
 
         if (!$this->captcha->validate($request->input('captcha_nonce'), $request->input('captcha_answer'))) {
+            $this->securityLogger->event('contact.captcha', $request, 'denied');
             $_SESSION['_errors'] = ['Please complete the human verification with the correct answer.'];
             $_SESSION['_old'] = $input;
             return Response::redirect($request->basePath . '/contact');
@@ -81,6 +93,7 @@ final class ContactController
 
         $lastInquiryAt = (int) ($_SESSION['_last_inquiry_at'] ?? 0);
         if ($lastInquiryAt > 0 && time() - $lastInquiryAt < 15) {
+            $this->securityLogger->event('contact.session_cooldown', $request, 'denied');
             $_SESSION['_errors'] = ['Please wait a moment before sending another inquiry.'];
             $_SESSION['_old'] = $input;
             return Response::redirect($request->basePath . '/contact');
@@ -88,18 +101,46 @@ final class ContactController
 
         try {
             $this->service->submit($input);
+            $this->securityLogger->event('contact.submission', $request, 'accepted');
             $_SESSION['_flash'] = 'Thanks. Your message has been received. Our team will follow up shortly.';
             $_SESSION['_last_inquiry_at'] = time();
         } catch (InvalidArgumentException $exception) {
+            $this->securityLogger->event('contact.validation', $request, 'denied');
             $_SESSION['_errors'] = [$exception->getMessage()];
             $_SESSION['_old'] = $input;
         } catch (RuntimeException $exception) {
             error_log($exception->__toString());
+            $this->securityLogger->event('contact.persistence', $request, 'failed');
             $_SESSION['_errors'] = ['We could not save your inquiry. Please try again later.'];
             $_SESSION['_old'] = $input;
         }
 
         return Response::redirect($request->basePath . '/contact');
+    }
+
+    private function rateLimit(Request $request): ?Response
+    {
+        try {
+            $retryAfter = $this->rateLimiter->consume('contact-submit', $request->clientIdentifier(), 10, 3600);
+        } catch (RuntimeException $exception) {
+            error_log($exception->__toString());
+            $this->securityLogger->event('contact.rate_limit', $request, 'failed');
+
+            return Response::html('The contact form is temporarily unavailable. Please try again later.', 503, [
+                'Cache-Control' => 'no-store',
+            ]);
+        }
+
+        if ($retryAfter > 0) {
+            $this->securityLogger->event('contact.rate_limit', $request, 'denied', ['retry_after' => $retryAfter]);
+
+            return Response::html('Too many requests. Please try again later.', 429, [
+                'Cache-Control' => 'no-store',
+                'Retry-After' => (string) $retryAfter,
+            ]);
+        }
+
+        return null;
     }
 
     /** @param array<string, mixed> $data @return array<string, mixed> */

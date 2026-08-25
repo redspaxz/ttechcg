@@ -3,5 +3,7 @@
 vendor/
 storage/sessions/*
 !storage/sessions/.gitkeep
+storage/security/*
+!storage/security/.gitkeep
 storage/*.zip
 

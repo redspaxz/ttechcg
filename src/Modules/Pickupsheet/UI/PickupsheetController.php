@@ -10,6 +10,9 @@ use App\Shared\Http\Request;
 use App\Shared\Http\Response;
 use App\Shared\Security\Captcha;
 use App\Shared\Security\Csrf;
+use App\Shared\Security\RateLimiter;
+use App\Shared\Security\RecordsAccess;
+use App\Shared\Security\SecurityLogger;
 use App\Shared\View\View;
 use InvalidArgumentException;
 use RuntimeException;
@@ -25,6 +28,9 @@ final class PickupsheetController
         private readonly array $config,
         private readonly string $storageMode,
         private readonly bool $pickupOperational,
+        private readonly RecordsAccess $recordsAccess,
+        private readonly RateLimiter $rateLimiter,
+        private readonly SecurityLogger $securityLogger,
     ) {
     }
 
@@ -57,7 +63,13 @@ final class PickupsheetController
 
     public function store(Request $request): Response
     {
+        $rateLimitResponse = $this->rateLimit($request, 'pickup-submit', 30, 3600);
+        if ($rateLimitResponse !== null) {
+            return $rateLimitResponse;
+        }
+
         if (!$this->csrf->validate($request->input('_token'))) {
+            $this->securityLogger->event('pickupsheet.csrf', $request, 'denied');
             return Response::html('Invalid or expired form token.', 419);
         }
 
@@ -75,11 +87,13 @@ final class PickupsheetController
         }
 
         if ($request->input('website') !== '') {
+            $this->securityLogger->event('pickupsheet.honeypot', $request, 'blocked');
             $_SESSION['_pickup_flash'] = 'Pickup sheet saved.';
             return Response::redirect($request->basePath . '/dhl/pickupsheet/');
         }
 
         if (!$this->captcha->validate($request->input('captcha_nonce'), $request->input('captcha_answer'))) {
+            $this->securityLogger->event('pickupsheet.captcha', $request, 'denied');
             $_SESSION['_pickup_errors'] = ['Please complete the human verification with the correct answer.'];
             $_SESSION['_pickup_old'] = $input;
             return Response::redirect($request->basePath . '/dhl/pickupsheet/');
@@ -87,6 +101,7 @@ final class PickupsheetController
 
         $lastSubmissionAt = (int) ($_SESSION['_last_pickup_sheet_at'] ?? 0);
         if ($lastSubmissionAt > 0 && time() - $lastSubmissionAt < 10) {
+            $this->securityLogger->event('pickupsheet.session_cooldown', $request, 'denied');
             $_SESSION['_pickup_errors'] = ['Please wait a moment before saving another pickup sheet.'];
             $_SESSION['_pickup_old'] = $input;
             return Response::redirect($request->basePath . '/dhl/pickupsheet/');
@@ -94,6 +109,10 @@ final class PickupsheetController
 
         try {
             $pickupSheet = $this->service->submit($input);
+            $this->securityLogger->event('pickupsheet.submission', $request, 'accepted', [
+                'resource_id' => substr(hash('sha256', $pickupSheet->referenceNumber), 0, 24),
+                'shipment_count' => $pickupSheet->shipmentCount(),
+            ]);
             $_SESSION['_pickup_flash'] = sprintf(
                 'Pickup sheet %s saved with %d shipment%s and a total of %s XAF.',
                 $pickupSheet->referenceNumber,
@@ -103,10 +122,12 @@ final class PickupsheetController
             );
             $_SESSION['_last_pickup_sheet_at'] = time();
         } catch (InvalidArgumentException $exception) {
+            $this->securityLogger->event('pickupsheet.validation', $request, 'denied');
             $_SESSION['_pickup_errors'] = [$exception->getMessage()];
             $_SESSION['_pickup_old'] = $input;
         } catch (RuntimeException $exception) {
             error_log($exception->__toString());
+            $this->securityLogger->event('pickupsheet.persistence', $request, 'failed');
             $_SESSION['_pickup_errors'] = ['We could not save the pickup sheet. Please try again later.'];
             $_SESSION['_pickup_old'] = $input;
         }
@@ -116,6 +137,11 @@ final class PickupsheetController
 
     public function submissions(Request $request): Response
     {
+        $authorizationResponse = $this->authorizeRecords($request, 'list');
+        if ($authorizationResponse !== null) {
+            return $authorizationResponse;
+        }
+
         $errors = [];
         $pickupSheets = [];
         if ($this->pickupOperational) {
@@ -146,9 +172,14 @@ final class PickupsheetController
 
     public function print(Request $request): Response
     {
+        $authorizationResponse = $this->authorizeRecords($request, 'print');
+        if ($authorizationResponse !== null) {
+            return $authorizationResponse;
+        }
+
         $pickupSheet = $this->service->findByReference($request->queryString('reference'));
         if ($pickupSheet === null) {
-            return Response::html('Pickup sheet not found.', 404, ['X-Robots-Tag' => 'noindex, nofollow']);
+            return Response::html('Pickup sheet not found.', 404, $this->privateHeaders());
         }
 
         $body = $this->view->render('pickupsheet/print', [
@@ -163,9 +194,14 @@ final class PickupsheetController
 
     public function export(Request $request): Response
     {
+        $authorizationResponse = $this->authorizeRecords($request, 'export');
+        if ($authorizationResponse !== null) {
+            return $authorizationResponse;
+        }
+
         $pickupSheet = $this->service->findByReference($request->queryString('reference'));
         if ($pickupSheet === null) {
-            return Response::html('Pickup sheet not found.', 404, ['X-Robots-Tag' => 'noindex, nofollow']);
+            return Response::html('Pickup sheet not found.', 404, $this->privateHeaders());
         }
 
         return Response::download(
@@ -182,6 +218,63 @@ final class PickupsheetController
             'Cache-Control' => 'private, no-store, max-age=0',
             'X-Robots-Tag' => 'noindex, nofollow',
         ];
+    }
+
+    private function authorizeRecords(Request $request, string $action): ?Response
+    {
+        $resource = $request->queryString('reference');
+        $context = ['action' => $action];
+        if ($resource !== '') {
+            $context['resource_id'] = substr(hash('sha256', $resource), 0, 24);
+        }
+
+        if ($this->recordsAccess->allows($request)) {
+            $this->securityLogger->event('pickupsheet.records_access', $request, 'granted', $context);
+            return null;
+        }
+
+        $rateLimitResponse = $this->rateLimit($request, 'pickup-records-auth', 10, 900);
+        if ($rateLimitResponse !== null) {
+            return $rateLimitResponse;
+        }
+
+        $context['configured'] = $this->recordsAccess->isConfigured();
+        $this->securityLogger->event('pickupsheet.records_access', $request, 'denied', $context);
+
+        return Response::html('Authentication is required to access pickup-sheet records.', 401, [
+            'Cache-Control' => 'private, no-store, max-age=0',
+            'WWW-Authenticate' => 'Basic realm="T&Tech Pickupsheet Records", charset="UTF-8"',
+            'X-Robots-Tag' => 'noindex, nofollow',
+        ]);
+    }
+
+    private function rateLimit(
+        Request $request,
+        string $scope,
+        int $limit,
+        int $windowSeconds,
+    ): ?Response {
+        try {
+            $retryAfter = $this->rateLimiter->consume($scope, $request->clientIdentifier(), $limit, $windowSeconds);
+        } catch (RuntimeException $exception) {
+            error_log($exception->__toString());
+            $this->securityLogger->event($scope . '.rate_limit', $request, 'failed');
+
+            return Response::html('This service is temporarily unavailable. Please try again later.', 503, [
+                'Cache-Control' => 'no-store',
+            ]);
+        }
+
+        if ($retryAfter > 0) {
+            $this->securityLogger->event($scope . '.rate_limit', $request, 'denied', ['retry_after' => $retryAfter]);
+
+            return Response::html('Too many requests. Please try again later.', 429, [
+                'Cache-Control' => 'no-store',
+                'Retry-After' => (string) $retryAfter,
+            ]);
+        }
+
+        return null;
     }
 
     private function excelCsv(PickupSheet $pickupSheet): string
