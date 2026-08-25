@@ -307,7 +307,7 @@ $assert(str_contains($printResponse->body(), 'print.js?v=20260825-print-dialog')
 $assert(str_contains($printResponse->body(), 'data-print-pickup'), 'The print view should provide a manual print-dialog trigger.');
 $assert(!str_contains($printResponse->body(), 'onclick='), 'The print view should not rely on CSP-blocked inline event handlers.');
 $assert(!str_contains($printResponse->body(), '<style>'), 'The print view should not rely on CSP-blocked inline styles.');
-$assert(is_string($printScript) && str_contains($printScript, "window.addEventListener('load', autoPrint"), 'The print view should automatically trigger printing after all assets load.');
+$assert(is_string($printScript) && str_contains($printScript, "document.addEventListener('DOMContentLoaded', autoPrint"), 'The print view should automatically trigger printing without waiting on the asynchronous Google tag.');
 $assert(is_string($printScript) && str_contains($printScript, 'window.print()'), 'The external print behavior should open the browser print dialog.');
 $assert(str_contains($printResponse->body(), $savedReference), 'The printable sheet should display its reference number.');
 $assert(str_contains($printResponse->body(), 'PICK-UP SHEET'), 'The printable sheet should reproduce the original uppercase form heading.');
@@ -330,6 +330,7 @@ $assert(is_string($printStyles) && str_contains($printStyles, 'padding-left: 5px
 $assert(str_contains($printResponse->body(), 'border="1" rules="all" cellspacing="0"'), 'The shipment table should include a renderer-safe solid-grid fallback.');
 $assert(is_string($printStyles) && !str_contains($printStyles, 'A4 landscape'), 'The old landscape print layout should be removed.');
 $assert(!str_contains($printResponse->body(), 'dhl-logo.svg'), 'The printable sheet should not display the DHL logo.');
+$assert(substr_count($printResponse->body(), 'https://www.googletagmanager.com/gtag/js?id=G-WVFXFB5H3M') === 1, 'The print page should contain exactly one Google tag.');
 $exportResponse = $pickupController->export(new Request('GET', '/dhl/pickupsheet/submissions/export', ['reference' => $savedReference], [], ''));
 $assert($exportResponse->status() === 200, 'A direct pickup sheet should export successfully.');
 $assert(str_starts_with($exportResponse->body(), "\xEF\xBB\xBF"), 'The Excel-compatible CSV should include a UTF-8 byte-order mark.');
@@ -370,11 +371,13 @@ $assert(is_string($partnerSources) && str_contains($partnerSources, 'www.dhl.com
 $assert(!str_contains($home, 'href="/dhl/pickupsheet"'), 'Pickupsheet should not be discoverable from the public site chrome or homepage.');
 $assert(str_contains($home, 'styles.css?v=20260824-original-sheet'), 'The original-sheet update should use a cache-safe stylesheet version.');
 $assert(str_contains($home, 'app.js?v=20260824-original-sheet'), 'The original-sheet update should use a cache-safe application script version.');
-$assert(str_contains($home, 'analytics.js?v=20260824-analytics-consent'), 'The consent-aware Google Analytics loader should render on every page.');
+$assert(str_contains($home, 'analytics.js?v=20260825-google-tag'), 'The current consent-aware Google Analytics loader should render on every page.');
 $assert(str_contains($home, 'data-analytics-accept'), 'The site should offer an explicit analytics acceptance control.');
 $assert(str_contains($home, 'data-analytics-decline'), 'The site should offer an explicit analytics decline control.');
 $assert(str_contains($home, 'data-analytics-settings'), 'Visitors should be able to reopen analytics settings from the footer.');
-$assert(!str_contains($home, '<script async src="https://www.googletagmanager.com'), 'The remote Google tag should not load in HTML before consent.');
+$assert((bool) preg_match('/<head>\s*<script async src="https:\/\/www\.googletagmanager\.com\/gtag\/js\?id=G-WVFXFB5H3M"><\/script>/', $home), 'The supplied Google tag should appear immediately after the head element.');
+$assert(substr_count($home, 'https://www.googletagmanager.com/gtag/js?id=G-WVFXFB5H3M') === 1, 'Each standard page should contain exactly one Google tag.');
+$assert(str_contains($home, 'google-tag.js?v=20260825-google-tag'), 'Each page should load the CSP-compatible Google tag initializer once.');
 $assert(str_contains($home, 'viewport-fit=cover'), 'The viewport should support mobile safe areas.');
 $assert(str_contains($home, 'loading="lazy" decoding="async"'), 'Below-the-fold partner logos should load efficiently on mobile.');
 $assert(str_contains($home, '/images/hero-data-center.jpg'), 'The supplied data-center photograph should render in the landing hero.');
@@ -497,7 +500,8 @@ $assert(str_contains($privacy, 'one first-party session cookie'), 'The privacy n
 $assert(str_contains($privacy, 'not used for advertising or cross-site tracking'), 'The privacy notice should state the essential cookie limitation.');
 $assert(str_contains($privacy, 'Optional Google Analytics'), 'The privacy notice should disclose the analytics service.');
 $assert(str_contains($privacy, 'G-WVFXFB5H3M'), 'The privacy notice should identify the configured Analytics property.');
-$assert(str_contains($privacy, 'declining sends no analytics data to Google'), 'The privacy notice should explain the effect of declining analytics.');
+$assert(str_contains($privacy, 'Declining keeps analytics storage denied'), 'The privacy notice should explain the effect of declining analytics.');
+$assert(str_contains($privacy, 'cookieless consent-state pings'), 'The privacy notice should disclose pre-consent Consent Mode pings.');
 $assert(str_contains($privacy, 'Cookie settings'), 'The privacy notice should explain how to change the analytics choice.');
 
 $environmentExample = file_get_contents(dirname(__DIR__) . '/.env.example');
@@ -546,12 +550,17 @@ $assert(is_string($script) && str_contains($script, 'maximumRows = 50'), 'The br
 $assert(is_string($script) && str_contains($script, 'numberFormatter.format(total)'), 'The browser should calculate and format cash totals.');
 
 $analyticsScript = file_get_contents(dirname(__DIR__) . '/public/assets/analytics.js');
-$assert(is_string($analyticsScript) && str_contains($analyticsScript, "const measurementId = 'G-WVFXFB5H3M'"), 'The supplied Google Analytics measurement ID should be configured exactly.');
-$assert(is_string($analyticsScript) && str_contains($analyticsScript, 'https://www.googletagmanager.com/gtag/js?id=${measurementId}'), 'The consent loader should use the official Google tag endpoint.');
-$assert(is_string($analyticsScript) && str_contains($analyticsScript, "analytics_storage: 'denied'"), 'Analytics storage should be denied by default.');
-$assert(is_string($analyticsScript) && str_contains($analyticsScript, "ad_storage: 'denied'"), 'Advertising storage should remain denied.');
-$assert(is_string($analyticsScript) && str_contains($analyticsScript, "window.gtag('config', measurementId)"), 'The accepted tag should configure the supplied measurement ID.');
-$assert(is_string($analyticsScript) && str_contains($analyticsScript, "preference === 'granted'"), 'The Google tag should load automatically only after a saved grant.');
+$googleTagScript = file_get_contents(dirname(__DIR__) . '/public/assets/google-tag.js');
+$assert(is_string($googleTagScript) && str_contains($googleTagScript, "window.gtag('config', 'G-WVFXFB5H3M')"), 'The supplied Google Analytics measurement ID should be configured exactly once.');
+$assert(is_string($googleTagScript) && str_contains($googleTagScript, "window.gtag('js', new Date())"), 'The supplied Google tag should initialize gtag.js.');
+$assert(is_string($googleTagScript) && str_contains($googleTagScript, "analytics_storage: 'denied'"), 'Analytics storage should be denied by default.');
+$assert(is_string($googleTagScript) && str_contains($googleTagScript, "ad_storage: 'denied'"), 'Advertising storage should remain denied.');
+$assert(is_string($analyticsScript) && str_contains($analyticsScript, "analytics_storage: 'granted'"), 'The consent controller should grant analytics storage only after acceptance.');
+$assert(is_string($analyticsScript) && str_contains($analyticsScript, "preference === 'granted'"), 'A saved grant should restore accepted analytics consent.');
+$htaccess = file_get_contents(dirname(__DIR__) . '/.htaccess');
+$assert(is_string($htaccess) && str_contains($htaccess, "script-src 'self' https://www.googletagmanager.com"), 'The CSP should permit the supplied Google tag script after consent.');
+$assert(is_string($htaccess) && str_contains($htaccess, "connect-src 'self' https://www.googletagmanager.com https://www.google-analytics.com https://*.google-analytics.com"), 'The CSP should permit Google Analytics measurement requests after consent.');
+$assert(is_string($htaccess) && !str_contains($htaccess, "script-src 'self' 'unsafe-inline'"), 'The Google tag integration should not weaken CSP with inline-script permission.');
 
 $database = file_get_contents(dirname(__DIR__) . '/src/Shared/Infrastructure/Database.php');
 $assert(is_string($database) && str_contains($database, "extension_loaded('pdo_mysql')"), 'The application should use PDO MySQL.');

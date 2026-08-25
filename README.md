@@ -23,7 +23,7 @@ The unlisted `/dhl/pickupsheet/` route captures the supplied paper pickup-sheet 
 
 The direct, unlisted Pickupsheet routes do not require authentication. “Checked by” is a required field entered with each shipment. `/dhl/pickupsheet/submissions` is a no-store view of the 100 most recent sheets, where anyone with the direct URL can expand each reference, print or save an A4 portrait sheet as PDF, or download an Excel-compatible UTF-8 CSV. Because these records contain operational and cash-shipment information, deploy this open-access mode only when the direct URL is intended to be available without identity verification. Legacy `/pickupsheet` URLs redirect permanently to the new `/dhl/pickupsheet` location.
 
-Google Analytics measurement ID `G-WVFXFB5H3M` is integrated using Basic Consent Mode. The Google tag is not requested until a visitor explicitly accepts analytics cookies, advertising consent remains denied, and visitors can reopen their choice from the footer.
+Google Analytics measurement ID `G-WVFXFB5H3M` is included exactly once immediately after `<head>` through both shared page layouts. Consent Mode starts with analytics and advertising storage denied; analytics storage is granted only after a visitor accepts, advertising consent remains denied, and visitors can reopen their choice from the footer. Before acceptance, Google may receive cookieless consent-state pings but cannot set Analytics cookies through this configuration. The Content Security Policy permits only the Google Tag Manager script origin and Google Analytics collection origins required by the tag.
 
 ## Local development
 

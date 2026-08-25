@@ -10,6 +10,8 @@ $pageRobots = $pageRobots ?? 'index, follow';
 <!doctype html>
 <html lang="en">
 <head>
+    <script async src="https://www.googletagmanager.com/gtag/js?id=G-WVFXFB5H3M"></script>
+    <script src="<?= $e($assetBase) ?>/google-tag.js?v=20260825-google-tag"></script>
     <meta charset="utf-8">
     <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
     <meta name="theme-color" content="#080808">
@@ -19,7 +21,7 @@ $pageRobots = $pageRobots ?? 'index, follow';
     <link rel="icon" href="<?= $e($assetBase) ?>/ttechcg-mark.svg" type="image/svg+xml">
     <link rel="stylesheet" href="<?= $e($assetBase) ?>/styles.css?v=20260824-original-sheet">
     <script src="<?= $e($assetBase) ?>/app.js?v=20260824-original-sheet" defer></script>
-    <script src="<?= $e($assetBase) ?>/analytics.js?v=20260824-analytics-consent" defer></script>
+    <script src="<?= $e($assetBase) ?>/analytics.js?v=20260825-google-tag" defer></script>
 </head>
 <body>
     <a class="skip-link" href="#main-content">Skip to content</a>
@@ -75,7 +77,7 @@ $pageRobots = $pageRobots ?? 'index, follow';
     <section class="analytics-consent" data-analytics-consent hidden role="dialog" aria-labelledby="analytics-consent-title" aria-describedby="analytics-consent-description">
         <div>
             <p class="eyebrow" id="analytics-consent-title">Analytics choice</p>
-            <p id="analytics-consent-description">May we use Google Analytics cookies to understand site usage and improve this website? Analytics stays off unless you accept.</p>
+            <p id="analytics-consent-description">May we use Google Analytics cookies to understand site usage and improve this website? Analytics storage and cookies stay off unless you accept.</p>
         </div>
         <div class="analytics-consent-actions">
             <button class="button button-primary" type="button" data-analytics-accept>Accept analytics</button>
