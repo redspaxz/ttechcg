@@ -31,10 +31,16 @@ final class DemoPickupSheetRepository implements PickupSheetRepository
         return $created;
     }
 
-    public function recent(int $limit): array
+    public function recent(int $limit, int $offset = 0): array
     {
         $sheets = $_SESSION[self::SESSION_KEY] ?? [];
-        return array_slice(array_reverse(is_array($sheets) ? $sheets : []), 0, $limit);
+        return array_slice(array_reverse(is_array($sheets) ? $sheets : []), $offset, $limit);
+    }
+
+    public function count(): int
+    {
+        $sheets = $_SESSION[self::SESSION_KEY] ?? [];
+        return is_array($sheets) ? count($sheets) : 0;
     }
 
     public function findByReference(string $referenceNumber): ?PickupSheet

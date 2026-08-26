@@ -143,18 +143,9 @@ final class PickupsheetController
             return $authorizationResponse;
         }
 
-        $errors = [];
-        $pickupSheets = [];
-        if ($this->pickupOperational) {
-            try {
-                $pickupSheets = $this->service->recent();
-            } catch (RuntimeException $exception) {
-                error_log($exception->__toString());
-                $errors = ['Submitted pickup sheets could not be loaded. Please try again later.'];
-            }
-        }
+        $records = $this->submissionRecords($request);
 
-        $body = $this->view->render('pickupsheet/submissions', [
+        $body = $this->view->render('pickupsheet/submissions', array_merge($records, [
             'pageTitle' => 'Submitted pickup sheets',
             'pageDescription' => 'Pickup-sheet records and shipment exports.',
             'pageRobots' => 'noindex, nofollow',
@@ -163,12 +154,23 @@ final class PickupsheetController
             'assetBase' => $request->basePath . '/public/assets',
             'config' => $this->config,
             'storageMode' => $this->storageMode,
-            'pickupOperational' => $this->pickupOperational,
-            'pickupSheets' => $pickupSheets,
-            'errors' => $errors,
-        ]);
+        ]));
 
         return Response::html($body, 200, $this->privateHeaders());
+    }
+
+    public function submissionsPage(Request $request): Response
+    {
+        $authorizationResponse = $this->authorizeRecords($request, 'paginate');
+        if ($authorizationResponse !== null) {
+            return $authorizationResponse;
+        }
+
+        return Response::html(
+            $this->view->renderPartial('pickupsheet/_submission-records', $this->submissionRecords($request)),
+            200,
+            $this->privateHeaders(),
+        );
     }
 
     public function print(Request $request): Response
@@ -263,6 +265,42 @@ final class PickupsheetController
             'WWW-Authenticate' => 'Basic realm="T&Tech Pickupsheet Records", charset="UTF-8"',
             'X-Robots-Tag' => 'noindex, nofollow',
         ]);
+    }
+
+    /** @return array<string, mixed> */
+    private function submissionRecords(Request $request): array
+    {
+        $pagination = [
+            'items' => [],
+            'page' => 1,
+            'perPage' => 10,
+            'totalRecords' => 0,
+            'totalPages' => 1,
+        ];
+        $errors = [];
+
+        if ($this->pickupOperational) {
+            try {
+                $pagination = $this->service->paginated($this->pageNumber($request), 10);
+            } catch (RuntimeException $exception) {
+                error_log($exception->__toString());
+                $errors = ['Submitted pickup sheets could not be loaded. Please try again later.'];
+            }
+        }
+
+        return [
+            'basePath' => $request->basePath,
+            'pickupOperational' => $this->pickupOperational,
+            'pickupSheets' => $pagination['items'],
+            'pagination' => $pagination,
+            'errors' => $errors,
+        ];
+    }
+
+    private function pageNumber(Request $request): int
+    {
+        $page = $request->queryString('page', '1');
+        return preg_match('/^[1-9][0-9]{0,8}$/', $page) ? (int) $page : 1;
     }
 
     private function rateLimit(

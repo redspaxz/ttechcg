@@ -124,6 +124,7 @@ $router->post('/contact', fn (Request $request): Response => $contactController-
 $router->get('/dhl/pickupsheet', fn (Request $request): Response => $pickupsheetController->index($request));
 $router->post('/dhl/pickupsheet', fn (Request $request): Response => $pickupsheetController->store($request));
 $router->get('/dhl/pickupsheet/submissions', fn (Request $request): Response => $pickupsheetController->submissions($request));
+$router->get('/dhl/pickupsheet/submissions/page', fn (Request $request): Response => $pickupsheetController->submissionsPage($request));
 $router->get('/dhl/pickupsheet/submissions/print', fn (Request $request): Response => $pickupsheetController->print($request));
 $router->get('/dhl/pickupsheet/submissions/export', fn (Request $request): Response => $pickupsheetController->export($request));
 $router->get('/pickupsheet', fn (Request $request): Response => Response::redirect($request->basePath . '/dhl/pickupsheet/', 308));

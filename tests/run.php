@@ -161,6 +161,31 @@ $assert(($pickupService->recent(1)[0]->referenceNumber ?? '') === $pickupSheet->
 $assert($pickupService->findByReference($pickupSheet->referenceNumber)?->agentName === 'Edmund Ngochi', 'A pickup sheet should be retrievable by its reference number.');
 $assert($pickupService->findByReference('invalid-reference') === null, 'Invalid pickup-sheet references should not reach persistence.');
 
+for ($sheetIndex = 2; $sheetIndex <= 12; $sheetIndex++) {
+    $pickupService->submit([
+        'agent_name' => 'Pagination Agent ' . $sheetIndex,
+        'collection_date' => '2026-07-29',
+        'privacy_consent' => '1',
+        'shipments' => [[
+            'consignor' => 'Pagination Client ' . $sheetIndex,
+            'awb_number' => str_pad((string) $sheetIndex, 10, '0', STR_PAD_LEFT),
+            'destination' => 'DLA',
+            'amount' => '1000',
+            'pieces' => '1',
+            'weight_kg' => '0.5',
+            'checked_by' => 'Pagination Checker',
+        ]],
+    ]);
+}
+$firstPickupPage = $pickupService->paginated(1, 10);
+$secondPickupPage = $pickupService->paginated(2, 10);
+$assert($firstPickupPage['totalRecords'] === 12, 'Pagination should count all submitted pickup sheets.');
+$assert($firstPickupPage['totalPages'] === 2, 'Twelve pickup sheets should produce two ten-record pages.');
+$assert(count($firstPickupPage['items']) === 10, 'The first pickup-sheet page should contain exactly ten records.');
+$assert(count($secondPickupPage['items']) === 2, 'The second pickup-sheet page should contain the remaining records.');
+$assert($secondPickupPage['page'] === 2, 'Pagination should retain the requested valid page.');
+$assert($pickupService->paginated(999, 10)['page'] === 2, 'Pagination should clamp out-of-range pages to the final page.');
+
 $pickupConsentFailed = false;
 try {
     $pickupService->submit([
@@ -218,6 +243,17 @@ rmdir($rateLimitDirectory);
 
 $config = require dirname(__DIR__) . '/config/app.php';
 $view = new View(dirname(__DIR__) . '/views');
+$paginationFixture = $view->renderPartial('pickupsheet/_submission-records', [
+    'basePath' => '',
+    'pickupOperational' => true,
+    'pickupSheets' => $secondPickupPage['items'],
+    'pagination' => $secondPickupPage,
+    'errors' => [],
+]);
+$assert(substr_count($paginationFixture, '<article class="pickup-record">') === 2, 'The second ten-record page should render only its two remaining sheets.');
+$assert(str_contains($paginationFixture, 'Page 2 of 2 · 12 records'), 'The pagination fragment should display accurate page and record totals.');
+$assert(str_contains($paginationFixture, 'data-pickup-page="1" rel="prev"'), 'The second page should provide a normal-link fallback to the previous page.');
+$assert(!str_contains($paginationFixture, 'data-pickup-page="3"'), 'The final page should not link beyond the available records.');
 $healthResponse = (new SiteController($view, $config, 'MySQL connected', true))->health(new Request('GET', '/health'));
 $assert($healthResponse->body() === '{"status":"ok"}', 'The public health endpoint should not expose backend component details.');
 $assert(($healthResponse->headers()['Cache-Control'] ?? '') === 'no-store', 'Health status should not be cached.');
@@ -347,7 +383,19 @@ $assert(!str_contains($openSubmissions->body(), 'dhl-logo.svg'), 'The submitted-
 $assert(str_contains($openSubmissions->body(), 'Controller Client'), 'The direct table should show shipment rows.');
 $assert(str_contains($openSubmissions->body(), 'Print / PDF'), 'Each submitted sheet should provide a print-to-PDF action.');
 $assert(str_contains($openSubmissions->body(), 'Export Excel'), 'Each submitted sheet should provide an Excel export action.');
+$assert(str_contains($openSubmissions->body(), 'Records are displayed 10 sheets per page.'), 'The records view should disclose its ten-record page size.');
+$assert(str_contains($openSubmissions->body(), 'data-pickup-records-spinner'), 'The records view should provide an AJAX loading spinner.');
+$assert(str_contains($openSubmissions->body(), 'data-page-endpoint="/dhl/pickupsheet/submissions/page"'), 'The records view should identify its protected pagination endpoint.');
+$assert(str_contains($openSubmissions->body(), 'Page 1 of 1'), 'The records view should display its current pagination status.');
 $assert(($openSubmissions->headers()['Cache-Control'] ?? '') === 'private, no-store, max-age=0', 'Submitted records should not be cached.');
+$pageFragment = $pickupController->submissionsPage(new Request('GET', '/dhl/pickupsheet/submissions/page', ['page' => '1'], [], '', $recordsServer));
+$assert($pageFragment->status() === 200, 'Valid records credentials should load a paginated AJAX fragment.');
+$assert(str_contains($pageFragment->body(), 'Controller Client'), 'The AJAX page fragment should contain its shipment records.');
+$assert(!str_contains($pageFragment->body(), '<!doctype html>'), 'The AJAX endpoint should return only the replaceable records fragment.');
+$deniedPageFragment = $pickupController->submissionsPage(new Request('GET', '/dhl/pickupsheet/submissions/page', ['page' => '1'], [], '', [
+    'REMOTE_ADDR' => '203.0.113.23',
+]));
+$assert($deniedPageFragment->status() === 401, 'The AJAX pagination endpoint should remain protected by records credentials.');
 
 $printResponse = $pickupController->print(new Request('GET', '/dhl/pickupsheet/submissions/print', ['reference' => $savedReference], [], '', $recordsServer));
 $printStyles = file_get_contents(dirname(__DIR__) . '/public/assets/print.css');
@@ -449,8 +497,8 @@ $assert(is_string($dhlAsset) && !str_contains($dhlAsset, '<text'), 'The disquali
 $partnerSources = file_get_contents(dirname(__DIR__) . '/public/assets/partners/README.md');
 $assert(is_string($partnerSources) && str_contains($partnerSources, 'www.dhl.com/content/dam/dhl/global/core/images/logos/dhl-logo.svg'), 'The official DHL artwork source should be documented.');
 $assert(!str_contains($home, 'href="/dhl/pickupsheet"'), 'Pickupsheet should not be discoverable from the public site chrome or homepage.');
-$assert(str_contains($home, 'styles.css?v=20260826-submission-time'), 'The automatic submission-time update should use a cache-safe stylesheet version.');
-$assert(str_contains($home, 'app.js?v=20260826-submission-time'), 'The automatic submission-time update should use a cache-safe application script version.');
+$assert(str_contains($home, 'styles.css?v=20260827-pagination'), 'The paginated-records update should use a cache-safe stylesheet version.');
+$assert(str_contains($home, 'app.js?v=20260827-pagination'), 'The paginated-records update should use a cache-safe application script version.');
 $assert(str_contains($home, 'analytics.js?v=20260825-security-hardening'), 'The current consent-aware Google Analytics loader should render on every page.');
 $assert(str_contains($home, 'data-analytics-accept'), 'The site should offer an explicit analytics acceptance control.');
 $assert(str_contains($home, 'data-analytics-decline'), 'The site should offer an explicit analytics decline control.');
@@ -627,6 +675,9 @@ $assert(is_string($styles) && str_contains($styles, '.shipment-row'), 'Shipment 
 $assert(is_string($styles) && str_contains($styles, 'content: attr(data-label);'), 'Shipment rows should expose their field labels in the mobile card layout.');
 $assert(is_string($styles) && str_contains($styles, '/* Pickup-sheet records */'), 'Submitted pickup sheets should have a dedicated table layout.');
 $assert(is_string($styles) && str_contains($styles, '.pickup-record-actions'), 'Each submitted sheet should style its print and spreadsheet actions.');
+$assert(is_string($styles) && str_contains($styles, '.pickup-records-loading'), 'AJAX pagination should have a visible loading overlay.');
+$assert(is_string($styles) && str_contains($styles, '@keyframes pickup-records-spin'), 'The loading overlay should provide spinner animation.');
+$assert(is_string($styles) && str_contains($styles, '.pickup-pagination'), 'Submitted sheets should provide responsive pagination controls.');
 
 $script = file_get_contents(dirname(__DIR__) . '/public/assets/app.js');
 $assert(is_string($script) && str_contains($script, "event.key === 'Escape'"), 'The mobile navigation should close with Escape.');
@@ -635,6 +686,10 @@ $assert(is_string($script) && str_contains($script, "matchMedia('(min-width: 821
 $assert(is_string($script) && str_contains($script, "document.querySelector('[data-pickup-form]')"), 'The pickup form should initialize its dynamic row editor.');
 $assert(is_string($script) && str_contains($script, 'maximumRows = 50'), 'The browser should enforce the server shipment-row limit.');
 $assert(is_string($script) && str_contains($script, 'numberFormatter.format(total)'), 'The browser should calculate and format cash totals.');
+$assert(is_string($script) && str_contains($script, "document.querySelector('[data-pickup-records]')"), 'The browser should initialize submitted-sheet pagination.');
+$assert(is_string($script) && str_contains($script, 'await fetch(pageEndpoint'), 'Pagination should load records asynchronously.');
+$assert(is_string($script) && str_contains($script, "spinner.hidden = !loading"), 'AJAX pagination should toggle its loading spinner.');
+$assert(is_string($script) && str_contains($script, "window.history.pushState"), 'AJAX pagination should preserve browser history.');
 
 $analyticsScript = file_get_contents(dirname(__DIR__) . '/public/assets/analytics.js');
 $googleTagScript = file_get_contents(dirname(__DIR__) . '/public/assets/google-tag.js');
@@ -687,6 +742,8 @@ $assert(is_string($pickupMysqlRepository) && str_contains($pickupMysqlRepository
 $assert(is_string($pickupMysqlRepository) && str_contains($pickupMysqlRepository, ':reference_number'), 'MySQL persistence should store the generated pickup-sheet reference.');
 $assert(is_string($pickupMysqlRepository) && str_contains($pickupMysqlRepository, ':total_cash_received_xaf'), 'MySQL persistence should store the server-calculated XAF total.');
 $assert(is_string($pickupMysqlRepository) && str_contains($pickupMysqlRepository, 'findByReference'), 'MySQL persistence should support reference-scoped print and export queries.');
+$assert(is_string($pickupMysqlRepository) && str_contains($pickupMysqlRepository, 'LIMIT :limit OFFSET :offset'), 'MySQL should paginate pickup sheets at query time.');
+$assert(is_string($pickupMysqlRepository) && str_contains($pickupMysqlRepository, 'SELECT COUNT(*) FROM pickup_sheets'), 'MySQL should count records for pagination metadata.');
 $bootstrap = file_get_contents(dirname(__DIR__) . '/bootstrap/app.php');
 $assert(is_string($bootstrap) && str_contains($bootstrap, "'httponly' => true"), 'The security session cookie should be inaccessible to client-side scripts.');
 $assert(is_string($bootstrap) && str_contains($bootstrap, "'samesite' => 'Lax'"), 'The security session cookie should use a SameSite policy.');
@@ -696,6 +753,7 @@ $assert(is_string($bootstrap) && str_contains($bootstrap, '$connection !== null 
 $assert(is_string($bootstrap) && str_contains($bootstrap, 'RecordsAccess::fromEnvironment()'), 'Stored pickup-sheet records should use fail-closed environment-backed access control.');
 $assert(is_string($bootstrap) && !str_contains($bootstrap, 'JumpCloudOidcProvider'), 'Pickupsheet should not require an identity provider.');
 $assert(is_string($bootstrap) && str_contains($bootstrap, "'/dhl/pickupsheet'"), 'Pickupsheet should be routed under the DHL namespace.');
+$assert(is_string($bootstrap) && str_contains($bootstrap, "'/dhl/pickupsheet/submissions/page'"), 'Pickupsheet should expose a protected AJAX pagination endpoint.');
 $assert(is_string($bootstrap) && str_contains($bootstrap, "'/pickupsheet'"), 'The legacy Pickupsheet entry should retain a permanent redirect.');
 $assert(is_string($bootstrap) && str_contains($bootstrap, 'rawurlencode($reference)'), 'Legacy print and export redirects should preserve the reference query safely.');
 $assert(is_string($bootstrap) && !str_contains($bootstrap, "'/dhl/pickupsheet/login'"), 'Pickupsheet authentication routes should remain removed.');

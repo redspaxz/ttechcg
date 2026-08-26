@@ -20,6 +20,12 @@ final class View
     }
 
     /** @param array<string, mixed> $data */
+    public function renderPartial(string $template, array $data = []): string
+    {
+        return $this->capture($template, $data);
+    }
+
+    /** @param array<string, mixed> $data */
     private function capture(string $template, array $data): string
     {
         $path = $this->viewsPath . '/' . $template . '.php';

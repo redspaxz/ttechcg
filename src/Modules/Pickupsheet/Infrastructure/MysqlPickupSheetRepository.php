@@ -86,16 +86,17 @@ final class MysqlPickupSheetRepository implements PickupSheetRepository
         }
     }
 
-    public function recent(int $limit): array
+    public function recent(int $limit, int $offset = 0): array
     {
         $sheetStatement = $this->connection->prepare(
             'SELECT id, reference_number, agent_name, collection_date, total_cash_received_xaf,
                     privacy_consent_at, privacy_notice_version, created_at
              FROM pickup_sheets
              ORDER BY collection_date DESC, id DESC
-             LIMIT :limit',
+             LIMIT :limit OFFSET :offset',
         );
         $sheetStatement->bindValue(':limit', $limit, PDO::PARAM_INT);
+        $sheetStatement->bindValue(':offset', $offset, PDO::PARAM_INT);
         $sheetStatement->execute();
         $sheetRows = $sheetStatement->fetchAll();
 
@@ -147,6 +148,13 @@ final class MysqlPickupSheetRepository implements PickupSheetRepository
         }
 
         return $pickupSheets;
+    }
+
+    public function count(): int
+    {
+        $statement = $this->connection->prepare('SELECT COUNT(*) FROM pickup_sheets');
+        $statement->execute();
+        return (int) $statement->fetchColumn();
     }
 
     public function findByReference(string $referenceNumber): ?PickupSheet

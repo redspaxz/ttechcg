@@ -26,6 +26,23 @@ final class PickupSheetService
         return $this->repository->recent(max(1, min($limit, 100)));
     }
 
+    /** @return array{items: list<PickupSheet>, page: int, perPage: int, totalRecords: int, totalPages: int} */
+    public function paginated(int $page = 1, int $perPage = 10): array
+    {
+        $perPage = max(1, min($perPage, 50));
+        $totalRecords = $this->repository->count();
+        $totalPages = max(1, (int) ceil($totalRecords / $perPage));
+        $page = max(1, min($page, $totalPages));
+
+        return [
+            'items' => $this->repository->recent($perPage, ($page - 1) * $perPage),
+            'page' => $page,
+            'perPage' => $perPage,
+            'totalRecords' => $totalRecords,
+            'totalPages' => $totalPages,
+        ];
+    }
+
     public function findByReference(string $referenceNumber): ?PickupSheet
     {
         $referenceNumber = strtoupper(trim($referenceNumber));

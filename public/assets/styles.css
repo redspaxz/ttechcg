@@ -1770,6 +1770,59 @@ button, a, input, select, textarea { -webkit-tap-highlight-color: transparent; }
 .pickup-record-table tfoot th { background: #fffdf5; }
 .pickup-record-table tr > *:last-child { border-right: 0; }
 .pickup-record-table tfoot tr:last-child > * { border-bottom: 0; }
+.pickup-records-frame { position: relative; min-height: 180px; }
+.pickup-records-loading {
+    position: absolute;
+    inset: 0;
+    z-index: 5;
+    display: flex;
+    align-items: flex-start;
+    justify-content: center;
+    gap: 12px;
+    padding-top: 120px;
+    background: rgba(255, 204, 0, 0.82);
+    color: #352900;
+    font-size: 0.72rem;
+    font-weight: 850;
+    letter-spacing: 0.06em;
+    text-transform: uppercase;
+}
+.pickup-records-loading[hidden] { display: none; }
+.pickup-loading-spinner {
+    width: 24px;
+    height: 24px;
+    border: 3px solid rgba(73, 56, 0, 0.25);
+    border-top-color: var(--dhl-red);
+    border-radius: 50%;
+    animation: pickup-records-spin 700ms linear infinite;
+}
+.pickup-pagination {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    gap: 18px;
+    margin-top: 26px;
+}
+.pickup-pagination a,
+.pickup-pagination-disabled {
+    display: inline-flex;
+    min-width: 104px;
+    min-height: 42px;
+    align-items: center;
+    justify-content: center;
+    padding: 9px 16px;
+    border: 1px solid #493800;
+    color: #352900;
+    font-size: 0.7rem;
+    font-weight: 850;
+    text-decoration: none;
+    text-transform: uppercase;
+}
+.pickup-pagination a:hover { border-color: var(--dhl-red); color: var(--dhl-red); }
+.pickup-pagination-disabled { opacity: 0.45; }
+.pickup-pagination-status { color: #655000; font-size: 0.74rem; font-weight: 750; text-align: center; }
+
+@keyframes pickup-records-spin { to { transform: rotate(360deg); } }
 
 @media (max-width: 900px) {
     .pickup-record-overview { grid-template-columns: minmax(0, 1fr) auto; }
@@ -1788,6 +1841,8 @@ button, a, input, select, textarea { -webkit-tap-highlight-color: transparent; }
     .pickup-record-details > summary { padding-inline: 16px; }
     .pickup-record-body { padding: 0 16px 16px; }
     .pickup-record-actions a { justify-content: center; }
+    .pickup-pagination { flex-wrap: wrap; gap: 10px; }
+    .pickup-pagination-status { order: -1; width: 100%; }
 }
 
 @media (max-width: 430px) {

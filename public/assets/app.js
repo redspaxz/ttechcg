@@ -155,3 +155,79 @@ if (pickupForm) {
     pickupForm.addEventListener('submit', reindexRows);
     reindexRows();
 }
+
+const pickupRecords = document.querySelector('[data-pickup-records]');
+if (pickupRecords) {
+    const content = pickupRecords.querySelector('[data-pickup-records-content]');
+    const spinner = pickupRecords.querySelector('[data-pickup-records-spinner]');
+    const endpoint = pickupRecords.dataset.pageEndpoint;
+    let activeRequest = null;
+
+    const setLoading = (loading) => {
+        if (content) content.setAttribute('aria-busy', loading ? 'true' : 'false');
+        if (spinner) spinner.hidden = !loading;
+    };
+
+    const showLoadError = () => {
+        if (!content) return;
+        content.querySelector('[data-pagination-error]')?.remove();
+        const notice = document.createElement('div');
+        notice.className = 'notice notice-error';
+        notice.dataset.paginationError = '';
+        notice.setAttribute('role', 'alert');
+        notice.textContent = 'Pickup records could not be loaded. Please try again.';
+        content.prepend(notice);
+    };
+
+    const loadPage = async (page, updateHistory = true) => {
+        if (!content || !endpoint || !Number.isInteger(page) || page < 1) return;
+
+        activeRequest?.abort();
+        const request = new AbortController();
+        activeRequest = request;
+        setLoading(true);
+
+        try {
+            const pageEndpoint = new URL(endpoint, window.location.href);
+            pageEndpoint.searchParams.set('page', String(page));
+            const response = await fetch(pageEndpoint, {
+                credentials: 'same-origin',
+                headers: { 'X-Requested-With': 'XMLHttpRequest' },
+                signal: request.signal,
+            });
+            if (!response.ok) throw new Error(`Pagination request failed with ${response.status}`);
+
+            content.innerHTML = await response.text();
+            pickupRecords.scrollIntoView({
+                behavior: window.matchMedia('(prefers-reduced-motion: reduce)').matches ? 'auto' : 'smooth',
+                block: 'start',
+            });
+            if (updateHistory) {
+                const browserUrl = new URL(window.location.href);
+                browserUrl.searchParams.set('page', String(page));
+                window.history.pushState({ pickupPage: page }, '', browserUrl);
+            }
+        } catch (error) {
+            if (error?.name !== 'AbortError') showLoadError();
+        } finally {
+            if (activeRequest === request) {
+                activeRequest = null;
+                setLoading(false);
+            }
+        }
+    };
+
+    pickupRecords.addEventListener('click', (event) => {
+        const link = event.target.closest('[data-pickup-page]');
+        if (!link) return;
+        const page = Number.parseInt(link.dataset.pickupPage ?? '', 10);
+        if (!Number.isInteger(page) || page < 1) return;
+        event.preventDefault();
+        loadPage(page);
+    });
+
+    window.addEventListener('popstate', () => {
+        const page = Number.parseInt(new URL(window.location.href).searchParams.get('page') ?? '1', 10);
+        loadPage(Number.isInteger(page) && page > 0 ? page : 1, false);
+    });
+}

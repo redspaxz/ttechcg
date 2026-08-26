@@ -49,3 +49,4 @@ jobs:
           node --check public/assets/google-tag.js
           node --check public/assets/print.js
           node tests/analytics-consent.test.js
+          node tests/pickup-pagination.test.js
