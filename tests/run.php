@@ -384,8 +384,13 @@ $assert(str_contains($printResponse->body(), 'data-analytics-page-view="disabled
 $exportResponse = $pickupController->export(new Request('GET', '/dhl/pickupsheet/submissions/export', ['reference' => $savedReference], [], '', $recordsServer));
 $assert($exportResponse->status() === 200, 'A direct pickup sheet should export successfully.');
 $assert(str_starts_with($exportResponse->body(), "\xEF\xBB\xBF"), 'The Excel-compatible CSV should include a UTF-8 byte-order mark.');
+$assert(str_starts_with(substr($exportResponse->body(), 3), '#,Consignor,'), 'The spreadsheet should begin directly with the cash-shipment column headings.');
 $assert(str_contains($exportResponse->body(), 'Controller Client'), 'The spreadsheet export should contain shipment data.');
-$assert(str_contains($exportResponse->body(), '"Total cash received",12000,XAF'), 'The spreadsheet export should contain the server-calculated total.');
+$assert(!str_contains($exportResponse->body(), 'Reference number'), 'The spreadsheet should exclude pickup-sheet reference metadata.');
+$assert(!str_contains($exportResponse->body(), 'Agent name'), 'The spreadsheet should exclude pickup-sheet agent metadata.');
+$assert(!str_contains($exportResponse->body(), 'Collection date'), 'The spreadsheet should exclude pickup-sheet date metadata.');
+$assert(!str_contains($exportResponse->body(), 'Shipments collected'), 'The spreadsheet should exclude pickup-sheet count metadata.');
+$assert(!str_contains($exportResponse->body(), 'Total cash received'), 'The spreadsheet should exclude pickup-sheet total metadata.');
 $assert(($exportResponse->headers()['Content-Disposition'] ?? '') === 'attachment; filename="' . $savedReference . '.csv"', 'The Excel export should use the pickup reference as its filename.');
 
 $home = $view->render('site/home', array_merge($common, [

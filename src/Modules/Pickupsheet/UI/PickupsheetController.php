@@ -285,12 +285,6 @@ final class PickupsheetController
         }
 
         fwrite($stream, "\xEF\xBB\xBF");
-        fputcsv($stream, ['Reference number', $pickupSheet->referenceNumber]);
-        fputcsv($stream, ['Agent name', $this->safeSpreadsheetText($pickupSheet->agentName)]);
-        fputcsv($stream, ['Collection date', $pickupSheet->collectionDate]);
-        fputcsv($stream, ['Shipments collected', $pickupSheet->shipmentCount()]);
-        fputcsv($stream, ['Total cash received', $pickupSheet->totalCashReceivedXaf, 'XAF']);
-        fputcsv($stream, []);
         fputcsv($stream, ['#', 'Consignor', 'AWB number', 'Destination', 'Amount (XAF)', 'Pieces', 'Weight (kg)', 'Time collected', 'Checked by']);
 
         foreach ($pickupSheet->shipments as $shipment) {
