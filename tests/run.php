@@ -388,7 +388,8 @@ $assert($exportResponse->status() === 200, 'A direct pickup sheet should export 
 $assert(str_starts_with($exportResponse->body(), "PK\x03\x04"), 'The Excel export should be a native XLSX ZIP package.');
 $assert(substr($exportResponse->body(), -22, 4) === "PK\x05\x06", 'The native XLSX package should have a valid central-directory terminator.');
 $assert(($exportResponse->headers()['Content-Type'] ?? '') === 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet', 'The shipment workbook should use the native XLSX media type.');
-$assert(str_contains($exportResponse->body(), '<c r="A1" s="1" t="inlineStr"><is><t>#</t></is></c>'), 'The spreadsheet should begin directly with the cash-shipment column headings.');
+$assert(str_contains($exportResponse->body(), '<c r="A1" s="1" t="inlineStr"><is><t>Consignor</t></is></c>'), 'The spreadsheet should begin directly with the consignor heading.');
+$assert(!str_contains($exportResponse->body(), '<t>#</t>'), 'The spreadsheet should exclude the sequential row-number column.');
 $assert(str_contains($exportResponse->body(), 'Controller Client'), 'The spreadsheet export should contain shipment data.');
 $assert(!str_contains($exportResponse->body(), 'Reference number'), 'The spreadsheet should exclude pickup-sheet reference metadata.');
 $assert(!str_contains($exportResponse->body(), 'Agent name'), 'The spreadsheet should exclude pickup-sheet agent metadata.');

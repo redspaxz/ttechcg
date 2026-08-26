@@ -207,9 +207,8 @@ final class PickupsheetController
 
         return Response::download(
             (new XlsxWriter())->create(
-                ['#', 'Consignor', 'AWB number', 'Destination', 'Amount (XAF)', 'Pieces', 'Weight (kg)', 'Time collected', 'Checked by'],
+                ['Consignor', 'AWB number', 'Destination', 'Amount (XAF)', 'Pieces', 'Weight (kg)', 'Time collected', 'Checked by'],
                 array_map(static fn ($shipment): array => [
-                    $shipment->lineNumber,
                     $shipment->consignor,
                     $shipment->awbNumber,
                     $shipment->destination,
@@ -220,8 +219,9 @@ final class PickupsheetController
                     $shipment->checkedBy,
                 ], $pickupSheet->shipments),
                 'SHIPMENT TOTAL',
-                5,
+                4,
                 $pickupSheet->totalCashReceivedXaf,
+                [28, 16, 16, 18, 14, 14, 18, 24],
             ),
             'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
             $pickupSheet->referenceNumber . '.xlsx',

@@ -9,10 +9,18 @@ final class XlsxWriter
     /**
      * @param list<string> $headers
      * @param list<list<float|int|string>> $rows
+     * @param list<float|int> $columnWidths
      */
-    public function create(array $headers, array $rows, string $totalLabel, int $totalColumn, int $total): string
+    public function create(
+        array $headers,
+        array $rows,
+        string $totalLabel,
+        int $totalColumn,
+        int $total,
+        array $columnWidths = [],
+    ): string
     {
-        $worksheet = $this->worksheet($headers, $rows, $totalLabel, $totalColumn, $total);
+        $worksheet = $this->worksheet($headers, $rows, $totalLabel, $totalColumn, $total, $columnWidths);
 
         return $this->zip([
             '[Content_Types].xml' => $this->contentTypes(),
@@ -27,8 +35,16 @@ final class XlsxWriter
     /**
      * @param list<string> $headers
      * @param list<list<float|int|string>> $rows
+     * @param list<float|int> $columnWidths
      */
-    private function worksheet(array $headers, array $rows, string $totalLabel, int $totalColumn, int $total): string
+    private function worksheet(
+        array $headers,
+        array $rows,
+        string $totalLabel,
+        int $totalColumn,
+        int $total,
+        array $columnWidths,
+    ): string
     {
         $headerCells = '';
         foreach ($headers as $index => $header) {
@@ -51,6 +67,15 @@ final class XlsxWriter
         $totalValueCell = $this->cell($totalColumn, $totalRow, $total, 3);
         $lastColumn = $this->columnName(count($headers));
         $labelEndColumn = $this->columnName(max(1, $totalColumn - 1));
+        $columns = '';
+        foreach ($headers as $index => $_header) {
+            $column = $index + 1;
+            $width = (float) ($columnWidths[$index] ?? 16);
+            $width = max(6, min($width, 60));
+            $columns .= '<col min="' . $column . '" max="' . $column . '" width="'
+                . rtrim(rtrim(number_format($width, 2, '.', ''), '0'), '.')
+                . '" customWidth="1"/>';
+        }
 
         return '<?xml version="1.0" encoding="UTF-8" standalone="yes"?>'
             . '<worksheet xmlns="http://schemas.openxmlformats.org/spreadsheetml/2006/main">'
@@ -59,15 +84,7 @@ final class XlsxWriter
             . '<pane ySplit="1" topLeftCell="A2" activePane="bottomLeft" state="frozen"/>'
             . '</sheetView></sheetViews>'
             . '<sheetFormatPr defaultRowHeight="15"/>'
-            . '<cols>'
-            . '<col min="1" max="1" width="6" customWidth="1"/>'
-            . '<col min="2" max="2" width="28" customWidth="1"/>'
-            . '<col min="3" max="4" width="16" customWidth="1"/>'
-            . '<col min="5" max="5" width="18" customWidth="1"/>'
-            . '<col min="6" max="7" width="14" customWidth="1"/>'
-            . '<col min="8" max="8" width="18" customWidth="1"/>'
-            . '<col min="9" max="9" width="24" customWidth="1"/>'
-            . '</cols>'
+            . '<cols>' . $columns . '</cols>'
             . '<sheetData>'
             . '<row r="1">' . $headerCells . '</row>'
             . $shipmentRows
