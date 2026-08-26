@@ -205,9 +205,9 @@ final class PickupsheetController
         }
 
         return Response::download(
-            $this->excelCsv($pickupSheet),
-            'text/csv; charset=UTF-8',
-            $pickupSheet->referenceNumber . '.csv',
+            $this->excelWorkbook($pickupSheet),
+            'application/vnd.ms-excel; charset=UTF-8',
+            $pickupSheet->referenceNumber . '.xml',
         );
     }
 
@@ -277,43 +277,55 @@ final class PickupsheetController
         return null;
     }
 
-    private function excelCsv(PickupSheet $pickupSheet): string
+    private function excelWorkbook(PickupSheet $pickupSheet): string
     {
-        $stream = fopen('php://temp', 'w+');
-        if ($stream === false) {
-            throw new RuntimeException('Unable to prepare the pickup-sheet export.');
+        $headers = ['#', 'Consignor', 'AWB number', 'Destination', 'Amount (XAF)', 'Pieces', 'Weight (kg)', 'Time collected', 'Checked by'];
+        $headerCells = '';
+        foreach ($headers as $header) {
+            $headerCells .= $this->excelCell($header);
         }
 
-        fwrite($stream, "\xEF\xBB\xBF");
-        fputcsv($stream, ['#', 'Consignor', 'AWB number', 'Destination', 'Amount (XAF)', 'Pieces', 'Weight (kg)', 'Time collected', 'Checked by']);
-
+        $shipmentRows = '';
         foreach ($pickupSheet->shipments as $shipment) {
-            fputcsv($stream, [
-                $shipment->lineNumber,
-                $this->safeSpreadsheetText($shipment->consignor),
-                '="' . $shipment->awbNumber . '"',
-                $shipment->destination,
-                $shipment->amountXaf,
-                $shipment->pieces,
-                $shipment->weightKg,
-                $shipment->collectionTime,
-                $this->safeSpreadsheetText($shipment->checkedBy),
-            ]);
+            $shipmentRows .= '<Row>'
+                . $this->excelCell($shipment->lineNumber, 'Number')
+                . $this->excelCell($shipment->consignor)
+                . $this->excelCell($shipment->awbNumber)
+                . $this->excelCell($shipment->destination)
+                . $this->excelCell($shipment->amountXaf, 'Number', 'Amount')
+                . $this->excelCell($shipment->pieces, 'Number')
+                . $this->excelCell($shipment->weightKg, 'Number')
+                . $this->excelCell($shipment->collectionTime)
+                . $this->excelCell($shipment->checkedBy)
+                . '</Row>';
         }
 
-        rewind($stream);
-        $contents = stream_get_contents($stream);
-        fclose($stream);
-
-        if (!is_string($contents)) {
-            throw new RuntimeException('Unable to read the pickup-sheet export.');
-        }
-
-        return $contents;
+        return '<?xml version="1.0" encoding="UTF-8"?>'
+            . '<?mso-application progid="Excel.Sheet"?>'
+            . '<Workbook xmlns="urn:schemas-microsoft-com:office:spreadsheet" '
+            . 'xmlns:ss="urn:schemas-microsoft-com:office:spreadsheet">'
+            . '<Styles>'
+            . '<Style ss:ID="Header"><Font ss:Bold="1"/></Style>'
+            . '<Style ss:ID="Amount"><NumberFormat ss:Format="#,##0"/></Style>'
+            . '<Style ss:ID="Total"><Font ss:Bold="1"/><NumberFormat ss:Format="#,##0"/></Style>'
+            . '</Styles>'
+            . '<Worksheet ss:Name="Cash Shipments"><Table>'
+            . '<Row ss:StyleID="Header">' . $headerCells . '</Row>'
+            . $shipmentRows
+            . '<Row ss:StyleID="Total">'
+            . '<Cell ss:MergeAcross="3"><Data ss:Type="String">SHIPMENT TOTAL</Data></Cell>'
+            . $this->excelCell($pickupSheet->totalCashReceivedXaf, 'Number', 'Total')
+            . '</Row>'
+            . '</Table></Worksheet></Workbook>';
     }
 
-    private function safeSpreadsheetText(string $value): string
+    private function excelCell(string|int $value, string $type = 'String', string $style = ''): string
     {
-        return preg_match('/^[=+\-@\t\r]/u', $value) ? "'" . $value : $value;
+        $styleAttribute = $style === '' ? '' : ' ss:StyleID="' . $style . '"';
+        $escapedValue = htmlspecialchars((string) $value, ENT_QUOTES | ENT_XML1 | ENT_SUBSTITUTE, 'UTF-8');
+
+        return '<Cell' . $styleAttribute . '><Data ss:Type="' . $type . '">'
+            . $escapedValue
+            . '</Data></Cell>';
     }
 }

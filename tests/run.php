@@ -383,15 +383,20 @@ $assert(substr_count($printResponse->body(), 'https://www.googletagmanager.com/g
 $assert(str_contains($printResponse->body(), 'data-analytics-page-view="disabled"'), 'Printable records should suppress Analytics page views and reference-query collection.');
 $exportResponse = $pickupController->export(new Request('GET', '/dhl/pickupsheet/submissions/export', ['reference' => $savedReference], [], '', $recordsServer));
 $assert($exportResponse->status() === 200, 'A direct pickup sheet should export successfully.');
-$assert(str_starts_with($exportResponse->body(), "\xEF\xBB\xBF"), 'The Excel-compatible CSV should include a UTF-8 byte-order mark.');
-$assert(str_starts_with(substr($exportResponse->body(), 3), '#,Consignor,'), 'The spreadsheet should begin directly with the cash-shipment column headings.');
+$assert(str_starts_with($exportResponse->body(), '<?xml version="1.0" encoding="UTF-8"?>'), 'The Excel export should be a formatted XML workbook.');
+$assert(simplexml_load_string($exportResponse->body()) !== false, 'The formatted Excel workbook should contain valid XML.');
+$assert(($exportResponse->headers()['Content-Type'] ?? '') === 'application/vnd.ms-excel; charset=UTF-8', 'The formatted shipment workbook should use the Excel media type.');
+$assert(str_contains($exportResponse->body(), '<Row ss:StyleID="Header"><Cell><Data ss:Type="String">#</Data></Cell>'), 'The spreadsheet should begin directly with the cash-shipment column headings.');
 $assert(str_contains($exportResponse->body(), 'Controller Client'), 'The spreadsheet export should contain shipment data.');
 $assert(!str_contains($exportResponse->body(), 'Reference number'), 'The spreadsheet should exclude pickup-sheet reference metadata.');
 $assert(!str_contains($exportResponse->body(), 'Agent name'), 'The spreadsheet should exclude pickup-sheet agent metadata.');
 $assert(!str_contains($exportResponse->body(), 'Collection date'), 'The spreadsheet should exclude pickup-sheet date metadata.');
 $assert(!str_contains($exportResponse->body(), 'Shipments collected'), 'The spreadsheet should exclude pickup-sheet count metadata.');
-$assert(!str_contains($exportResponse->body(), 'Total cash received'), 'The spreadsheet should exclude pickup-sheet total metadata.');
-$assert(($exportResponse->headers()['Content-Disposition'] ?? '') === 'attachment; filename="' . $savedReference . '.csv"', 'The Excel export should use the pickup reference as its filename.');
+$assert(!str_contains($exportResponse->body(), 'Total cash received'), 'The spreadsheet should exclude pickup-sheet header-total metadata.');
+$assert(str_contains($exportResponse->body(), '<Style ss:ID="Total"><Font ss:Bold="1"/>'), 'The shipment-total style should use bold characters.');
+$assert(str_contains($exportResponse->body(), '<Row ss:StyleID="Total"><Cell ss:MergeAcross="3"><Data ss:Type="String">SHIPMENT TOTAL</Data></Cell>'), 'The spreadsheet should include a bold shipment-total row.');
+$assert(str_contains($exportResponse->body(), '<Cell ss:StyleID="Total"><Data ss:Type="Number">12000</Data></Cell>'), 'The bold total row should contain the server-calculated shipment amount.');
+$assert(($exportResponse->headers()['Content-Disposition'] ?? '') === 'attachment; filename="' . $savedReference . '.xml"', 'The Excel export should use the pickup reference as its filename.');
 
 $home = $view->render('site/home', array_merge($common, [
     'pageTitle' => 'Network outsourcing and managed solutions',
