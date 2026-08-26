@@ -19,6 +19,7 @@ use App\Shared\Security\Csrf;
 use App\Shared\Security\RateLimiter;
 use App\Shared\Security\RecordsAccess;
 use App\Shared\Security\SecurityLogger;
+use App\Shared\Spreadsheet\XlsxWriter;
 use App\Shared\View\View;
 
 require dirname(__DIR__) . '/bootstrap/autoload.php';
@@ -383,20 +384,37 @@ $assert(substr_count($printResponse->body(), 'https://www.googletagmanager.com/g
 $assert(str_contains($printResponse->body(), 'data-analytics-page-view="disabled"'), 'Printable records should suppress Analytics page views and reference-query collection.');
 $exportResponse = $pickupController->export(new Request('GET', '/dhl/pickupsheet/submissions/export', ['reference' => $savedReference], [], '', $recordsServer));
 $assert($exportResponse->status() === 200, 'A direct pickup sheet should export successfully.');
-$assert(str_starts_with($exportResponse->body(), '<?xml version="1.0" encoding="UTF-8"?>'), 'The Excel export should be a formatted XML workbook.');
-$assert(simplexml_load_string($exportResponse->body()) !== false, 'The formatted Excel workbook should contain valid XML.');
-$assert(($exportResponse->headers()['Content-Type'] ?? '') === 'application/vnd.ms-excel; charset=UTF-8', 'The formatted shipment workbook should use the Excel media type.');
-$assert(str_contains($exportResponse->body(), '<Row ss:StyleID="Header"><Cell><Data ss:Type="String">#</Data></Cell>'), 'The spreadsheet should begin directly with the cash-shipment column headings.');
+$assert(str_starts_with($exportResponse->body(), "PK\x03\x04"), 'The Excel export should be a native XLSX ZIP package.');
+$assert(substr($exportResponse->body(), -22, 4) === "PK\x05\x06", 'The native XLSX package should have a valid central-directory terminator.');
+$assert(($exportResponse->headers()['Content-Type'] ?? '') === 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet', 'The shipment workbook should use the native XLSX media type.');
+$assert(str_contains($exportResponse->body(), '<c r="A1" s="1" t="inlineStr"><is><t>#</t></is></c>'), 'The spreadsheet should begin directly with the cash-shipment column headings.');
 $assert(str_contains($exportResponse->body(), 'Controller Client'), 'The spreadsheet export should contain shipment data.');
 $assert(!str_contains($exportResponse->body(), 'Reference number'), 'The spreadsheet should exclude pickup-sheet reference metadata.');
 $assert(!str_contains($exportResponse->body(), 'Agent name'), 'The spreadsheet should exclude pickup-sheet agent metadata.');
 $assert(!str_contains($exportResponse->body(), 'Collection date'), 'The spreadsheet should exclude pickup-sheet date metadata.');
 $assert(!str_contains($exportResponse->body(), 'Shipments collected'), 'The spreadsheet should exclude pickup-sheet count metadata.');
 $assert(!str_contains($exportResponse->body(), 'Total cash received'), 'The spreadsheet should exclude pickup-sheet header-total metadata.');
-$assert(str_contains($exportResponse->body(), '<Style ss:ID="Total"><Font ss:Bold="1"/>'), 'The shipment-total style should use bold characters.');
-$assert(str_contains($exportResponse->body(), '<Row ss:StyleID="Total"><Cell ss:MergeAcross="3"><Data ss:Type="String">SHIPMENT TOTAL</Data></Cell>'), 'The spreadsheet should include a bold shipment-total row.');
-$assert(str_contains($exportResponse->body(), '<Cell ss:StyleID="Total"><Data ss:Type="Number">12000</Data></Cell>'), 'The bold total row should contain the server-calculated shipment amount.');
-$assert(($exportResponse->headers()['Content-Disposition'] ?? '') === 'attachment; filename="' . $savedReference . '.xml"', 'The Excel export should use the pickup reference as its filename.');
+$assert(str_contains($exportResponse->body(), '<font><b/><sz val="11"/><name val="Calibri"/><family val="2"/></font>'), 'The native workbook should define bold characters for totals.');
+$assert(str_contains($exportResponse->body(), 'SHIPMENT TOTAL'), 'The spreadsheet should include a bold shipment-total row.');
+$assert(str_contains($exportResponse->body(), '<v>12000</v>'), 'The bold total row should contain the server-calculated shipment amount.');
+$assert(($exportResponse->headers()['Content-Disposition'] ?? '') === 'attachment; filename="' . $savedReference . '.xlsx"', 'The Excel export should use a native XLSX filename.');
+$xlsxPath = tempnam(sys_get_temp_dir(), 'ttechcg-xlsx-');
+$assert(is_string($xlsxPath) && file_put_contents($xlsxPath, $exportResponse->body()) !== false, 'The XLSX test fixture should be writable.');
+try {
+    $xlsxArchive = new PharData($xlsxPath, 0, null, Phar::ZIP);
+    $assert(isset($xlsxArchive['[Content_Types].xml']), 'The XLSX archive should declare its package content types.');
+    $assert(isset($xlsxArchive['xl/workbook.xml']), 'The XLSX archive should contain a workbook definition.');
+    $assert(isset($xlsxArchive['xl/worksheets/sheet1.xml']), 'The XLSX archive should contain its cash-shipment worksheet.');
+} finally {
+    if (is_string($xlsxPath) && is_file($xlsxPath)) {
+        unlink($xlsxPath);
+    }
+}
+
+$xlsxWriter = new XlsxWriter();
+$escapedWorkbook = $xlsxWriter->create(['Name', 'Amount'], [['A&B <Logistics>', 2500]], 'SHIPMENT TOTAL', 2, 2500);
+$assert(str_contains($escapedWorkbook, 'A&amp;B &lt;Logistics&gt;'), 'The XLSX writer should XML-escape untrusted shipment text.');
+$assert(!str_contains($escapedWorkbook, '<f>'), 'Shipment strings should never be emitted as spreadsheet formulas.');
 
 $home = $view->render('site/home', array_merge($common, [
     'pageTitle' => 'Network outsourcing and managed solutions',

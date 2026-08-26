@@ -13,6 +13,7 @@ use App\Shared\Security\Csrf;
 use App\Shared\Security\RateLimiter;
 use App\Shared\Security\RecordsAccess;
 use App\Shared\Security\SecurityLogger;
+use App\Shared\Spreadsheet\XlsxWriter;
 use App\Shared\View\View;
 use InvalidArgumentException;
 use RuntimeException;
@@ -205,9 +206,25 @@ final class PickupsheetController
         }
 
         return Response::download(
-            $this->excelWorkbook($pickupSheet),
-            'application/vnd.ms-excel; charset=UTF-8',
-            $pickupSheet->referenceNumber . '.xml',
+            (new XlsxWriter())->create(
+                ['#', 'Consignor', 'AWB number', 'Destination', 'Amount (XAF)', 'Pieces', 'Weight (kg)', 'Time collected', 'Checked by'],
+                array_map(static fn ($shipment): array => [
+                    $shipment->lineNumber,
+                    $shipment->consignor,
+                    $shipment->awbNumber,
+                    $shipment->destination,
+                    $shipment->amountXaf,
+                    $shipment->pieces,
+                    (float) $shipment->weightKg,
+                    $shipment->collectionTime,
+                    $shipment->checkedBy,
+                ], $pickupSheet->shipments),
+                'SHIPMENT TOTAL',
+                5,
+                $pickupSheet->totalCashReceivedXaf,
+            ),
+            'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
+            $pickupSheet->referenceNumber . '.xlsx',
         );
     }
 
@@ -277,55 +294,4 @@ final class PickupsheetController
         return null;
     }
 
-    private function excelWorkbook(PickupSheet $pickupSheet): string
-    {
-        $headers = ['#', 'Consignor', 'AWB number', 'Destination', 'Amount (XAF)', 'Pieces', 'Weight (kg)', 'Time collected', 'Checked by'];
-        $headerCells = '';
-        foreach ($headers as $header) {
-            $headerCells .= $this->excelCell($header);
-        }
-
-        $shipmentRows = '';
-        foreach ($pickupSheet->shipments as $shipment) {
-            $shipmentRows .= '<Row>'
-                . $this->excelCell($shipment->lineNumber, 'Number')
-                . $this->excelCell($shipment->consignor)
-                . $this->excelCell($shipment->awbNumber)
-                . $this->excelCell($shipment->destination)
-                . $this->excelCell($shipment->amountXaf, 'Number', 'Amount')
-                . $this->excelCell($shipment->pieces, 'Number')
-                . $this->excelCell($shipment->weightKg, 'Number')
-                . $this->excelCell($shipment->collectionTime)
-                . $this->excelCell($shipment->checkedBy)
-                . '</Row>';
-        }
-
-        return '<?xml version="1.0" encoding="UTF-8"?>'
-            . '<?mso-application progid="Excel.Sheet"?>'
-            . '<Workbook xmlns="urn:schemas-microsoft-com:office:spreadsheet" '
-            . 'xmlns:ss="urn:schemas-microsoft-com:office:spreadsheet">'
-            . '<Styles>'
-            . '<Style ss:ID="Header"><Font ss:Bold="1"/></Style>'
-            . '<Style ss:ID="Amount"><NumberFormat ss:Format="#,##0"/></Style>'
-            . '<Style ss:ID="Total"><Font ss:Bold="1"/><NumberFormat ss:Format="#,##0"/></Style>'
-            . '</Styles>'
-            . '<Worksheet ss:Name="Cash Shipments"><Table>'
-            . '<Row ss:StyleID="Header">' . $headerCells . '</Row>'
-            . $shipmentRows
-            . '<Row ss:StyleID="Total">'
-            . '<Cell ss:MergeAcross="3"><Data ss:Type="String">SHIPMENT TOTAL</Data></Cell>'
-            . $this->excelCell($pickupSheet->totalCashReceivedXaf, 'Number', 'Total')
-            . '</Row>'
-            . '</Table></Worksheet></Workbook>';
-    }
-
-    private function excelCell(string|int $value, string $type = 'String', string $style = ''): string
-    {
-        $styleAttribute = $style === '' ? '' : ' ss:StyleID="' . $style . '"';
-        $escapedValue = htmlspecialchars((string) $value, ENT_QUOTES | ENT_XML1 | ENT_SUBSTITUTE, 'UTF-8');
-
-        return '<Cell' . $styleAttribute . '><Data ss:Type="' . $type . '">'
-            . $escapedValue
-            . '</Data></Cell>';
-    }
 }
