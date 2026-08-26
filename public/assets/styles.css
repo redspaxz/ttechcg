@@ -1499,7 +1499,7 @@ button, a, input, select, textarea { -webkit-tap-highlight-color: transparent; }
 }
 .shipment-table {
     width: 100%;
-    min-width: 1210px;
+    min-width: 1095px;
     border-collapse: collapse;
     table-layout: fixed;
 }
@@ -1526,9 +1526,8 @@ button, a, input, select, textarea { -webkit-tap-highlight-color: transparent; }
 .shipment-table th:nth-child(5) { width: 125px; }
 .shipment-table th:nth-child(6) { width: 72px; }
 .shipment-table th:nth-child(7) { width: 105px; }
-.shipment-table th:nth-child(8) { width: 115px; }
-.shipment-table th:nth-child(9) { width: 155px; }
-.shipment-table th:nth-child(10) { width: 82px; }
+.shipment-table th:nth-child(8) { width: 155px; }
+.shipment-table th:nth-child(9) { width: 82px; }
 .shipment-table tbody th {
     color: #493800;
     font-size: 0.72rem;

@@ -77,7 +77,6 @@ if (pickupForm) {
         amount: 'amount in XAF',
         pieces: 'pieces',
         weight_kg: 'weight in kilograms',
-        collection_time: 'collection time',
         checked_by: 'checked by',
     };
     const numberFormatter = new Intl.NumberFormat('en-US', { maximumFractionDigits: 0 });

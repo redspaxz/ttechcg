@@ -64,6 +64,10 @@ final class PickupSheetService
             throw new InvalidArgumentException('A pickup sheet can contain no more than 50 shipments.');
         }
 
+        $submissionInstant = new DateTimeImmutable('now', new DateTimeZone('UTC'));
+        $submissionTime = $submissionInstant
+            ->setTimezone(new DateTimeZone(date_default_timezone_get()))
+            ->format('H:i');
         $shipments = [];
         $totalCashReceivedXaf = 0;
 
@@ -79,7 +83,6 @@ final class PickupSheetService
                 'amount' => str_replace([',', ' '], '', $this->stringValue($row['amount'] ?? '')),
                 'pieces' => $this->stringValue($row['pieces'] ?? ''),
                 'weight_kg' => $this->normalizeWeightInput($this->stringValue($row['weight_kg'] ?? '')),
-                'collection_time' => $this->stringValue($row['collection_time'] ?? ''),
                 'checked_by' => $this->stringValue($row['checked_by'] ?? ''),
             ];
 
@@ -99,7 +102,7 @@ final class PickupSheetService
                 $amountXaf,
                 (int) $values['pieces'],
                 number_format((float) $values['weight_kg'], 3, '.', ''),
-                $values['collection_time'],
+                $submissionTime,
                 $values['checked_by'],
             );
 
@@ -111,7 +114,7 @@ final class PickupSheetService
             throw new InvalidArgumentException('Add at least one shipment before saving the pickup sheet.');
         }
 
-        $submittedAt = (new DateTimeImmutable('now', new DateTimeZone('UTC')))->format(DATE_ATOM);
+        $submittedAt = $submissionInstant->format(DATE_ATOM);
 
         return $this->repository->create(new PickupSheet(
             null,
@@ -161,10 +164,6 @@ final class PickupSheetService
             throw new InvalidArgumentException($prefix . 'weight must be a positive kilogram value with up to three decimals.');
         }
 
-        $time = DateTimeImmutable::createFromFormat('!H:i', $row['collection_time']);
-        if ($time === false || $time->format('H:i') !== $row['collection_time']) {
-            throw new InvalidArgumentException($prefix . 'provide a valid collection time.');
-        }
         if (strlen($row['checked_by']) < 2 || strlen($row['checked_by']) > 100) {
             throw new InvalidArgumentException($prefix . 'provide the name of the person who checked the shipment.');
         }

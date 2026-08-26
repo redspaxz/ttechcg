@@ -26,7 +26,6 @@ $renderShipmentRow = static function (int|string $index, mixed $row = []) use ($
         <td data-label="Amount (XAF)"><label class="sr-only" data-row-label>Shipment <?= $rowNumber ?> amount in XAF</label><input data-field="amount" name="shipments[<?= $index ?>][amount]" value="<?= $field($row, 'amount') ?>" type="number" inputmode="numeric" min="1" max="999999999" step="1" required autocomplete="off" placeholder="0"></td>
         <td data-label="Pieces"><label class="sr-only" data-row-label>Shipment <?= $rowNumber ?> pieces</label><input data-field="pieces" name="shipments[<?= $index ?>][pieces]" value="<?= $field($row, 'pieces') ?>" type="number" inputmode="numeric" min="1" max="999" step="1" required autocomplete="off" placeholder="1"></td>
         <td data-label="Weight (kg)"><label class="sr-only" data-row-label>Shipment <?= $rowNumber ?> weight in kilograms</label><input data-field="weight_kg" name="shipments[<?= $index ?>][weight_kg]" value="<?= $field($row, 'weight_kg') ?>" type="number" inputmode="decimal" min="0.001" max="9999.999" step="0.001" required autocomplete="off" placeholder="0.500"></td>
-        <td data-label="Time collected"><label class="sr-only" data-row-label>Shipment <?= $rowNumber ?> collection time</label><input data-field="collection_time" name="shipments[<?= $index ?>][collection_time]" value="<?= $field($row, 'collection_time') ?>" type="time" required autocomplete="off"></td>
         <td data-label="Checked by"><label class="sr-only" data-row-label>Shipment <?= $rowNumber ?> checked by</label><input data-field="checked_by" name="shipments[<?= $index ?>][checked_by]" value="<?= $field($row, 'checked_by') ?>" maxlength="100" required autocomplete="off" placeholder="Checker name"></td>
         <td class="shipment-row-action" data-label="Row action"><button type="button" data-remove-shipment aria-label="Remove shipment <?= $rowNumber ?>">Remove</button></td>
     </tr>
@@ -92,10 +91,11 @@ $renderShipmentRow = static function (int|string $index, mixed $row = []) use ($
                     <button class="pickup-add-row" type="button" data-add-shipment>+ Add shipment</button>
                 </div>
                 <p class="shipment-scroll-hint">On a small screen, each shipment appears as a separate entry card.</p>
+                <p>Time collected is recorded automatically when this pickup sheet is submitted.</p>
                 <div class="shipment-table-wrap">
                     <table class="shipment-table">
                         <thead>
-                            <tr><th scope="col">#</th><th scope="col">Consignor</th><th scope="col">AWB number</th><th scope="col">Dest</th><th scope="col">Amount</th><th scope="col">Pces</th><th scope="col">Wgt</th><th scope="col">Time coll</th><th scope="col">Check by</th><th scope="col"><span class="sr-only">Action</span></th></tr>
+                            <tr><th scope="col">#</th><th scope="col">Consignor</th><th scope="col">AWB number</th><th scope="col">Dest</th><th scope="col">Amount</th><th scope="col">Pces</th><th scope="col">Wgt</th><th scope="col">Check by</th><th scope="col"><span class="sr-only">Action</span></th></tr>
                         </thead>
                         <tbody data-shipment-rows>
                             <?php foreach ($shipmentRows as $index => $row): ?><?php $renderShipmentRow($index, $row); ?><?php endforeach; ?>

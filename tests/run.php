@@ -133,7 +133,7 @@ $pickupSheet = $pickupService->submit([
             'amount' => '59,600',
             'pieces' => '1',
             'weight_kg' => '0.5kg',
-            'collection_time' => '10:03',
+            'collection_time' => '99:99',
             'checked_by' => 'Elizabeth A',
         ],
         [
@@ -143,7 +143,6 @@ $pickupSheet = $pickupService->submit([
             'amount' => '56100',
             'pieces' => '1',
             'weight_kg' => '0.500',
-            'collection_time' => '10:20',
             'checked_by' => 'Elizabeth A',
         ],
     ],
@@ -154,6 +153,9 @@ $assert($pickupSheet->shipmentCount() === 2, 'All completed shipment rows should
 $assert($pickupSheet->totalCashReceivedXaf === 115700, 'The XAF total should be recalculated from shipment rows.');
 $assert($pickupSheet->shipments[0]->destination === 'DCA', 'Destination codes should be normalized to uppercase.');
 $assert($pickupSheet->shipments[0]->weightKg === '0.500', 'Shipment weight should be normalized for MySQL decimals.');
+$assert((bool) preg_match('/^[0-9]{2}:[0-9]{2}$/', $pickupSheet->shipments[0]->collectionTime), 'Shipment collection time should be assigned automatically in hour-and-minute format.');
+$assert($pickupSheet->shipments[0]->collectionTime === $pickupSheet->shipments[1]->collectionTime, 'Every shipment on a sheet should use the same server-recorded submission time.');
+$assert($pickupSheet->shipments[0]->collectionTime !== '99:99', 'A client-supplied collection time should be ignored.');
 $assert($pickupSheet->privacyConsentAt !== '', 'Pickup-sheet consent should retain a timestamp.');
 $assert(($pickupService->recent(1)[0]->referenceNumber ?? '') === $pickupSheet->referenceNumber, 'Recent pickup sheets should be available to the submissions view.');
 $assert($pickupService->findByReference($pickupSheet->referenceNumber)?->agentName === 'Edmund Ngochi', 'A pickup sheet should be retrievable by its reference number.');
@@ -185,7 +187,6 @@ try {
             'amount' => '1000',
             'pieces' => '1',
             'weight_kg' => '0.5',
-            'collection_time' => '10:30',
             'checked_by' => 'Test Checker',
         ]],
     ]);
@@ -328,7 +329,6 @@ $pickupControllerResponse = $pickupController->store(new Request('POST', '/dhl/p
         'amount' => '12000',
         'pieces' => '2',
         'weight_kg' => '1.25',
-        'collection_time' => '11:40',
         'checked_by' => 'Controller Checker',
     ]],
 ], ''));
@@ -338,6 +338,7 @@ $assert(str_contains((string) ($_SESSION['_pickup_flash'] ?? ''), '12,000 XAF'),
 $savedControllerSheet = $_SESSION['_demo_pickup_sheets'][0] ?? null;
 $assert($savedControllerSheet instanceof App\Modules\Pickupsheet\Domain\PickupSheet, 'The controller should persist a pickup-sheet aggregate.');
 $assert(($savedControllerSheet->shipments[0]->checkedBy ?? '') === 'Controller Checker', 'The server should retain the validated checker entered with the shipment.');
+$assert((bool) preg_match('/^[0-9]{2}:[0-9]{2}$/', $savedControllerSheet->shipments[0]->collectionTime ?? ''), 'The controller should persist the server-generated submission time.');
 $savedReference = $savedControllerSheet->referenceNumber;
 
 $openSubmissions = $pickupController->submissions(new Request('GET', '/dhl/pickupsheet/submissions', [], [], '', $recordsServer));
@@ -447,8 +448,8 @@ $assert(is_string($dhlAsset) && !str_contains($dhlAsset, '<text'), 'The disquali
 $partnerSources = file_get_contents(dirname(__DIR__) . '/public/assets/partners/README.md');
 $assert(is_string($partnerSources) && str_contains($partnerSources, 'www.dhl.com/content/dam/dhl/global/core/images/logos/dhl-logo.svg'), 'The official DHL artwork source should be documented.');
 $assert(!str_contains($home, 'href="/dhl/pickupsheet"'), 'Pickupsheet should not be discoverable from the public site chrome or homepage.');
-$assert(str_contains($home, 'styles.css?v=20260824-original-sheet'), 'The original-sheet update should use a cache-safe stylesheet version.');
-$assert(str_contains($home, 'app.js?v=20260824-original-sheet'), 'The original-sheet update should use a cache-safe application script version.');
+$assert(str_contains($home, 'styles.css?v=20260826-submission-time'), 'The automatic submission-time update should use a cache-safe stylesheet version.');
+$assert(str_contains($home, 'app.js?v=20260826-submission-time'), 'The automatic submission-time update should use a cache-safe application script version.');
 $assert(str_contains($home, 'analytics.js?v=20260825-security-hardening'), 'The current consent-aware Google Analytics loader should render on every page.');
 $assert(str_contains($home, 'data-analytics-accept'), 'The site should offer an explicit analytics acceptance control.');
 $assert(str_contains($home, 'data-analytics-decline'), 'The site should offer an explicit analytics decline control.');
@@ -543,7 +544,8 @@ $assert(str_contains($product, 'shipments[0][destination]'), 'The pickup form sh
 $assert(str_contains($product, 'shipments[0][amount]'), 'The pickup form should collect cash amounts from the PDF.');
 $assert(str_contains($product, 'shipments[0][pieces]'), 'The pickup form should collect piece counts from the PDF.');
 $assert(str_contains($product, 'shipments[0][weight_kg]'), 'The pickup form should collect shipment weight from the PDF.');
-$assert(str_contains($product, 'shipments[0][collection_time]'), 'The pickup form should collect the collection time from the PDF.');
+$assert(!str_contains($product, 'shipments[0][collection_time]'), 'The pickup form should not allow operators to alter the collection time.');
+$assert(str_contains($product, 'Time collected is recorded automatically when this pickup sheet is submitted.'), 'The pickup form should explain its server-recorded submission time.');
 $assert(str_contains($product, 'shipments[0][checked_by]'), 'The pickup form should collect the checker for each shipment.');
 $assert(str_contains($product, 'placeholder="Checker name"'), 'The checker field should clearly describe the expected value.');
 $assert(!str_contains($product, 'action="/dhl/pickupsheet/logout"'), 'The direct workspace should not provide an authentication action.');
@@ -568,6 +570,7 @@ $assert(str_contains($privacy, 'Information we collect'), 'The privacy notice sh
 $assert(str_contains($privacy, 'agent name, collection date, consignor, AWB number'), 'The privacy notice should disclose pickup-sheet fields.');
 $assert(str_contains($privacy, 'record and reconcile cash shipment collections'), 'The privacy notice should state the pickup-sheet processing purpose.');
 $assert(str_contains($privacy, 'checker identity entered for each shipment'), 'The privacy notice should explain the entered checker identity.');
+$assert(str_contains($privacy, 'records the collection time automatically'), 'The privacy notice should explain the server-generated collection time.');
 $assert(str_contains($privacy, 'pickup-sheet entry form is public'), 'The privacy notice should disclose public pickup-sheet entry.');
 $assert(str_contains($privacy, 'submitted records, print views, and exports require authorised staff credentials'), 'The privacy notice should disclose protected record access.');
 $assert(str_contains($privacy, 'inquiry and pickup-sheet forms require an explicit, unchecked opt-in'), 'Both personal-data forms should require explicit consent.');
