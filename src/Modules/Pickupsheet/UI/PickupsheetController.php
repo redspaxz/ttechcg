@@ -193,7 +193,7 @@ final class PickupsheetController
             $accounts = $this->recordsUserService->accounts($authorization);
         } catch (RuntimeException $exception) {
             error_log($exception->__toString());
-            $errors = ['Account storage is unavailable. Apply the records-user migration and check the MySQL connection.'];
+            $errors = ['Account storage could not be initialized. Confirm that the MySQL user can create tables, or apply migration 005 in phpMyAdmin.'];
         }
 
         $body = $this->view->render('pickupsheet/users', [

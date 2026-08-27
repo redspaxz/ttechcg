@@ -7,9 +7,12 @@ namespace App\Shared\Infrastructure;
 use App\Shared\Security\RecordsUserAccount;
 use App\Shared\Security\RecordsUserRepository;
 use PDO;
+use PDOException;
 
 final class MysqlRecordsUserRepository implements RecordsUserRepository
 {
+    private bool $schemaReady = false;
+
     public function __construct(private readonly PDO $connection)
     {
     }
@@ -28,6 +31,7 @@ final class MysqlRecordsUserRepository implements RecordsUserRepository
 
     public function findById(int $id): ?RecordsUserAccount
     {
+        $this->ensureSchema();
         $statement = $this->connection->prepare(
             'SELECT id, username, password_hash, role, active, created_at, updated_at
              FROM pickup_records_users
@@ -40,6 +44,7 @@ final class MysqlRecordsUserRepository implements RecordsUserRepository
 
     public function all(): array
     {
+        $this->ensureSchema();
         $statement = $this->connection->prepare(
             "SELECT id, username, password_hash, role, active, created_at, updated_at
              FROM pickup_records_users
@@ -59,6 +64,7 @@ final class MysqlRecordsUserRepository implements RecordsUserRepository
 
     public function usernameExists(string $username, ?int $exceptId = null): bool
     {
+        $this->ensureSchema();
         $sql = 'SELECT COUNT(*) FROM pickup_records_users WHERE username = :username';
         $parameters = ['username' => $username];
         if ($exceptId !== null) {
@@ -77,6 +83,7 @@ final class MysqlRecordsUserRepository implements RecordsUserRepository
         string $role,
         string $actorId,
     ): RecordsUserAccount {
+        $this->ensureSchema();
         $statement = $this->connection->prepare(
             'INSERT INTO pickup_records_users
                 (username, password_hash, role, active, created_by, updated_by, created_at, updated_at)
@@ -103,6 +110,7 @@ final class MysqlRecordsUserRepository implements RecordsUserRepository
         ?string $passwordHash,
         string $actorId,
     ): ?RecordsUserAccount {
+        $this->ensureSchema();
         $assignments = [
             'username = :username',
             'role = :role',
@@ -144,5 +152,37 @@ final class MysqlRecordsUserRepository implements RecordsUserRepository
             (string) $row['created_at'],
             (string) $row['updated_at'],
         );
+    }
+
+    private function ensureSchema(): void
+    {
+        if ($this->schemaReady) {
+            return;
+        }
+
+        try {
+            $this->connection->query('SELECT 1 FROM pickup_records_users LIMIT 1');
+            $this->schemaReady = true;
+            return;
+        } catch (PDOException) {
+            // The authenticated admin workflow may initialize the missing table below.
+        }
+
+        $this->connection->exec(
+            'CREATE TABLE IF NOT EXISTS pickup_records_users (
+                id BIGINT UNSIGNED AUTO_INCREMENT PRIMARY KEY,
+                username VARCHAR(100) NOT NULL,
+                password_hash VARCHAR(255) NOT NULL,
+                role VARCHAR(20) NOT NULL,
+                active TINYINT(1) NOT NULL DEFAULT 1,
+                created_by CHAR(24) NOT NULL,
+                updated_by CHAR(24) NOT NULL,
+                created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+                updated_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+                UNIQUE INDEX pickup_records_users_username_idx (username),
+                INDEX pickup_records_users_role_active_idx (role, active)
+            ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci',
+        );
+        $this->schemaReady = true;
     }
 }

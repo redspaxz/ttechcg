@@ -972,6 +972,9 @@ $assert(is_string($recordsUserMigration) && str_contains($recordsUserMigration, 
 $recordsUserMysqlRepository = file_get_contents(dirname(__DIR__) . '/src/Shared/Infrastructure/MysqlRecordsUserRepository.php');
 $assert(is_string($recordsUserMysqlRepository) && str_contains($recordsUserMysqlRepository, 'BINARY username = :username AND active = 1'), 'Managed account authentication should require an exact username and active status.');
 $assert(is_string($recordsUserMysqlRepository) && str_contains($recordsUserMysqlRepository, 'password_hash = :password_hash'), 'Administrators should be able to rotate managed account passwords.');
+$assert(is_string($recordsUserMysqlRepository) && str_contains($recordsUserMysqlRepository, 'private function ensureSchema()'), 'Administrator account management should initialize its idempotent schema without cPanel CLI access.');
+$findActiveMethod = substr($recordsUserMysqlRepository, 0, (int) strpos($recordsUserMysqlRepository, 'public function findById'));
+$assert(!str_contains($findActiveMethod, '$this->ensureSchema();'), 'Anonymous or managed-user authentication must not trigger schema creation.');
 $bootstrap = file_get_contents(dirname(__DIR__) . '/bootstrap/app.php');
 $assert(is_string($bootstrap) && str_contains($bootstrap, "'httponly' => true"), 'The security session cookie should be inaccessible to client-side scripts.');
 $assert(is_string($bootstrap) && str_contains($bootstrap, "'samesite' => 'Lax'"), 'The security session cookie should use a SameSite policy.');
