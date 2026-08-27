@@ -797,15 +797,15 @@ $assert(str_contains($exportResponse->body(), '<font><b/><sz val="11"/><name val
 $assert(str_contains($exportResponse->body(), 'SHIPMENT TOTAL'), 'The spreadsheet should include a bold shipment-total row.');
 $assert(str_contains($exportResponse->body(), '<v>14000</v>'), 'The bold total row should contain the administrator-corrected shipment amount.');
 $assert(($exportResponse->headers()['Content-Disposition'] ?? '') === 'attachment; filename="' . $savedReference . '.xlsx"', 'The Excel export should use a native XLSX filename.');
-$xlsxPath = tempnam(sys_get_temp_dir(), 'ttechcg-xlsx-');
-$assert(is_string($xlsxPath) && file_put_contents($xlsxPath, $exportResponse->body()) !== false, 'The XLSX test fixture should be writable.');
+$xlsxPath = sys_get_temp_dir() . DIRECTORY_SEPARATOR . 'ttechcg-xlsx-' . bin2hex(random_bytes(8)) . '.zip';
+$assert(file_put_contents($xlsxPath, $exportResponse->body()) !== false, 'The XLSX test fixture should be writable.');
 try {
     $xlsxArchive = new PharData($xlsxPath, 0, null, Phar::ZIP);
     $assert(isset($xlsxArchive['[Content_Types].xml']), 'The XLSX archive should declare its package content types.');
     $assert(isset($xlsxArchive['xl/workbook.xml']), 'The XLSX archive should contain a workbook definition.');
     $assert(isset($xlsxArchive['xl/worksheets/sheet1.xml']), 'The XLSX archive should contain its cash-shipment worksheet.');
 } finally {
-    if (is_string($xlsxPath) && is_file($xlsxPath)) {
+    if (is_file($xlsxPath)) {
         unlink($xlsxPath);
     }
 }
