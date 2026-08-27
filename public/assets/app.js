@@ -236,3 +236,10 @@ if (pickupRecords) {
         loadPage(Number.isInteger(page) && page > 0 ? page : 1, false);
     });
 }
+
+document.addEventListener('submit', (event) => {
+    if (event.target.matches('[data-pickup-delete]')
+        && !window.confirm('Delete this pickup sheet from active records? Its audit history will be retained.')) {
+        event.preventDefault();
+    }
+});

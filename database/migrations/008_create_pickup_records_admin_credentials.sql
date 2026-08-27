@@ -1,0 +1,7 @@
+CREATE TABLE IF NOT EXISTS pickup_records_admin_credentials (
+    username VARCHAR(100) PRIMARY KEY,
+    password_hash VARCHAR(255) NOT NULL,
+    updated_by CHAR(24) NOT NULL,
+    created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    updated_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;

@@ -10,6 +10,10 @@ interface PickupSheetRepository
 
     public function update(PickupSheet $pickupSheet, string $actorId): PickupSheet;
 
+    public function markPaid(string $referenceNumber, string $actorId): PickupSheet;
+
+    public function delete(string $referenceNumber, string $actorId): void;
+
     /** @return list<PickupSheet> */
     public function recent(int $limit, int $offset = 0): array;
 

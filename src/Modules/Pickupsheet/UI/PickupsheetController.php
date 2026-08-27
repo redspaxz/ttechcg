@@ -208,6 +208,8 @@ final class PickupsheetController
         }
 
         $records = $this->submissionRecords($request, $authorization);
+        $flash = $_SESSION['_pickup_records_flash'] ?? null;
+        unset($_SESSION['_pickup_records_flash']);
 
         $body = $this->view->render('pickupsheet/submissions', array_merge($records, [
             'pageTitle' => 'Submitted pickup sheets',
@@ -218,6 +220,7 @@ final class PickupsheetController
             'assetBase' => $request->basePath . '/public/assets',
             'config' => $this->config,
             'storageMode' => $this->storageMode,
+            'flash' => is_string($flash) ? $flash : null,
         ]));
 
         return Response::html($body, 200, $this->privateHeaders());
@@ -268,6 +271,7 @@ final class PickupsheetController
             'errors' => is_array($errors) ? $errors : [],
             'old' => is_array($old) ? $old : [],
             'recordsUsername' => $authorization->username,
+            'recordsRole' => $authorization->role,
         ]);
 
         return Response::html($body, 200, $this->privateHeaders());
@@ -322,6 +326,70 @@ final class PickupsheetController
         return Response::redirect(
             $request->basePath . '/dhl/pickupsheet/submissions/edit?reference=' . rawurlencode($reference),
         );
+    }
+
+    public function markPickupSheetPaid(Request $request): Response
+    {
+        $authorization = $this->authorizeRecords($request, 'mark_paid');
+        if ($authorization instanceof Response) {
+            return $authorization;
+        }
+
+        $denied = $this->pickupLifecycleWriteGuard($request, 'mark-paid');
+        if ($denied !== null) {
+            return $denied;
+        }
+
+        $reference = $request->input('reference');
+        try {
+            $paid = $this->service->markPaid($reference, $this->actorId($authorization));
+            $_SESSION['_pickup_records_flash'] = 'Pickup sheet ' . $paid->referenceNumber . ' marked paid.';
+            $this->securityLogger->event('pickupsheet.record_paid', $request, 'accepted', [
+                'actor_id' => $this->actorId($authorization),
+                'resource_id' => substr(hash('sha256', $paid->referenceNumber), 0, 24),
+            ]);
+        } catch (InvalidArgumentException $exception) {
+            $_SESSION['_pickup_records_flash'] = $exception->getMessage();
+            $this->securityLogger->event('pickupsheet.record_paid', $request, 'denied');
+        } catch (RuntimeException $exception) {
+            error_log($exception->__toString());
+            $_SESSION['_pickup_records_flash'] = 'The pickup sheet could not be marked paid. Check MySQL and try again.';
+            $this->securityLogger->event('pickupsheet.record_paid', $request, 'failed');
+        }
+
+        return Response::redirect($request->basePath . '/dhl/pickupsheet/submissions');
+    }
+
+    public function deletePickupSheet(Request $request): Response
+    {
+        $authorization = $this->authorizeRecords($request, 'delete');
+        if ($authorization instanceof Response) {
+            return $authorization;
+        }
+
+        $denied = $this->pickupLifecycleWriteGuard($request, 'delete');
+        if ($denied !== null) {
+            return $denied;
+        }
+
+        $reference = $request->input('reference');
+        try {
+            $this->service->delete($reference, $this->actorId($authorization));
+            $_SESSION['_pickup_records_flash'] = 'Pickup sheet ' . $reference . ' deleted from active records. Its audit history was retained.';
+            $this->securityLogger->event('pickupsheet.record_delete', $request, 'accepted', [
+                'actor_id' => $this->actorId($authorization),
+                'resource_id' => substr(hash('sha256', $reference), 0, 24),
+            ]);
+        } catch (InvalidArgumentException $exception) {
+            $_SESSION['_pickup_records_flash'] = $exception->getMessage();
+            $this->securityLogger->event('pickupsheet.record_delete', $request, 'denied');
+        } catch (RuntimeException $exception) {
+            error_log($exception->__toString());
+            $_SESSION['_pickup_records_flash'] = 'The pickup sheet could not be deleted. Check MySQL and try again.';
+            $this->securityLogger->event('pickupsheet.record_delete', $request, 'failed');
+        }
+
+        return Response::redirect($request->basePath . '/dhl/pickupsheet/submissions');
     }
 
     public function users(Request $request): Response
@@ -438,6 +506,55 @@ final class PickupsheetController
             error_log($exception->__toString());
             $_SESSION['_records_users_errors'] = ['The account could not be updated. Check the MySQL connection and try again.'];
             $this->securityLogger->event('pickupsheet.records_user_update', $request, 'failed');
+        }
+
+        return Response::redirect($request->basePath . '/dhl/pickupsheet/submissions/users');
+    }
+
+    public function resetAdminPassword(Request $request): Response
+    {
+        $authorization = $this->authorizeRecords($request, 'manage');
+        if ($authorization instanceof Response) {
+            return $authorization;
+        }
+
+        $writeDenied = $this->recordsUserWriteGuard($request);
+        if ($writeDenied !== null) {
+            return $writeDenied;
+        }
+
+        $currentPassword = $request->rawInput('current_password');
+        $verified = $this->recordsAccess->authenticateCredentials($authorization->username, $currentPassword);
+        if ($verified === null || $verified->role !== 'admin') {
+            $_SESSION['_records_users_errors'] = ['The current administrator password is incorrect.'];
+            $this->securityLogger->event('pickupsheet.admin_password_reset', $request, 'denied', [
+                'actor_id' => $this->actorId($authorization),
+            ]);
+            return Response::redirect($request->basePath . '/dhl/pickupsheet/submissions/users');
+        }
+
+        try {
+            $this->recordsUserService->resetAdministratorPassword([
+                'password' => $request->rawInput('password'),
+                'password_confirmation' => $request->rawInput('password_confirmation'),
+            ], $authorization);
+            $this->securityLogger->event('pickupsheet.admin_password_reset', $request, 'accepted', [
+                'actor_id' => $this->actorId($authorization),
+            ]);
+            $_SESSION['_pickup_login_flash'] = 'Administrator password reset. Sign in with the new password.';
+            $this->recordsSession->logout();
+            return Response::redirect($request->basePath . '/dhl/pickupsheet/login');
+        } catch (InvalidArgumentException $exception) {
+            $_SESSION['_records_users_errors'] = [$exception->getMessage()];
+            $this->securityLogger->event('pickupsheet.admin_password_reset', $request, 'denied', [
+                'actor_id' => $this->actorId($authorization),
+            ]);
+        } catch (RuntimeException $exception) {
+            error_log($exception->__toString());
+            $_SESSION['_records_users_errors'] = ['The administrator password could not be reset. Check MySQL and try again.'];
+            $this->securityLogger->event('pickupsheet.admin_password_reset', $request, 'failed', [
+                'actor_id' => $this->actorId($authorization),
+            ]);
         }
 
         return Response::redirect($request->basePath . '/dhl/pickupsheet/submissions/users');
@@ -569,6 +686,8 @@ final class PickupsheetController
             'canExport' => $principal->can('export'),
             'canManage' => $principal->can('manage'),
             'canEdit' => $principal->can('edit'),
+            'canMarkPaid' => $principal->can('mark_paid'),
+            'canDelete' => $principal->can('delete'),
             'recordsRole' => $principal->role,
             'recordsUsername' => $principal->username,
             'csrfToken' => $this->csrf->token(),
@@ -612,6 +731,24 @@ final class PickupsheetController
         }
 
         return null;
+    }
+
+    private function pickupLifecycleWriteGuard(Request $request, string $action): ?Response
+    {
+        $rateLimitResponse = $this->rateLimit($request, 'pickup-records-' . $action, 30, 3600);
+        if ($rateLimitResponse !== null) {
+            return $rateLimitResponse;
+        }
+        if (!$this->csrf->validate($request->input('_token'))) {
+            $this->securityLogger->event('pickupsheet.' . $action . '_csrf', $request, 'denied');
+            return Response::html('Invalid or expired form token.', 419, $this->privateHeaders());
+        }
+        return null;
+    }
+
+    private function actorId(RecordsPrincipal $principal): string
+    {
+        return substr(hash('sha256', $principal->username), 0, 24);
     }
 
     private function pageNumber(Request $request): int

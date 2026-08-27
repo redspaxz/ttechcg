@@ -37,8 +37,9 @@ final class PickupsheetAuthController
         }
 
         $error = $_SESSION['_pickup_login_error'] ?? null;
+        $flash = $_SESSION['_pickup_login_flash'] ?? null;
         $username = $_SESSION['_pickup_login_username'] ?? '';
-        unset($_SESSION['_pickup_login_error'], $_SESSION['_pickup_login_username']);
+        unset($_SESSION['_pickup_login_error'], $_SESSION['_pickup_login_flash'], $_SESSION['_pickup_login_username']);
 
         $body = $this->view->render('pickupsheet/login', [
             'pageTitle' => 'Pickupsheet login',
@@ -50,6 +51,7 @@ final class PickupsheetAuthController
             'config' => $this->config,
             'csrfToken' => $this->csrf->token(),
             'error' => is_string($error) ? $error : null,
+            'flash' => is_string($flash) ? $flash : null,
             'username' => is_string($username) ? $username : '',
         ]);
 

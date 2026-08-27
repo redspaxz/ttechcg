@@ -19,6 +19,7 @@ $e = static fn (mixed $value): string => htmlspecialchars((string) $value, ENT_Q
     </div>
 
     <div class="container pickup-submissions-shell">
+        <?php if (is_string($flash ?? null) && $flash !== ''): ?><div class="notice notice-success" role="status"><?= $e($flash) ?></div><?php endif; ?>
         <header class="pickup-submissions-heading">
             <div>
                 <p class="eyebrow eyebrow-red">Pickup records</p>

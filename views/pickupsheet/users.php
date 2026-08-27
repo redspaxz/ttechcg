@@ -24,7 +24,7 @@ $old = is_array($old ?? null) ? $old : [];
             <div>
                 <p class="eyebrow eyebrow-red">Administrator access</p>
                 <h1>Manage users</h1>
-                <p>Create and adjust lower-tier records accounts. Server-managed administrators cannot be changed here.</p>
+                <p>Create users, reset account passwords, and control the Pickupsheet access hierarchy.</p>
             </div>
         </header>
 
@@ -35,12 +35,21 @@ $old = is_array($old ?? null) ? $old : [];
             <div class="notice notice-error" role="alert"><?php foreach ($errors as $error): ?><span><?= $e($error) ?></span><?php endforeach; ?></div>
         <?php endif; ?>
 
+        <form class="pickup-form records-admin-password" method="post" action="<?= $e($basePath) ?>/dhl/pickupsheet/submissions/users/admin-password">
+            <input type="hidden" name="_token" value="<?= $e($csrfToken) ?>">
+            <div><span>Administrator security</span><h2>Reset my admin password</h2><p>Confirm the current password, then choose a new password. You will be signed out after it is changed.</p></div>
+            <label><span>Current password</span><input type="password" name="current_password" maxlength="128" autocomplete="current-password" required></label>
+            <label><span>New password</span><input type="password" name="password" minlength="12" maxlength="128" autocomplete="new-password" required></label>
+            <label><span>Confirm new password</span><input type="password" name="password_confirmation" minlength="12" maxlength="128" autocomplete="new-password" required></label>
+            <button class="button button-dark" type="submit">Reset admin password</button>
+        </form>
+
         <div class="records-users-layout">
             <aside class="records-role-guide">
                 <span>Access hierarchy</span>
                 <ol>
-                    <li><strong>Admin</strong><small>Dashboard, KPIs, all-record visibility, print, export, and lower-tier account management. Cannot edit records.</small></li>
-                    <li><strong>Operator</strong><small>Create and view pickup sheets, print or export them, and exclusively edit generated records.</small></li>
+                    <li><strong>Admin</strong><small>Dashboard, KPIs, all records, editing, paid status, audited deletion, print/export, and user management.</small></li>
+                    <li><strong>Operator</strong><small>Create, view, edit, print, export, and mark pickup sheets paid. Cannot delete records.</small></li>
                     <li><strong>Viewer</strong><small>Create, view, and paginate pickup sheets. Cannot edit, print, or export records.</small></li>
                 </ol>
             </aside>
@@ -78,7 +87,7 @@ $old = is_array($old ?? null) ? $old : [];
                     </div>
                     <label><span>Username</span><input name="username" value="<?= $e($account->username) ?>" minlength="3" maxlength="100" pattern="[a-z0-9][a-z0-9._@-]{2,99}" required></label>
                     <label><span>Role</span><select name="role" required><option value="viewer" <?= $account->role === 'viewer' ? 'selected' : '' ?>>Viewer</option><option value="operator" <?= $account->role === 'operator' ? 'selected' : '' ?>>Operator</option></select></label>
-                    <label><span>New password <small>Optional</small></span><input type="password" name="password" minlength="12" maxlength="128" autocomplete="new-password"></label>
+                    <label><span>Reset password <small>Optional</small></span><input type="password" name="password" minlength="12" maxlength="128" autocomplete="new-password"></label>
                     <label><span>Confirm new password</span><input type="password" name="password_confirmation" minlength="12" maxlength="128" autocomplete="new-password"></label>
                     <label class="records-user-active"><input type="checkbox" name="active" value="1" <?= $account->active ? 'checked' : '' ?>><span>Account enabled</span></label>
                     <button class="button button-dark" type="submit">Save changes</button>

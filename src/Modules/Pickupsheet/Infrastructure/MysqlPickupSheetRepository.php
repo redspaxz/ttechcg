@@ -14,6 +14,8 @@ use Throwable;
 
 final class MysqlPickupSheetRepository implements PickupSheetRepository
 {
+    private bool $lifecycleSchemaReady = false;
+
     public function __construct(private readonly PDO $connection)
     {
     }
@@ -77,6 +79,8 @@ final class MysqlPickupSheetRepository implements PickupSheetRepository
                 $pickupSheet->privacyConsentAt,
                 $pickupSheet->privacyNoticeVersion,
                 $pickupSheet->createdAt,
+                $pickupSheet->status,
+                $pickupSheet->paidAt,
             );
         } catch (Throwable $exception) {
             if ($this->connection->inTransaction()) {
@@ -88,6 +92,7 @@ final class MysqlPickupSheetRepository implements PickupSheetRepository
 
     public function update(PickupSheet $pickupSheet, string $actorId): PickupSheet
     {
+        $this->ensureLifecycleSchema();
         $this->ensureAuditSchema();
         $this->connection->beginTransaction();
 
@@ -172,7 +177,107 @@ final class MysqlPickupSheetRepository implements PickupSheetRepository
                 $pickupSheet->privacyConsentAt,
                 $pickupSheet->privacyNoticeVersion,
                 $pickupSheet->createdAt,
+                $pickupSheet->status,
+                $pickupSheet->paidAt,
             );
+        } catch (Throwable $exception) {
+            if ($this->connection->inTransaction()) {
+                $this->connection->rollBack();
+            }
+            throw $exception;
+        }
+    }
+
+    public function markPaid(string $referenceNumber, string $actorId): PickupSheet
+    {
+        $this->ensureLifecycleSchema();
+        $this->connection->beginTransaction();
+
+        try {
+            $lockStatement = $this->connection->prepare(
+                'SELECT id FROM pickup_sheets
+                 WHERE reference_number = :reference_number AND deleted_at IS NULL
+                 LIMIT 1 FOR UPDATE',
+            );
+            $lockStatement->execute(['reference_number' => $referenceNumber]);
+            $pickupSheetId = $lockStatement->fetchColumn();
+            if ($pickupSheetId === false) {
+                throw new \RuntimeException('Pickup sheet not found for payment status update.');
+            }
+
+            $original = $this->findByReference($referenceNumber);
+            if ($original === null) {
+                throw new \RuntimeException('Pickup sheet could not be loaded for payment audit.');
+            }
+
+            $statement = $this->connection->prepare(
+                "UPDATE pickup_sheets
+                 SET status = 'paid', paid_at = UTC_TIMESTAMP(), paid_by = :actor_id
+                 WHERE id = :id AND status <> 'paid'",
+            );
+            $statement->execute(['id' => (int) $pickupSheetId, 'actor_id' => $actorId]);
+            if ($statement->rowCount() !== 1) {
+                throw new \RuntimeException('Pickup sheet is already marked paid.');
+            }
+
+            $paid = new PickupSheet(
+                $original->id,
+                $original->referenceNumber,
+                $original->agentName,
+                $original->collectionDate,
+                $original->shipments,
+                $original->totalCashReceivedXaf,
+                $original->privacyConsentAt,
+                $original->privacyNoticeVersion,
+                $original->createdAt,
+                'paid',
+                gmdate(DATE_ATOM),
+            );
+            $this->writeLifecycleAudit((int) $pickupSheetId, $referenceNumber, $actorId, 'paid', $this->snapshot($original), $this->snapshot($paid));
+            $this->connection->commit();
+            return $paid;
+        } catch (Throwable $exception) {
+            if ($this->connection->inTransaction()) {
+                $this->connection->rollBack();
+            }
+            throw $exception;
+        }
+    }
+
+    public function delete(string $referenceNumber, string $actorId): void
+    {
+        $this->ensureLifecycleSchema();
+        $this->connection->beginTransaction();
+
+        try {
+            $lockStatement = $this->connection->prepare(
+                'SELECT id FROM pickup_sheets
+                 WHERE reference_number = :reference_number AND deleted_at IS NULL
+                 LIMIT 1 FOR UPDATE',
+            );
+            $lockStatement->execute(['reference_number' => $referenceNumber]);
+            $pickupSheetId = $lockStatement->fetchColumn();
+            if ($pickupSheetId === false) {
+                throw new \RuntimeException('Pickup sheet not found for deletion.');
+            }
+
+            $original = $this->findByReference($referenceNumber);
+            if ($original === null) {
+                throw new \RuntimeException('Pickup sheet could not be loaded for deletion audit.');
+            }
+
+            $statement = $this->connection->prepare(
+                'UPDATE pickup_sheets
+                 SET deleted_at = UTC_TIMESTAMP(), deleted_by = :actor_id
+                 WHERE id = :id AND deleted_at IS NULL',
+            );
+            $statement->execute(['id' => (int) $pickupSheetId, 'actor_id' => $actorId]);
+            if ($statement->rowCount() !== 1) {
+                throw new \RuntimeException('Pickup sheet is already deleted.');
+            }
+
+            $this->writeLifecycleAudit((int) $pickupSheetId, $referenceNumber, $actorId, 'delete', $this->snapshot($original), null);
+            $this->connection->commit();
         } catch (Throwable $exception) {
             if ($this->connection->inTransaction()) {
                 $this->connection->rollBack();
@@ -183,10 +288,12 @@ final class MysqlPickupSheetRepository implements PickupSheetRepository
 
     public function recent(int $limit, int $offset = 0): array
     {
+        $this->ensureLifecycleSchema();
         $sheetStatement = $this->connection->prepare(
             'SELECT id, reference_number, agent_name, collection_date, total_cash_received_xaf,
-                    privacy_consent_at, privacy_notice_version, created_at
+                    privacy_consent_at, privacy_notice_version, created_at, status, paid_at
              FROM pickup_sheets
+             WHERE deleted_at IS NULL
              ORDER BY collection_date DESC, id DESC
              LIMIT :limit OFFSET :offset',
         );
@@ -239,6 +346,8 @@ final class MysqlPickupSheetRepository implements PickupSheetRepository
                 (string) $row['privacy_consent_at'],
                 (string) $row['privacy_notice_version'],
                 (string) $row['created_at'],
+                (string) ($row['status'] ?? 'open'),
+                isset($row['paid_at']) ? (string) $row['paid_at'] : null,
             );
         }
 
@@ -247,19 +356,22 @@ final class MysqlPickupSheetRepository implements PickupSheetRepository
 
     public function count(): int
     {
-        $statement = $this->connection->prepare('SELECT COUNT(*) FROM pickup_sheets');
+        $this->ensureLifecycleSchema();
+        $statement = $this->connection->prepare('SELECT COUNT(*) FROM pickup_sheets WHERE deleted_at IS NULL');
         $statement->execute();
         return (int) $statement->fetchColumn();
     }
 
     public function summary(): array
     {
+        $this->ensureLifecycleSchema();
         $statement = $this->connection->prepare(
             'SELECT COUNT(*) AS sheet_count,
                     COALESCE(SUM(shipment_count), 0) AS shipment_count,
                     COALESCE(SUM(total_cash_received_xaf), 0) AS total_cash_xaf,
                     MAX(created_at) AS latest_created_at
-             FROM pickup_sheets',
+             FROM pickup_sheets
+             WHERE deleted_at IS NULL',
         );
         $statement->execute();
         $row = $statement->fetch();
@@ -274,6 +386,7 @@ final class MysqlPickupSheetRepository implements PickupSheetRepository
 
     public function activityByDay(int $days): array
     {
+        $this->ensureLifecycleSchema();
         $days = max(1, min($days, 31));
         $statement = $this->connection->prepare(
             'SELECT DATE(created_at) AS activity_date,
@@ -281,7 +394,8 @@ final class MysqlPickupSheetRepository implements PickupSheetRepository
                     COALESCE(SUM(shipment_count), 0) AS shipment_count,
                     COALESCE(SUM(total_cash_received_xaf), 0) AS total_cash_xaf
              FROM pickup_sheets
-             WHERE created_at >= UTC_DATE() - INTERVAL ' . ($days - 1) . ' DAY
+             WHERE deleted_at IS NULL
+               AND created_at >= UTC_DATE() - INTERVAL ' . ($days - 1) . ' DAY
              GROUP BY DATE(created_at)
              ORDER BY activity_date',
         );
@@ -297,12 +411,15 @@ final class MysqlPickupSheetRepository implements PickupSheetRepository
 
     public function topDestinations(int $limit): array
     {
+        $this->ensureLifecycleSchema();
         $statement = $this->connection->prepare(
-            'SELECT destination,
+            'SELECT ps.destination AS destination,
                     COUNT(*) AS shipment_count,
-                    COALESCE(SUM(amount_xaf), 0) AS total_cash_xaf
-             FROM pickup_shipments
-             GROUP BY destination
+                    COALESCE(SUM(ps.amount_xaf), 0) AS total_cash_xaf
+             FROM pickup_shipments ps
+             INNER JOIN pickup_sheets p ON p.id = ps.pickup_sheet_id
+             WHERE p.deleted_at IS NULL
+             GROUP BY ps.destination
              ORDER BY shipment_count DESC, total_cash_xaf DESC
              LIMIT :limit',
         );
@@ -318,11 +435,12 @@ final class MysqlPickupSheetRepository implements PickupSheetRepository
 
     public function findByReference(string $referenceNumber): ?PickupSheet
     {
+        $this->ensureLifecycleSchema();
         $sheetStatement = $this->connection->prepare(
             'SELECT id, reference_number, agent_name, collection_date, total_cash_received_xaf,
-                    privacy_consent_at, privacy_notice_version, created_at
+                    privacy_consent_at, privacy_notice_version, created_at, status, paid_at
              FROM pickup_sheets
-             WHERE reference_number = :reference_number
+             WHERE reference_number = :reference_number AND deleted_at IS NULL
              LIMIT 1',
         );
         $sheetStatement->execute(['reference_number' => $referenceNumber]);
@@ -367,6 +485,8 @@ final class MysqlPickupSheetRepository implements PickupSheetRepository
             (string) $row['privacy_consent_at'],
             (string) $row['privacy_notice_version'],
             (string) $row['created_at'],
+            (string) ($row['status'] ?? 'open'),
+            isset($row['paid_at']) ? (string) $row['paid_at'] : null,
         );
     }
 
@@ -402,6 +522,70 @@ final class MysqlPickupSheetRepository implements PickupSheetRepository
         );
     }
 
+    private function ensureLifecycleSchema(): void
+    {
+        if ($this->lifecycleSchemaReady) {
+            return;
+        }
+
+        try {
+            $this->connection->query('SELECT status, paid_at, deleted_at FROM pickup_sheets LIMIT 1');
+        } catch (\PDOException) {
+            $this->connection->exec(
+                "ALTER TABLE pickup_sheets
+                    ADD COLUMN status VARCHAR(20) NOT NULL DEFAULT 'open' AFTER created_at,
+                    ADD COLUMN paid_at DATETIME NULL AFTER status,
+                    ADD COLUMN paid_by CHAR(24) NULL AFTER paid_at,
+                    ADD COLUMN deleted_at DATETIME NULL AFTER paid_by,
+                    ADD COLUMN deleted_by CHAR(24) NULL AFTER deleted_at,
+                    ADD INDEX pickup_sheets_status_idx (status, deleted_at),
+                    ADD INDEX pickup_sheets_deleted_at_idx (deleted_at)",
+            );
+        }
+
+        $this->connection->exec(
+            "CREATE TABLE IF NOT EXISTS pickup_sheet_lifecycle_audit (
+                id BIGINT UNSIGNED AUTO_INCREMENT PRIMARY KEY,
+                pickup_sheet_id BIGINT UNSIGNED NOT NULL,
+                reference_number VARCHAR(48) NOT NULL,
+                actor_id CHAR(24) NOT NULL,
+                action VARCHAR(20) NOT NULL,
+                before_snapshot LONGTEXT NOT NULL,
+                after_snapshot LONGTEXT NULL,
+                created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+                INDEX pickup_sheet_lifecycle_audit_reference_idx (reference_number, created_at),
+                INDEX pickup_sheet_lifecycle_audit_action_idx (action, created_at),
+                CONSTRAINT pickup_sheet_lifecycle_audit_sheet_fk
+                    FOREIGN KEY (pickup_sheet_id) REFERENCES pickup_sheets(id) ON DELETE CASCADE
+            ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci",
+        );
+        $this->lifecycleSchemaReady = true;
+    }
+
+    private function writeLifecycleAudit(
+        int $pickupSheetId,
+        string $referenceNumber,
+        string $actorId,
+        string $action,
+        string $beforeSnapshot,
+        ?string $afterSnapshot,
+    ): void {
+        $statement = $this->connection->prepare(
+            'INSERT INTO pickup_sheet_lifecycle_audit
+                (pickup_sheet_id, reference_number, actor_id, action, before_snapshot, after_snapshot, created_at)
+             VALUES
+                (:pickup_sheet_id, :reference_number, :actor_id, :action, :before_snapshot, :after_snapshot, UTC_TIMESTAMP())',
+        );
+        $statement->execute([
+            'pickup_sheet_id' => $pickupSheetId,
+            'reference_number' => $referenceNumber,
+            'actor_id' => $actorId,
+            'action' => $action,
+            'before_snapshot' => $beforeSnapshot,
+            'after_snapshot' => $afterSnapshot,
+        ]);
+    }
+
     private function snapshot(PickupSheet $pickupSheet): string
     {
         return (string) json_encode([
@@ -409,6 +593,8 @@ final class MysqlPickupSheetRepository implements PickupSheetRepository
             'agent_name' => $pickupSheet->agentName,
             'collection_date' => $pickupSheet->collectionDate,
             'total_cash_received_xaf' => $pickupSheet->totalCashReceivedXaf,
+            'status' => $pickupSheet->status,
+            'paid_at' => $pickupSheet->paidAt,
             'shipments' => array_map(static fn (PickupShipment $shipment): array => [
                 'line_number' => $shipment->lineNumber,
                 'consignor' => $shipment->consignor,

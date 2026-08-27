@@ -4,12 +4,28 @@ declare(strict_types=1);
 
 namespace App\Shared\Infrastructure;
 
+use App\Shared\Security\RecordsAdminCredentialRepository;
 use App\Shared\Security\RecordsUserAccount;
 use App\Shared\Security\RecordsUserRepository;
 
-final class DemoRecordsUserRepository implements RecordsUserRepository
+final class DemoRecordsUserRepository implements RecordsUserRepository, RecordsAdminCredentialRepository
 {
     private const SESSION_KEY = '_demo_records_users';
+    private const ADMIN_PASSWORDS_SESSION_KEY = '_demo_records_admin_passwords';
+
+    public function adminPasswordHash(string $username): ?string
+    {
+        $passwords = $_SESSION[self::ADMIN_PASSWORDS_SESSION_KEY] ?? [];
+        return is_array($passwords) && is_string($passwords[$username] ?? null) ? $passwords[$username] : null;
+    }
+
+    public function saveAdminPasswordHash(string $username, string $passwordHash, string $actorId): void
+    {
+        $passwords = $_SESSION[self::ADMIN_PASSWORDS_SESSION_KEY] ?? [];
+        $passwords = is_array($passwords) ? $passwords : [];
+        $passwords[$username] = $passwordHash;
+        $_SESSION[self::ADMIN_PASSWORDS_SESSION_KEY] = $passwords;
+    }
 
     public function findActiveByUsername(string $username): ?RecordsUserAccount
     {

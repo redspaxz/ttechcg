@@ -45,6 +45,49 @@ final class DemoPickupSheetRepository implements PickupSheetRepository
         throw new \RuntimeException('Pickup sheet not found for update.');
     }
 
+    public function markPaid(string $referenceNumber, string $actorId): PickupSheet
+    {
+        $sheets = $_SESSION[self::SESSION_KEY] ?? [];
+        foreach (is_array($sheets) ? $sheets : [] as $index => $stored) {
+            if (!$stored instanceof PickupSheet || $stored->referenceNumber !== $referenceNumber) {
+                continue;
+            }
+
+            $paid = new PickupSheet(
+                $stored->id,
+                $stored->referenceNumber,
+                $stored->agentName,
+                $stored->collectionDate,
+                $stored->shipments,
+                $stored->totalCashReceivedXaf,
+                $stored->privacyConsentAt,
+                $stored->privacyNoticeVersion,
+                $stored->createdAt,
+                'paid',
+                gmdate(DATE_ATOM),
+            );
+            $sheets[$index] = $paid;
+            $_SESSION[self::SESSION_KEY] = $sheets;
+            return $paid;
+        }
+
+        throw new \RuntimeException('Pickup sheet not found for payment status update.');
+    }
+
+    public function delete(string $referenceNumber, string $actorId): void
+    {
+        $sheets = $_SESSION[self::SESSION_KEY] ?? [];
+        foreach (is_array($sheets) ? $sheets : [] as $index => $stored) {
+            if ($stored instanceof PickupSheet && $stored->referenceNumber === $referenceNumber) {
+                unset($sheets[$index]);
+                $_SESSION[self::SESSION_KEY] = array_values($sheets);
+                return;
+            }
+        }
+
+        throw new \RuntimeException('Pickup sheet not found for deletion.');
+    }
+
     public function recent(int $limit, int $offset = 0): array
     {
         $sheets = $_SESSION[self::SESSION_KEY] ?? [];

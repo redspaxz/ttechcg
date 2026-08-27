@@ -9,6 +9,8 @@ $pickupOperational = (bool) ($pickupOperational ?? false);
 $canPrint = (bool) ($canPrint ?? false);
 $canExport = (bool) ($canExport ?? false);
 $canEdit = (bool) ($canEdit ?? false);
+$canMarkPaid = (bool) ($canMarkPaid ?? false);
+$canDelete = (bool) ($canDelete ?? false);
 $pagination = is_array($pagination ?? null) ? $pagination : [];
 $page = max(1, (int) ($pagination['page'] ?? 1));
 $totalPages = max(1, (int) ($pagination['totalPages'] ?? 1));
@@ -38,15 +40,15 @@ $pageUrl = static fn (int $target): string => ($basePath ?? '') . '/dhl/pickupsh
     <?php endif; ?>
 
     <?php foreach ($pickupSheets as $pickupSheet): ?>
-        <?php $referenceQuery = rawurlencode($pickupSheet->referenceNumber); ?>
+        <?php $referenceQuery = rawurlencode($pickupSheet->referenceNumber); $isPaid = $pickupSheet->isPaid(); ?>
         <article class="pickup-record">
             <div class="pickup-record-overview">
-                <span class="pickup-record-reference"><?= $e($pickupSheet->referenceNumber) ?></span>
+                <span class="pickup-record-reference"><?= $e($pickupSheet->referenceNumber) ?><small class="pickup-record-status" data-status="<?= $isPaid ? 'paid' : 'open' ?>"><?= $isPaid ? 'Paid' : 'Open' ?></small></span>
                 <span><small>Date</small><?= $e($pickupSheet->collectionDate) ?></span>
                 <span><small>Agent</small><?= $e($pickupSheet->agentName) ?></span>
                 <span><small>Shipments</small><?= $e($pickupSheet->shipmentCount()) ?></span>
                 <strong><?= $e(number_format($pickupSheet->totalCashReceivedXaf)) ?> XAF</strong>
-                <?php if ($canPrint || $canExport || $canEdit): ?>
+                <?php if ($canPrint || $canExport || $canEdit || $canMarkPaid || $canDelete): ?>
                     <div class="pickup-record-actions">
                         <?php if ($canEdit): ?>
                             <a href="<?= $e($basePath) ?>/dhl/pickupsheet/submissions/edit?reference=<?= $e($referenceQuery) ?>">Edit record</a>
@@ -56,6 +58,12 @@ $pageUrl = static fn (int $target): string => ($basePath ?? '') . '/dhl/pickupsh
                         <?php endif; ?>
                         <?php if ($canExport): ?>
                             <a href="<?= $e($basePath) ?>/dhl/pickupsheet/submissions/export?reference=<?= $e($referenceQuery) ?>">Export Excel</a>
+                        <?php endif; ?>
+                        <?php if ($canMarkPaid && !$isPaid): ?>
+                            <form method="post" action="<?= $e($basePath) ?>/dhl/pickupsheet/submissions/paid"><input type="hidden" name="_token" value="<?= $e($csrfToken) ?>"><input type="hidden" name="reference" value="<?= $e($pickupSheet->referenceNumber) ?>"><button class="pickup-record-paid" type="submit">Mark paid</button></form>
+                        <?php endif; ?>
+                        <?php if ($canDelete): ?>
+                            <form method="post" action="<?= $e($basePath) ?>/dhl/pickupsheet/submissions/delete" data-pickup-delete><input type="hidden" name="_token" value="<?= $e($csrfToken) ?>"><input type="hidden" name="reference" value="<?= $e($pickupSheet->referenceNumber) ?>"><button class="pickup-record-delete" type="submit">Delete</button></form>
                         <?php endif; ?>
                     </div>
                 <?php endif; ?>

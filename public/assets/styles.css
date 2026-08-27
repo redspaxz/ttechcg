@@ -1145,6 +1145,13 @@ button, a, input, select, textarea { -webkit-tap-highlight-color: transparent; }
 
 /* Pickup records user management */
 .records-users-shell { padding-top: 54px; }
+.records-admin-password { display: grid; grid-template-columns: minmax(260px, 1fr) repeat(3, minmax(170px, 0.72fr)) auto; gap: 18px; align-items: end; margin-bottom: 24px; padding: 28px; }
+.records-admin-password > div { align-self: center; }
+.records-admin-password > div > span { color: var(--dhl-red); font-size: 0.65rem; font-weight: 850; letter-spacing: 0.08em; text-transform: uppercase; }
+.records-admin-password h2 { margin: 6px 0 8px; color: #241b00; font-size: 1.35rem; }
+.records-admin-password p { margin: 0; color: #655000; font-size: 0.75rem; line-height: 1.5; }
+.records-admin-password label { display: grid; gap: 8px; }
+.records-admin-password label > span { color: #493800; font-size: 0.65rem; font-weight: 850; letter-spacing: 0.06em; text-transform: uppercase; }
 .records-users-layout {
     display: grid;
     grid-template-columns: minmax(260px, 0.7fr) minmax(0, 1.3fr);
@@ -1203,6 +1210,8 @@ button, a, input, select, textarea { -webkit-tap-highlight-color: transparent; }
 .records-user-card button { min-height: 48px; white-space: nowrap; }
 
 @media (max-width: 1050px) {
+    .records-admin-password { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+    .records-admin-password > div { grid-column: 1 / -1; }
     .records-user-card { grid-template-columns: repeat(2, minmax(0, 1fr)); }
     .records-user-card button { justify-self: end; }
 }
@@ -1210,6 +1219,9 @@ button, a, input, select, textarea { -webkit-tap-highlight-color: transparent; }
 @media (max-width: 700px) {
     .records-users-shell { padding-top: 38px; }
     .records-users-layout { grid-template-columns: 1fr; }
+    .records-admin-password { grid-template-columns: 1fr; padding: 20px 16px; }
+    .records-admin-password > div { grid-column: auto; }
+    .records-admin-password button { width: 100%; }
     .records-user-create fieldset,
     .records-user-card { grid-template-columns: 1fr; }
     .records-user-create button,
@@ -1920,7 +1932,9 @@ button, a, input, select, textarea { -webkit-tap-highlight-color: transparent; }
     padding: 18px 22px;
 }
 .pickup-record-overview > span:not(.pickup-record-reference) { display: grid; gap: 5px; color: #352900; font-size: 0.78rem; }
-.pickup-record-reference { color: var(--dhl-red); font-size: 0.82rem; font-weight: 850; overflow-wrap: anywhere; }
+.pickup-record-reference { display: grid; gap: 7px; color: var(--dhl-red); font-size: 0.82rem; font-weight: 850; overflow-wrap: anywhere; }
+.pickup-record-status { width: fit-content; padding: 4px 7px; border: 1px solid rgba(69, 50, 0, 0.3); color: #655000; font-size: 0.57rem; letter-spacing: 0.08em; text-transform: uppercase; }
+.pickup-record-status[data-status="paid"] { border-color: #16794b; background: #e6f7ed; color: #0b633a; }
 .pickup-record-overview > strong { justify-self: end; font-size: 0.94rem; white-space: nowrap; }
 .pickup-record-details { border-top: 1px solid rgba(69, 50, 0, 0.2); }
 .pickup-record-details > summary {
@@ -1942,7 +1956,9 @@ button, a, input, select, textarea { -webkit-tap-highlight-color: transparent; }
 .pickup-record-details[open] > summary i { transform: rotate(45deg); }
 .pickup-record-body { padding: 0 22px 22px; }
 .pickup-record-actions { display: flex; justify-content: flex-end; gap: 8px; }
-.pickup-record-actions a {
+.pickup-record-actions form { margin: 0; }
+.pickup-record-actions a,
+.pickup-record-actions button {
     display: inline-flex;
     min-height: 40px;
     align-items: center;
@@ -1953,8 +1969,11 @@ button, a, input, select, textarea { -webkit-tap-highlight-color: transparent; }
     font-size: 0.68rem;
     font-weight: 800;
     text-decoration: none;
+    cursor: pointer;
 }
 .pickup-record-actions a:first-child { background: #fff; color: var(--dhl-red); }
+.pickup-record-actions .pickup-record-paid { background: #fff; color: #0b633a; border-color: #0b633a; }
+.pickup-record-actions .pickup-record-delete { background: #241b00; border-color: #241b00; }
 .pickup-record-table-wrap { overflow-x: auto; border: 1px solid rgba(69, 50, 0, 0.3); }
 .pickup-record-table { width: 100%; min-width: 940px; border-collapse: collapse; font-size: 0.74rem; }
 .pickup-record-table th,
@@ -2033,7 +2052,9 @@ button, a, input, select, textarea { -webkit-tap-highlight-color: transparent; }
     .pickup-record-overview { min-height: 0; padding: 18px 16px; }
     .pickup-record-details > summary { padding-inline: 16px; }
     .pickup-record-body { padding: 0 16px 16px; }
-    .pickup-record-actions a { justify-content: center; }
+    .pickup-record-actions a,
+    .pickup-record-actions button { justify-content: center; width: 100%; }
+    .pickup-record-actions form { width: 100%; }
     .pickup-pagination { flex-wrap: wrap; gap: 10px; }
     .pickup-pagination-status { order: -1; width: 100%; }
 }

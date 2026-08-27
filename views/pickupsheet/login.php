@@ -16,6 +16,9 @@ $e = static fn (mixed $value): string => htmlspecialchars((string) $value, ENT_Q
         <?php if (is_string($error ?? null) && $error !== ''): ?>
             <div class="notice notice-error" role="alert"><?= $e($error) ?></div>
         <?php endif; ?>
+        <?php if (is_string($flash ?? null) && $flash !== ''): ?>
+            <div class="notice notice-success" role="status"><?= $e($flash) ?></div>
+        <?php endif; ?>
 
         <form class="pickup-login-form" method="post" action="<?= $e($basePath) ?>/dhl/pickupsheet/login">
             <input type="hidden" name="_token" value="<?= $e($csrfToken) ?>">

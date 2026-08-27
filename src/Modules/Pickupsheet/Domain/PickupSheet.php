@@ -17,7 +17,14 @@ final class PickupSheet
         public readonly string $privacyConsentAt,
         public readonly string $privacyNoticeVersion,
         public readonly string $createdAt,
+        public readonly string $status = 'open',
+        public readonly ?string $paidAt = null,
     ) {
+    }
+
+    public function isPaid(): bool
+    {
+        return $this->status === 'paid';
     }
 
     public function shipmentCount(): int

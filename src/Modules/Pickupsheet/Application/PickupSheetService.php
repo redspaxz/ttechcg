@@ -84,11 +84,31 @@ final class PickupSheetService
         if ($existing === null) {
             throw new InvalidArgumentException('Pickup sheet not found.');
         }
-        if (preg_match('/^[a-f0-9]{24}$/', $actorId) !== 1) {
-            throw new InvalidArgumentException('The update actor is invalid.');
-        }
+        $this->validateActor($actorId);
 
         return $this->repository->update($this->pickupSheetFromInput($input, $existing), $actorId);
+    }
+
+    public function markPaid(string $referenceNumber, string $actorId): PickupSheet
+    {
+        $existing = $this->findByReference($referenceNumber);
+        if ($existing === null) {
+            throw new InvalidArgumentException('Pickup sheet not found.');
+        }
+        if ($existing->isPaid()) {
+            throw new InvalidArgumentException('This pickup sheet is already marked paid.');
+        }
+        $this->validateActor($actorId);
+        return $this->repository->markPaid($referenceNumber, $actorId);
+    }
+
+    public function delete(string $referenceNumber, string $actorId): void
+    {
+        if ($this->findByReference($referenceNumber) === null) {
+            throw new InvalidArgumentException('Pickup sheet not found.');
+        }
+        $this->validateActor($actorId);
+        $this->repository->delete($referenceNumber, $actorId);
     }
 
     /** @param array<string, mixed> $input */
@@ -189,7 +209,16 @@ final class PickupSheetService
             $existing?->privacyConsentAt ?? $submittedAt,
             $existing?->privacyNoticeVersion ?? self::PRIVACY_NOTICE_VERSION,
             $existing?->createdAt ?? $submittedAt,
+            $existing?->status ?? 'open',
+            $existing?->paidAt,
         );
+    }
+
+    private function validateActor(string $actorId): void
+    {
+        if (preg_match('/^[a-f0-9]{24}$/', $actorId) !== 1) {
+            throw new InvalidArgumentException('The records actor is invalid.');
+        }
     }
 
     private function generateReferenceNumber(string $collectionDate): string

@@ -13,12 +13,16 @@ final class RecordsUserService
 
     /** @var array<string, true> */
     private array $reservedUsernames = [];
+    private readonly ?RecordsAdminCredentialRepository $adminCredentialRepository;
 
     /** @param list<string> $reservedUsernames */
     public function __construct(
         private readonly RecordsUserRepository $repository,
         array $reservedUsernames = [],
+        ?RecordsAdminCredentialRepository $adminCredentialRepository = null,
     ) {
+        $this->adminCredentialRepository = $adminCredentialRepository
+            ?? ($repository instanceof RecordsAdminCredentialRepository ? $repository : null);
         foreach ($reservedUsernames as $username) {
             $this->reservedUsernames[strtolower($username)] = true;
         }
@@ -93,6 +97,30 @@ final class RecordsUserService
         }
 
         return $updated;
+    }
+
+    /** @param array<string, string> $input */
+    public function resetAdministratorPassword(array $input, RecordsPrincipal $actor): void
+    {
+        $this->assertAdmin($actor);
+        if (!isset($this->reservedUsernames[strtolower($actor->username)])) {
+            throw new InvalidArgumentException('Only a server-defined administrator can reset an administrator password.');
+        }
+        if ($this->adminCredentialRepository === null) {
+            throw new RuntimeException('Administrator credential storage is unavailable.');
+        }
+
+        $password = $this->password($input['password'] ?? '', $input['password_confirmation'] ?? '');
+        $passwordHash = password_hash($password, PASSWORD_DEFAULT);
+        if (!is_string($passwordHash)) {
+            throw new RuntimeException('Unable to secure the administrator password.');
+        }
+
+        $this->adminCredentialRepository->saveAdminPasswordHash(
+            $actor->username,
+            $passwordHash,
+            $this->actorId($actor),
+        );
     }
 
     private function assertAdmin(RecordsPrincipal $actor): void

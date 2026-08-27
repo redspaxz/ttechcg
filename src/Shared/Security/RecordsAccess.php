@@ -13,6 +13,7 @@ final class RecordsAccess
 
     /** @var array<string, array{passwordHash: string, role: string}> */
     private array $users = [];
+    private readonly ?RecordsAdminCredentialRepository $adminCredentialRepository;
 
     /**
      * @param list<array{username: string, passwordHash: string, role: string}> $users
@@ -20,7 +21,10 @@ final class RecordsAccess
     public function __construct(
         array $users = [],
         private readonly ?RecordsUserRepository $repository = null,
+        ?RecordsAdminCredentialRepository $adminCredentialRepository = null,
     ) {
+        $this->adminCredentialRepository = $adminCredentialRepository
+            ?? ($repository instanceof RecordsAdminCredentialRepository ? $repository : null);
         foreach ($users as $user) {
             $username = trim($user['username'] ?? '');
             $passwordHash = trim($user['passwordHash'] ?? '');
@@ -40,7 +44,10 @@ final class RecordsAccess
         }
     }
 
-    public static function fromEnvironment(?RecordsUserRepository $repository = null): self
+    public static function fromEnvironment(
+        ?RecordsUserRepository $repository = null,
+        ?RecordsAdminCredentialRepository $adminCredentialRepository = null,
+    ): self
     {
         $users = [];
         $entries = trim((string) (getenv('PICKUPSHEET_RBAC_USERS') ?: ''));
@@ -68,7 +75,7 @@ final class RecordsAccess
             ];
         }
 
-        return new self($users, $repository);
+        return new self($users, $repository, $adminCredentialRepository);
     }
 
     public function authenticate(Request $request): ?RecordsPrincipal
@@ -86,8 +93,17 @@ final class RecordsAccess
         $username = trim($username);
         $environmentUser = $this->users[$username] ?? null;
         if ($environmentUser !== null) {
-            return password_verify($password, $environmentUser['passwordHash'])
-                ? $this->environmentPrincipal($username, $environmentUser)
+            $passwordHash = $this->environmentPasswordHash($username, $environmentUser['passwordHash']);
+            if ($passwordHash === null) {
+                password_verify($password, self::DUMMY_PASSWORD_HASH);
+                return null;
+            }
+            return password_verify($password, $passwordHash)
+                ? new RecordsPrincipal(
+                    $username,
+                    $environmentUser['role'],
+                    hash('sha256', $username . '|' . $environmentUser['role'] . '|' . $passwordHash),
+                )
                 : null;
         }
 
@@ -162,12 +178,29 @@ final class RecordsAccess
     }
 
     /** @param array{passwordHash: string, role: string} $user */
-    private function environmentPrincipal(string $username, array $user): RecordsPrincipal
+    private function environmentPrincipal(string $username, array $user): ?RecordsPrincipal
     {
+        $passwordHash = $this->environmentPasswordHash($username, $user['passwordHash']);
+        if ($passwordHash === null) {
+            return null;
+        }
         return new RecordsPrincipal(
             $username,
             $user['role'],
-            hash('sha256', $username . '|' . $user['role'] . '|' . $user['passwordHash']),
+            hash('sha256', $username . '|' . $user['role'] . '|' . $passwordHash),
         );
+    }
+
+    private function environmentPasswordHash(string $username, string $fallbackHash): ?string
+    {
+        if ($this->adminCredentialRepository === null) {
+            return $fallbackHash;
+        }
+
+        try {
+            return $this->adminCredentialRepository->adminPasswordHash($username) ?? $fallbackHash;
+        } catch (Throwable) {
+            return null;
+        }
     }
 }

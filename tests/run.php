@@ -312,9 +312,9 @@ $adminPrincipal = $recordsAccess->authenticate(new Request('GET', '/protected', 
 $viewerPrincipal = $recordsAccess->authenticate(new Request('GET', '/protected', [], [], '', $viewerServer));
 $operatorPrincipal = $recordsAccess->authenticate(new Request('GET', '/protected', [], [], '', $operatorServer));
 $assert($adminPrincipal?->role === 'admin' && $adminPrincipal->can('manage') && $adminPrincipal->can('dashboard'), 'An admin should manage users and receive the activity dashboard.');
-$assert($adminPrincipal?->can('edit') === false, 'An administrator must not edit pickup records.');
+$assert($adminPrincipal?->can('edit') === true && $adminPrincipal->can('mark_paid') === true && $adminPrincipal->can('delete') === true, 'An administrator should edit, mark paid, and delete pickup records.');
 $assert($viewerPrincipal?->can('create') === true && $viewerPrincipal->can('list') === true && $viewerPrincipal->can('edit') === false && $viewerPrincipal->can('print') === false, 'A viewer should create and view records but cannot edit, print, or export them.');
-$assert($operatorPrincipal?->can('edit') === true && $operatorPrincipal->can('print') === true && $operatorPrincipal->can('export') === true, 'An operator should be the only role that can edit, print, and export records.');
+$assert($operatorPrincipal?->can('edit') === true && $operatorPrincipal->can('mark_paid') === true && $operatorPrincipal->can('delete') === false && $operatorPrincipal->can('print') === true && $operatorPrincipal->can('export') === true, 'An operator should edit, mark paid, print, and export records without delete access.');
 $assert($recordsAccess->authenticate(new Request('GET', '/protected', [], [], '', [
     'PHP_AUTH_USER' => $viewerUsername,
     'PHP_AUTH_PW' => 'incorrect-password',
@@ -524,6 +524,7 @@ $assert(str_contains((string) ($_SESSION['_pickup_flash'] ?? ''), 'PS-20260729-'
 $assert(str_contains((string) ($_SESSION['_pickup_flash'] ?? ''), '12,000 XAF'), 'The pickup controller should confirm the server-calculated total.');
 $savedControllerSheet = $_SESSION['_demo_pickup_sheets'][0] ?? null;
 $assert($savedControllerSheet instanceof App\Modules\Pickupsheet\Domain\PickupSheet, 'The controller should persist a pickup-sheet aggregate.');
+$assert($savedControllerSheet->status === 'open' && !$savedControllerSheet->isPaid(), 'Every new pickup sheet should start with open status.');
 $assert(($savedControllerSheet->shipments[0]->checkedBy ?? '') === 'Controller Checker', 'The server should retain the validated checker entered with the shipment.');
 $assert((bool) preg_match('/^[0-9]{2}:[0-9]{2}$/', $savedControllerSheet->shipments[0]->collectionTime ?? ''), 'The controller should persist the server-generated submission time.');
 $savedReference = $savedControllerSheet->referenceNumber;
@@ -535,7 +536,9 @@ $assert(str_contains($openSubmissions->body(), 'Controller Client'), 'The direct
 $assert(str_contains($openSubmissions->body(), 'Print / PDF'), 'Each submitted sheet should provide a print-to-PDF action.');
 $assert(str_contains($openSubmissions->body(), 'Export Excel'), 'Each submitted sheet should provide an Excel export action.');
 $assert(str_contains($openSubmissions->body(), 'Manage access'), 'An administrator should receive the account-management action.');
-$assert(!str_contains($openSubmissions->body(), 'Edit record'), 'An administrator should not receive the operator-only edit action.');
+$assert(str_contains($openSubmissions->body(), 'Edit record'), 'An administrator should receive the audited edit action.');
+$assert(str_contains($openSubmissions->body(), 'Mark paid'), 'An administrator should be able to change an open sheet to paid.');
+$assert(str_contains($openSubmissions->body(), 'data-pickup-delete'), 'An administrator should receive the audited delete action.');
 $assert(str_contains($openSubmissions->body(), 'Records are displayed 10 sheets per page.'), 'The records view should disclose its ten-record page size.');
 $assert(str_contains($openSubmissions->body(), 'data-pickup-records-spinner'), 'The records view should provide an AJAX loading spinner.');
 $assert(str_contains($openSubmissions->body(), 'data-page-endpoint="/dhl/pickupsheet/submissions/page"'), 'The records view should identify its protected pagination endpoint.');
@@ -562,13 +565,23 @@ $viewerUpdate = $pickupController->updatePickupSheet(new Request('POST', '/dhl/p
     '_token' => $pickupCsrf->token(),
     'reference' => $savedReference,
 ]));
+$viewerPaid = $pickupController->markPickupSheetPaid(new Request('POST', '/dhl/pickupsheet/submissions/paid', [], [
+    '_token' => $pickupCsrf->token(),
+    'reference' => $savedReference,
+]));
+$viewerDelete = $pickupController->deletePickupSheet(new Request('POST', '/dhl/pickupsheet/submissions/delete', [], [
+    '_token' => $pickupCsrf->token(),
+    'reference' => $savedReference,
+]));
 $assert($viewerSubmissions->status() === 200 && $viewerPageFragment->status() === 200, 'A viewer should be able to list and paginate pickup sheets.');
 $assert($viewerCreate->status() === 200, 'A viewer should be able to create pickup records.');
 $assert($viewerEdit->status() === 403 && $viewerUpdate->status() === 403, 'A viewer must not open or submit generated pickup-sheet edits.');
 $assert(!str_contains($viewerSubmissions->body(), 'Edit record'), 'A viewer should not receive the operator-only edit action.');
+$assert(!str_contains($viewerSubmissions->body(), 'Mark paid') && !str_contains($viewerSubmissions->body(), 'data-pickup-delete'), 'A viewer should not receive paid-status or delete controls.');
 $assert(!str_contains($viewerSubmissions->body(), 'Print / PDF') && !str_contains($viewerSubmissions->body(), 'Export Excel'), 'A viewer should not be shown actions they cannot use.');
 $assert(!str_contains($viewerSubmissions->body(), 'Manage access'), 'A viewer should not be shown administrator account controls.');
 $assert($viewerPrint->status() === 403 && $viewerExport->status() === 403, 'A viewer should be forbidden from printing and exporting pickup sheets.');
+$assert($viewerPaid->status() === 403 && $viewerDelete->status() === 403, 'A viewer should be forbidden from changing status or deleting pickup sheets.');
 $assert(!isset($viewerPrint->headers()['WWW-Authenticate']), 'A forbidden authenticated user should not receive another login challenge.');
 $assert(($viewerPrint->headers()['Cache-Control'] ?? '') === 'private, no-store, max-age=0', 'RBAC denial responses should not be cached.');
 
@@ -578,11 +591,18 @@ $operatorExport = $pickupController->export(new Request('GET', '/dhl/pickupsheet
 $assert($operatorPrint->status() === 200 && $operatorExport->status() === 200, 'An operator should be able to print and export pickup sheets.');
 $operatorSubmissions = $pickupController->submissions(new Request('GET', '/dhl/pickupsheet/submissions', [], [], '', $operatorServer));
 $assert(!str_contains($operatorSubmissions->body(), 'Manage access'), 'An operator should not be shown administrator account controls.');
-$assert(str_contains($operatorSubmissions->body(), 'Edit record'), 'Only an operator should receive record-edit actions.');
+$assert(str_contains($operatorSubmissions->body(), 'Edit record'), 'An operator should receive record-edit actions.');
+$assert(str_contains($operatorSubmissions->body(), 'Mark paid'), 'An operator should receive the open-to-paid status action.');
+$assert(!str_contains($operatorSubmissions->body(), 'data-pickup-delete'), 'An operator must not receive the administrator delete action.');
 $operatorEdit = $pickupController->edit(new Request('GET', '/dhl/pickupsheet/submissions/edit', ['reference' => $savedReference]));
 $assert($operatorEdit->status() === 200 && str_contains($operatorEdit->body(), 'Save audited changes'), 'An operator should open the audited record editor.');
 $operatorDashboard = $pickupController->dashboard(new Request('GET', '/dhl/pickupsheet/dashboard'));
 $assert($operatorDashboard->status() === 403, 'An operator should not enter the administrator dashboard.');
+$operatorDelete = $pickupController->deletePickupSheet(new Request('POST', '/dhl/pickupsheet/submissions/delete', [], [
+    '_token' => $pickupCsrf->token(),
+    'reference' => $savedReference,
+]));
+$assert($operatorDelete->status() === 403, 'An operator must not delete pickup sheets.');
 
 $updateByOperator = $pickupController->updatePickupSheet(new Request('POST', '/dhl/pickupsheet/submissions/edit', [], [
     '_token' => $pickupCsrf->token(),
@@ -604,6 +624,13 @@ $assert($updateByOperator->status() === 303, 'An operator should save an audited
 $updatedControllerSheet = (new PickupSheetService(new DemoPickupSheetRepository()))->findByReference($savedReference);
 $assert($updatedControllerSheet?->totalCashReceivedXaf === 13000, 'An operator edit should recalculate and persist the sheet total.');
 $assert(($updatedControllerSheet->shipments[0]->collectionTime ?? '') === '10:15', 'An operator should be able to correct collection time.');
+$markPaidByOperator = $pickupController->markPickupSheetPaid(new Request('POST', '/dhl/pickupsheet/submissions/paid', [], [
+    '_token' => $pickupCsrf->token(),
+    'reference' => $savedReference,
+]));
+$assert($markPaidByOperator->status() === 303, 'An operator should change an open pickup sheet to paid.');
+$paidControllerSheet = (new PickupSheetService(new DemoPickupSheetRepository()))->findByReference($savedReference);
+$assert($paidControllerSheet?->status === 'paid' && $paidControllerSheet->isPaid() && $paidControllerSheet->paidAt !== null, 'The paid status and timestamp should persist on the pickup sheet.');
 
 $recordsSession->login($viewerPrincipal);
 $viewerUsers = $pickupController->users(new Request('GET', '/dhl/pickupsheet/submissions/users', [], [], '', $viewerServer));
@@ -616,16 +643,31 @@ $adminEdit = $pickupController->edit(new Request('GET', '/dhl/pickupsheet/submis
 $adminUpdate = $pickupController->updatePickupSheet(new Request('POST', '/dhl/pickupsheet/submissions/edit', [], [
     '_token' => $pickupCsrf->token(),
     'reference' => $savedReference,
+    'agent_name' => 'Controller Agent',
+    'collection_date' => '2026-07-29',
+    'shipments' => [[
+        'consignor' => 'Controller Client',
+        'awb_number' => '1234567890',
+        'destination' => 'DLA',
+        'amount' => '14000',
+        'pieces' => '2',
+        'weight_kg' => '1.25',
+        'collection_time' => '10:15',
+        'checked_by' => 'Controller Checker',
+    ]],
 ]));
-$assert($adminEdit->status() === 403 && $adminUpdate->status() === 403, 'Administrators should monitor records but only operators may open or submit edits.');
+$assert($adminEdit->status() === 200 && str_contains($adminEdit->body(), 'records-admin · admin'), 'An administrator should open the audited record editor.');
+$assert($adminUpdate->status() === 303, 'An administrator should save an audited pickup-sheet correction.');
+$adminUpdatedSheet = (new PickupSheetService(new DemoPickupSheetRepository()))->findByReference($savedReference);
+$assert($adminUpdatedSheet?->totalCashReceivedXaf === 14000 && $adminUpdatedSheet->isPaid(), 'An administrator edit should persist while retaining paid status.');
 $adminDashboard = $pickupController->dashboard(new Request('GET', '/dhl/pickupsheet/dashboard'));
 $assert($adminDashboard->status() === 200, 'An administrator should open the KPI dashboard.');
-$assert(str_contains($adminDashboard->body(), '13,000'), 'The KPI dashboard should reflect corrected cash activity.');
+$assert(str_contains($adminDashboard->body(), '14,000'), 'The KPI dashboard should reflect the administrator-corrected cash activity.');
 $assert(str_contains($adminDashboard->body(), 'pickup-activity-chart'), 'The dashboard should render its activity graph without client-side chart dependencies.');
 $adminUsers = $pickupController->users(new Request('GET', '/dhl/pickupsheet/submissions/users', [], [], '', $recordsServer));
 $assert($adminUsers->status() === 200, 'An administrator should open records-user management.');
 $assert(str_contains($adminUsers->body(), 'Create lower-tier account'), 'The administrator should receive an account-creation form.');
-$assert(str_contains($adminUsers->body(), 'Server-managed administrators cannot be changed here.'), 'The management page should explain the enforced role hierarchy.');
+$assert(str_contains($adminUsers->body(), 'Reset my admin password'), 'The administrator should receive a current-password-confirmed password reset form.');
 
 $invalidUserCsrf = $pickupController->createUser(new Request('POST', '/dhl/pickupsheet/submissions/users', [], [
     '_token' => 'invalid-token',
@@ -753,7 +795,7 @@ $assert(!str_contains($exportResponse->body(), 'Shipments collected'), 'The spre
 $assert(!str_contains($exportResponse->body(), 'Total cash received'), 'The spreadsheet should exclude pickup-sheet header-total metadata.');
 $assert(str_contains($exportResponse->body(), '<font><b/><sz val="11"/><name val="Calibri"/><family val="2"/></font>'), 'The native workbook should define bold characters for totals.');
 $assert(str_contains($exportResponse->body(), 'SHIPMENT TOTAL'), 'The spreadsheet should include a bold shipment-total row.');
-$assert(str_contains($exportResponse->body(), '<v>13000</v>'), 'The bold total row should contain the corrected server-calculated shipment amount.');
+$assert(str_contains($exportResponse->body(), '<v>14000</v>'), 'The bold total row should contain the administrator-corrected shipment amount.');
 $assert(($exportResponse->headers()['Content-Disposition'] ?? '') === 'attachment; filename="' . $savedReference . '.xlsx"', 'The Excel export should use a native XLSX filename.');
 $xlsxPath = tempnam(sys_get_temp_dir(), 'ttechcg-xlsx-');
 $assert(is_string($xlsxPath) && file_put_contents($xlsxPath, $exportResponse->body()) !== false, 'The XLSX test fixture should be writable.');
@@ -767,6 +809,40 @@ try {
         unlink($xlsxPath);
     }
 }
+
+$invalidDeleteCsrf = $pickupController->deletePickupSheet(new Request('POST', '/dhl/pickupsheet/submissions/delete', [], [
+    '_token' => 'invalid-token',
+    'reference' => $savedReference,
+]));
+$assert($invalidDeleteCsrf->status() === 419, 'Deleting a pickup sheet should require a valid CSRF token.');
+$deleteByAdmin = $pickupController->deletePickupSheet(new Request('POST', '/dhl/pickupsheet/submissions/delete', [], [
+    '_token' => $pickupCsrf->token(),
+    'reference' => $savedReference,
+]));
+$assert($deleteByAdmin->status() === 303, 'An administrator should delete a pickup sheet from active records.');
+$assert((new PickupSheetService(new DemoPickupSheetRepository()))->findByReference($savedReference) === null, 'A deleted pickup sheet should no longer be returned in active records.');
+
+$recordsSession->login($adminPrincipal);
+$invalidAdminPasswordReset = $pickupController->resetAdminPassword(new Request('POST', '/dhl/pickupsheet/submissions/users/admin-password', [], [
+    '_token' => $pickupCsrf->token(),
+    'current_password' => 'wrong-admin-password',
+    'password' => 'new-admin-password-789',
+    'password_confirmation' => 'new-admin-password-789',
+]));
+$assert($invalidAdminPasswordReset->status() === 303, 'An incorrect current password should return to administrator security settings.');
+$assert($recordsAccess->authenticateCredentials($recordsUsername, $recordsPassword)?->role === 'admin', 'A failed administrator reset must leave the current password unchanged.');
+$resetAdminPassword = $pickupController->resetAdminPassword(new Request('POST', '/dhl/pickupsheet/submissions/users/admin-password', [], [
+    '_token' => $pickupCsrf->token(),
+    'current_password' => $recordsPassword,
+    'password' => 'new-admin-password-789',
+    'password_confirmation' => 'new-admin-password-789',
+]));
+$assert($resetAdminPassword->status() === 303 && ($resetAdminPassword->headers()['Location'] ?? '') === '/dhl/pickupsheet/login', 'A successful administrator password reset should sign out and return to login.');
+$assert($recordsAccess->authenticateCredentials($recordsUsername, $recordsPassword) === null, 'The previous administrator password should stop working immediately.');
+$newAdminPrincipal = $recordsAccess->authenticateCredentials($recordsUsername, 'new-admin-password-789');
+$assert($newAdminPrincipal?->role === 'admin', 'The reset administrator password should authenticate through the portal.');
+$passwordResetLoginPage = $pickupAuthController->login(new Request('GET', '/dhl/pickupsheet/login'));
+$assert(str_contains($passwordResetLoginPage->body(), 'Administrator password reset'), 'The login portal should confirm a successful administrator password reset.');
 
 $xlsxWriter = new XlsxWriter();
 $escapedWorkbook = $xlsxWriter->create(['Name', 'Amount'], [['A&B <Logistics>', 2500]], 'SHIPMENT TOTAL', 2, 2500);
@@ -804,8 +880,8 @@ $assert(is_string($dhlAsset) && !str_contains($dhlAsset, '<text'), 'The disquali
 $partnerSources = file_get_contents(dirname(__DIR__) . '/public/assets/partners/README.md');
 $assert(is_string($partnerSources) && str_contains($partnerSources, 'www.dhl.com/content/dam/dhl/global/core/images/logos/dhl-logo.svg'), 'The official DHL artwork source should be documented.');
 $assert(!str_contains($home, 'href="/dhl/pickupsheet"'), 'Pickupsheet should not be discoverable from the public site chrome or homepage.');
-$assert(str_contains($home, 'styles.css?v=20260827-pickup-portal'), 'The Pickupsheet portal update should use a cache-safe stylesheet version.');
-$assert(str_contains($home, 'app.js?v=20260827-pickup-portal'), 'The Pickupsheet portal update should use a cache-safe application script version.');
+$assert(str_contains($home, 'styles.css?v=20260827-record-lifecycle'), 'The record-lifecycle update should use a cache-safe stylesheet version.');
+$assert(str_contains($home, 'app.js?v=20260827-record-lifecycle'), 'The record-lifecycle update should use a cache-safe application script version.');
 $assert(str_contains($home, 'analytics.js?v=20260825-security-hardening'), 'The current consent-aware Google Analytics loader should render on every page.');
 $assert(str_contains($home, 'data-analytics-accept'), 'The site should offer an explicit analytics acceptance control.');
 $assert(str_contains($home, 'data-analytics-decline'), 'The site should offer an explicit analytics decline control.');
@@ -932,7 +1008,8 @@ $assert(str_contains($privacy, 'record and reconcile cash shipment collections')
 $assert(str_contains($privacy, 'checker identity entered for each shipment'), 'The privacy notice should explain the entered checker identity.');
 $assert(str_contains($privacy, 'records the collection time automatically'), 'The privacy notice should explain the server-generated collection time.');
 $assert(str_contains($privacy, 'Every Pickupsheet screen requires an authorised staff login'), 'The privacy notice should disclose portal authentication.');
-$assert(str_contains($privacy, 'operators alone can edit records'), 'The privacy notice should disclose the operator-only edit boundary.');
+$assert(str_contains($privacy, 'Operators and administrators can edit records and change an open sheet to paid'), 'The privacy notice should disclose the record-edit and payment-status boundary.');
+$assert(str_contains($privacy, 'audited soft deletion'), 'The privacy notice should disclose administrator-only soft deletion.');
 $assert(str_contains($privacy, 'inquiry and pickup-sheet forms require an explicit, unchecked opt-in'), 'Both personal-data forms should require explicit consent.');
 $assert(str_contains($privacy, 'T&amp;Tech Consulting Group'), 'The privacy notice should identify the data controller.');
 $assert(str_contains($privacy, 'We do not sell inquiry information.'), 'The privacy notice should state the use limitation.');
@@ -1065,10 +1142,17 @@ $assert(is_string($pickupMysqlRepository) && str_contains($pickupMysqlRepository
 $assert(is_string($pickupMysqlRepository) && str_contains($pickupMysqlRepository, 'SELECT COUNT(*) FROM pickup_sheets'), 'MySQL should count records for pagination metadata.');
 $assert(is_string($pickupMysqlRepository) && str_contains($pickupMysqlRepository, 'pickup_sheet_edit_audit'), 'Operator record edits should persist before-and-after audit snapshots.');
 $assert(is_string($pickupMysqlRepository) && str_contains($pickupMysqlRepository, 'FOR UPDATE'), 'Record edits should lock their pickup sheet during the audit transaction.');
+$assert(str_contains($pickupMysqlRepository, "SET status = 'paid'"), 'MySQL should persist the open-to-paid lifecycle transition.');
+$assert(str_contains($pickupMysqlRepository, 'SET deleted_at = UTC_TIMESTAMP()'), 'Administrator deletion should retain pickup sheets through a soft-delete timestamp.');
+$assert(str_contains($pickupMysqlRepository, 'pickup_sheet_lifecycle_audit'), 'Paid and delete actions should persist lifecycle audit snapshots.');
 $pickupEditMigration = file_get_contents(dirname(__DIR__) . '/database/migrations/006_create_pickup_sheet_edit_audit.sql');
 $assert(is_string($pickupEditMigration) && str_contains($pickupEditMigration, 'CREATE TABLE IF NOT EXISTS pickup_sheet_edit_audit'), 'MySQL should provide an idempotent pickup-sheet edit audit migration.');
 $assert(is_string($pickupEditMigration) && str_contains($pickupEditMigration, 'before_snapshot LONGTEXT'), 'The edit audit should retain the prior record snapshot.');
 $assert(is_string($pickupEditMigration) && str_contains($pickupEditMigration, 'after_snapshot LONGTEXT'), 'The edit audit should retain the corrected record snapshot.');
+$pickupLifecycleMigration = file_get_contents(dirname(__DIR__) . '/database/migrations/007_add_pickup_sheet_lifecycle.sql');
+$assert(is_string($pickupLifecycleMigration) && str_contains($pickupLifecycleMigration, "status VARCHAR(20) NOT NULL DEFAULT 'open'"), 'Every persisted pickup sheet should default to open status.');
+$assert(is_string($pickupLifecycleMigration) && str_contains($pickupLifecycleMigration, 'paid_at DATETIME NULL'), 'MySQL should retain when a pickup sheet was marked paid.');
+$assert(is_string($pickupLifecycleMigration) && str_contains($pickupLifecycleMigration, 'deleted_at DATETIME NULL'), 'MySQL should retain audited soft deletion state.');
 $recordsUserMigration = file_get_contents(dirname(__DIR__) . '/database/migrations/005_create_pickup_records_users.sql');
 $assert(is_string($recordsUserMigration) && str_contains($recordsUserMigration, 'CREATE TABLE IF NOT EXISTS pickup_records_users'), 'MySQL should persist managed records-user accounts.');
 $assert(is_string($recordsUserMigration) && str_contains($recordsUserMigration, 'UNIQUE INDEX pickup_records_users_username_idx'), 'Managed records usernames should be unique.');
@@ -1077,6 +1161,9 @@ $recordsUserMysqlRepository = file_get_contents(dirname(__DIR__) . '/src/Shared/
 $assert(is_string($recordsUserMysqlRepository) && str_contains($recordsUserMysqlRepository, 'BINARY username = :username AND active = 1'), 'Managed account authentication should require an exact username and active status.');
 $assert(is_string($recordsUserMysqlRepository) && str_contains($recordsUserMysqlRepository, 'password_hash = :password_hash'), 'Administrators should be able to rotate managed account passwords.');
 $assert(is_string($recordsUserMysqlRepository) && str_contains($recordsUserMysqlRepository, 'private function ensureSchema()'), 'Administrator account management should initialize its idempotent schema without cPanel CLI access.');
+$adminCredentialMigration = file_get_contents(dirname(__DIR__) . '/database/migrations/008_create_pickup_records_admin_credentials.sql');
+$assert(is_string($adminCredentialMigration) && str_contains($adminCredentialMigration, 'CREATE TABLE IF NOT EXISTS pickup_records_admin_credentials'), 'MySQL should persist administrator password overrides outside source-controlled environment configuration.');
+$assert(str_contains($recordsUserMysqlRepository, 'saveAdminPasswordHash'), 'An administrator should be able to securely rotate the server-defined portal password.');
 $findActiveMethod = substr($recordsUserMysqlRepository, 0, (int) strpos($recordsUserMysqlRepository, 'public function findById'));
 $assert(!str_contains($findActiveMethod, '$this->ensureSchema();'), 'Anonymous or managed-user authentication must not trigger schema creation.');
 $bootstrap = file_get_contents(dirname(__DIR__) . '/bootstrap/app.php');
@@ -1091,7 +1178,10 @@ $assert(is_string($bootstrap) && str_contains($bootstrap, "'/dhl/pickupsheet'"),
 $assert(is_string($bootstrap) && str_contains($bootstrap, "'/dhl/pickupsheet/submissions/page'"), 'Pickupsheet should expose a protected AJAX pagination endpoint.');
 $assert(is_string($bootstrap) && str_contains($bootstrap, "'/dhl/pickupsheet/submissions/users'"), 'Pickupsheet should expose administrator-only account management.');
 $assert(is_string($bootstrap) && str_contains($bootstrap, "'/dhl/pickupsheet/dashboard'"), 'Pickupsheet should expose the administrator KPI control panel.');
-$assert(is_string($bootstrap) && str_contains($bootstrap, "'/dhl/pickupsheet/submissions/edit'"), 'Pickupsheet should expose the operator-only audited record editor.');
+$assert(is_string($bootstrap) && str_contains($bootstrap, "'/dhl/pickupsheet/submissions/edit'"), 'Pickupsheet should expose the operator-and-administrator audited record editor.');
+$assert(is_string($bootstrap) && str_contains($bootstrap, "'/dhl/pickupsheet/submissions/paid'"), 'Pickupsheet should expose the protected open-to-paid action.');
+$assert(is_string($bootstrap) && str_contains($bootstrap, "'/dhl/pickupsheet/submissions/delete'"), 'Pickupsheet should expose the administrator-only delete action.');
+$assert(is_string($bootstrap) && str_contains($bootstrap, "'/dhl/pickupsheet/submissions/users/admin-password'"), 'Pickupsheet should expose administrator password rotation.');
 $assert(is_string($bootstrap) && str_contains($bootstrap, "'/pickupsheet'"), 'The legacy Pickupsheet entry should retain a permanent redirect.');
 $assert(is_string($bootstrap) && str_contains($bootstrap, 'rawurlencode($reference)'), 'Legacy print and export redirects should preserve the reference query safely.');
 $assert(is_string($bootstrap) && str_contains($bootstrap, "'/dhl/pickupsheet/login'"), 'Pickupsheet should expose its dedicated session login portal.');

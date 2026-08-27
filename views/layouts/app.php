@@ -21,8 +21,8 @@ $analyticsPageView = $isPickupsheet ? 'disabled' : 'enabled';
     <meta name="robots" content="<?= $e($pageRobots) ?>">
     <title><?= $e($pageTitle ?? 'T&Tech Consulting Group') ?> | T&amp;Tech</title>
     <link rel="icon" href="<?= $e($assetBase) ?>/ttechcg-mark.svg" type="image/svg+xml">
-    <link rel="stylesheet" href="<?= $e($assetBase) ?>/styles.css?v=20260827-pickup-portal">
-    <script src="<?= $e($assetBase) ?>/app.js?v=20260827-pickup-portal" defer></script>
+    <link rel="stylesheet" href="<?= $e($assetBase) ?>/styles.css?v=20260827-record-lifecycle">
+    <script src="<?= $e($assetBase) ?>/app.js?v=20260827-record-lifecycle" defer></script>
     <script src="<?= $e($assetBase) ?>/analytics.js?v=20260825-security-hardening" defer></script>
 </head>
 <body>
