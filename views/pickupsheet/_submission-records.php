@@ -6,6 +6,8 @@ $e = static fn (mixed $value): string => htmlspecialchars((string) $value, ENT_Q
 $pickupSheets = is_array($pickupSheets ?? null) ? $pickupSheets : [];
 $errors = is_array($errors ?? null) ? $errors : [];
 $pickupOperational = (bool) ($pickupOperational ?? false);
+$canPrint = (bool) ($canPrint ?? false);
+$canExport = (bool) ($canExport ?? false);
 $pagination = is_array($pagination ?? null) ? $pagination : [];
 $page = max(1, (int) ($pagination['page'] ?? 1));
 $totalPages = max(1, (int) ($pagination['totalPages'] ?? 1));
@@ -43,10 +45,16 @@ $pageUrl = static fn (int $target): string => ($basePath ?? '') . '/dhl/pickupsh
                 <span><small>Agent</small><?= $e($pickupSheet->agentName) ?></span>
                 <span><small>Shipments</small><?= $e($pickupSheet->shipmentCount()) ?></span>
                 <strong><?= $e(number_format($pickupSheet->totalCashReceivedXaf)) ?> XAF</strong>
-                <div class="pickup-record-actions">
-                    <a target="_blank" rel="noopener" href="<?= $e($basePath) ?>/dhl/pickupsheet/submissions/print?reference=<?= $e($referenceQuery) ?>">Print / PDF</a>
-                    <a href="<?= $e($basePath) ?>/dhl/pickupsheet/submissions/export?reference=<?= $e($referenceQuery) ?>">Export Excel</a>
-                </div>
+                <?php if ($canPrint || $canExport): ?>
+                    <div class="pickup-record-actions">
+                        <?php if ($canPrint): ?>
+                            <a target="_blank" rel="noopener" href="<?= $e($basePath) ?>/dhl/pickupsheet/submissions/print?reference=<?= $e($referenceQuery) ?>">Print / PDF</a>
+                        <?php endif; ?>
+                        <?php if ($canExport): ?>
+                            <a href="<?= $e($basePath) ?>/dhl/pickupsheet/submissions/export?reference=<?= $e($referenceQuery) ?>">Export Excel</a>
+                        <?php endif; ?>
+                    </div>
+                <?php endif; ?>
             </div>
             <details class="pickup-record-details">
                 <summary><span>View shipment table</span><i aria-hidden="true">+</i></summary>

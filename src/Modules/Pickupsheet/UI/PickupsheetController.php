@@ -12,6 +12,7 @@ use App\Shared\Security\Captcha;
 use App\Shared\Security\Csrf;
 use App\Shared\Security\RateLimiter;
 use App\Shared\Security\RecordsAccess;
+use App\Shared\Security\RecordsPrincipal;
 use App\Shared\Security\SecurityLogger;
 use App\Shared\Spreadsheet\XlsxWriter;
 use App\Shared\View\View;
@@ -138,12 +139,12 @@ final class PickupsheetController
 
     public function submissions(Request $request): Response
     {
-        $authorizationResponse = $this->authorizeRecords($request, 'list');
-        if ($authorizationResponse !== null) {
-            return $authorizationResponse;
+        $authorization = $this->authorizeRecords($request, 'list');
+        if ($authorization instanceof Response) {
+            return $authorization;
         }
 
-        $records = $this->submissionRecords($request);
+        $records = $this->submissionRecords($request, $authorization);
 
         $body = $this->view->render('pickupsheet/submissions', array_merge($records, [
             'pageTitle' => 'Submitted pickup sheets',
@@ -161,13 +162,13 @@ final class PickupsheetController
 
     public function submissionsPage(Request $request): Response
     {
-        $authorizationResponse = $this->authorizeRecords($request, 'paginate');
-        if ($authorizationResponse !== null) {
-            return $authorizationResponse;
+        $authorization = $this->authorizeRecords($request, 'paginate');
+        if ($authorization instanceof Response) {
+            return $authorization;
         }
 
         return Response::html(
-            $this->view->renderPartial('pickupsheet/_submission-records', $this->submissionRecords($request)),
+            $this->view->renderPartial('pickupsheet/_submission-records', $this->submissionRecords($request, $authorization)),
             200,
             $this->privateHeaders(),
         );
@@ -175,9 +176,9 @@ final class PickupsheetController
 
     public function print(Request $request): Response
     {
-        $authorizationResponse = $this->authorizeRecords($request, 'print');
-        if ($authorizationResponse !== null) {
-            return $authorizationResponse;
+        $authorization = $this->authorizeRecords($request, 'print');
+        if ($authorization instanceof Response) {
+            return $authorization;
         }
 
         $pickupSheet = $this->service->findByReference($request->queryString('reference'));
@@ -197,9 +198,9 @@ final class PickupsheetController
 
     public function export(Request $request): Response
     {
-        $authorizationResponse = $this->authorizeRecords($request, 'export');
-        if ($authorizationResponse !== null) {
-            return $authorizationResponse;
+        $authorization = $this->authorizeRecords($request, 'export');
+        if ($authorization instanceof Response) {
+            return $authorization;
         }
 
         $pickupSheet = $this->service->findByReference($request->queryString('reference'));
@@ -239,7 +240,7 @@ final class PickupsheetController
         ];
     }
 
-    private function authorizeRecords(Request $request, string $action): ?Response
+    private function authorizeRecords(Request $request, string $action): RecordsPrincipal|Response
     {
         $resource = $request->queryString('reference');
         $context = ['action' => $action];
@@ -247,9 +248,19 @@ final class PickupsheetController
             $context['resource_id'] = substr(hash('sha256', $resource), 0, 24);
         }
 
-        if ($this->recordsAccess->allows($request)) {
-            $this->securityLogger->event('pickupsheet.records_access', $request, 'granted', $context);
-            return null;
+        $principal = $this->recordsAccess->authenticate($request);
+        if ($principal !== null) {
+            $context['actor_id'] = substr(hash('sha256', $principal->username), 0, 24);
+            $context['role'] = $principal->role;
+
+            if ($principal->can($action)) {
+                $this->securityLogger->event('pickupsheet.records_access', $request, 'granted', $context);
+                return $principal;
+            }
+
+            $this->securityLogger->event('pickupsheet.records_access', $request, 'forbidden', $context);
+
+            return Response::html('You do not have permission to perform this records action.', 403, $this->privateHeaders());
         }
 
         $rateLimitResponse = $this->rateLimit($request, 'pickup-records-auth', 10, 900);
@@ -268,7 +279,7 @@ final class PickupsheetController
     }
 
     /** @return array<string, mixed> */
-    private function submissionRecords(Request $request): array
+    private function submissionRecords(Request $request, RecordsPrincipal $principal): array
     {
         $pagination = [
             'items' => [],
@@ -294,6 +305,9 @@ final class PickupsheetController
             'pickupSheets' => $pagination['items'],
             'pagination' => $pagination,
             'errors' => $errors,
+            'canPrint' => $principal->can('print'),
+            'canExport' => $principal->can('export'),
+            'recordsRole' => $principal->role,
         ];
     }
 

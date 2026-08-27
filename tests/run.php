@@ -249,6 +249,8 @@ $paginationFixture = $view->renderPartial('pickupsheet/_submission-records', [
     'pickupSheets' => $secondPickupPage['items'],
     'pagination' => $secondPickupPage,
     'errors' => [],
+    'canPrint' => true,
+    'canExport' => true,
 ]);
 $assert(substr_count($paginationFixture, '<article class="pickup-record">') === 2, 'The second ten-record page should render only its two remaining sheets.');
 $assert(str_contains($paginationFixture, 'Page 2 of 2 · 12 records'), 'The pagination fragment should display accurate page and record totals.');
@@ -261,12 +263,89 @@ $disabledRateLimiter = new RateLimiter('', false);
 $disabledSecurityLogger = new SecurityLogger(false);
 $recordsUsername = 'records-admin';
 $recordsPassword = 'test-records-password';
-$recordsAccess = new RecordsAccess($recordsUsername, password_hash($recordsPassword, PASSWORD_DEFAULT));
+$viewerUsername = 'records-viewer';
+$viewerPassword = 'test-viewer-password';
+$operatorUsername = 'records-operator';
+$operatorPassword = 'test-operator-password';
+$recordsAccess = new RecordsAccess([
+    [
+        'username' => $recordsUsername,
+        'passwordHash' => password_hash($recordsPassword, PASSWORD_DEFAULT),
+        'role' => 'admin',
+    ],
+    [
+        'username' => $viewerUsername,
+        'passwordHash' => password_hash($viewerPassword, PASSWORD_DEFAULT),
+        'role' => 'viewer',
+    ],
+    [
+        'username' => $operatorUsername,
+        'passwordHash' => password_hash($operatorPassword, PASSWORD_DEFAULT),
+        'role' => 'operator',
+    ],
+]);
 $recordsServer = [
     'PHP_AUTH_USER' => $recordsUsername,
     'PHP_AUTH_PW' => $recordsPassword,
     'REMOTE_ADDR' => '203.0.113.20',
 ];
+$viewerServer = [
+    'PHP_AUTH_USER' => $viewerUsername,
+    'PHP_AUTH_PW' => $viewerPassword,
+    'REMOTE_ADDR' => '203.0.113.24',
+];
+$operatorServer = [
+    'PHP_AUTH_USER' => $operatorUsername,
+    'PHP_AUTH_PW' => $operatorPassword,
+    'REMOTE_ADDR' => '203.0.113.25',
+];
+$adminPrincipal = $recordsAccess->authenticate(new Request('GET', '/protected', [], [], '', $recordsServer));
+$viewerPrincipal = $recordsAccess->authenticate(new Request('GET', '/protected', [], [], '', $viewerServer));
+$operatorPrincipal = $recordsAccess->authenticate(new Request('GET', '/protected', [], [], '', $operatorServer));
+$assert($adminPrincipal?->role === 'admin' && $adminPrincipal->can('manage'), 'An admin should receive all records permissions.');
+$assert($viewerPrincipal?->can('list') === true && $viewerPrincipal->can('print') === false, 'A viewer should list records but not print or export them.');
+$assert($operatorPrincipal?->can('print') === true && $operatorPrincipal->can('export') === true, 'An operator should list, print, and export records.');
+$assert($recordsAccess->authenticate(new Request('GET', '/protected', [], [], '', [
+    'PHP_AUTH_USER' => $viewerUsername,
+    'PHP_AUTH_PW' => 'incorrect-password',
+])) === null, 'RBAC authentication should reject an incorrect password.');
+$assert(!(new RecordsAccess([[
+    'username' => 'records-owner',
+    'passwordHash' => password_hash('test-owner-password', PASSWORD_DEFAULT),
+    'role' => 'owner',
+]]))->isConfigured(), 'An undefined role should fail closed.');
+
+$previousRbacUsers = getenv('PICKUPSHEET_RBAC_USERS');
+$previousLegacyUser = getenv('PICKUPSHEET_RECORDS_USER');
+$previousLegacyHash = getenv('PICKUPSHEET_RECORDS_PASSWORD_HASH');
+$environmentViewerHash = password_hash('environment-viewer-password', PASSWORD_DEFAULT);
+putenv('PICKUPSHEET_RBAC_USERS=environment-viewer|viewer|' . $environmentViewerHash);
+putenv('PICKUPSHEET_RECORDS_USER');
+putenv('PICKUPSHEET_RECORDS_PASSWORD_HASH');
+$environmentAccess = RecordsAccess::fromEnvironment();
+$environmentPrincipal = $environmentAccess->authenticate(new Request('GET', '/protected', [], [], '', [
+    'PHP_AUTH_USER' => 'environment-viewer',
+    'PHP_AUTH_PW' => 'environment-viewer-password',
+]));
+$assert($environmentPrincipal?->role === 'viewer', 'RBAC accounts should load from the server environment.');
+
+putenv('PICKUPSHEET_RBAC_USERS');
+putenv('PICKUPSHEET_RECORDS_USER=legacy-admin');
+putenv('PICKUPSHEET_RECORDS_PASSWORD_HASH=' . password_hash('legacy-admin-password', PASSWORD_DEFAULT));
+$legacyAccess = RecordsAccess::fromEnvironment();
+$legacyPrincipal = $legacyAccess->authenticate(new Request('GET', '/protected', [], [], '', [
+    'PHP_AUTH_USER' => 'legacy-admin',
+    'PHP_AUTH_PW' => 'legacy-admin-password',
+]));
+$assert($legacyPrincipal?->role === 'admin' && $legacyPrincipal->can('manage'), 'Legacy records credentials should remain compatible as an admin account.');
+
+foreach ([
+    'PICKUPSHEET_RBAC_USERS' => $previousRbacUsers,
+    'PICKUPSHEET_RECORDS_USER' => $previousLegacyUser,
+    'PICKUPSHEET_RECORDS_PASSWORD_HASH' => $previousLegacyHash,
+] as $environmentKey => $environmentValue) {
+    putenv($environmentValue === false ? $environmentKey : $environmentKey . '=' . $environmentValue);
+}
 $common = [
     'basePath' => '',
     'assetBase' => '/public/assets',
@@ -396,6 +475,20 @@ $deniedPageFragment = $pickupController->submissionsPage(new Request('GET', '/dh
     'REMOTE_ADDR' => '203.0.113.23',
 ]));
 $assert($deniedPageFragment->status() === 401, 'The AJAX pagination endpoint should remain protected by records credentials.');
+
+$viewerSubmissions = $pickupController->submissions(new Request('GET', '/dhl/pickupsheet/submissions', [], [], '', $viewerServer));
+$viewerPageFragment = $pickupController->submissionsPage(new Request('GET', '/dhl/pickupsheet/submissions/page', ['page' => '1'], [], '', $viewerServer));
+$viewerPrint = $pickupController->print(new Request('GET', '/dhl/pickupsheet/submissions/print', ['reference' => $savedReference], [], '', $viewerServer));
+$viewerExport = $pickupController->export(new Request('GET', '/dhl/pickupsheet/submissions/export', ['reference' => $savedReference], [], '', $viewerServer));
+$assert($viewerSubmissions->status() === 200 && $viewerPageFragment->status() === 200, 'A viewer should be able to list and paginate pickup sheets.');
+$assert(!str_contains($viewerSubmissions->body(), 'Print / PDF') && !str_contains($viewerSubmissions->body(), 'Export Excel'), 'A viewer should not be shown actions they cannot use.');
+$assert($viewerPrint->status() === 403 && $viewerExport->status() === 403, 'A viewer should be forbidden from printing and exporting pickup sheets.');
+$assert(!isset($viewerPrint->headers()['WWW-Authenticate']), 'A forbidden authenticated user should not receive another login challenge.');
+$assert(($viewerPrint->headers()['Cache-Control'] ?? '') === 'private, no-store, max-age=0', 'RBAC denial responses should not be cached.');
+
+$operatorPrint = $pickupController->print(new Request('GET', '/dhl/pickupsheet/submissions/print', ['reference' => $savedReference], [], '', $operatorServer));
+$operatorExport = $pickupController->export(new Request('GET', '/dhl/pickupsheet/submissions/export', ['reference' => $savedReference], [], '', $operatorServer));
+$assert($operatorPrint->status() === 200 && $operatorExport->status() === 200, 'An operator should be able to print and export pickup sheets.');
 
 $printResponse = $pickupController->print(new Request('GET', '/dhl/pickupsheet/submissions/print', ['reference' => $savedReference], [], '', $recordsServer));
 $printStyles = file_get_contents(dirname(__DIR__) . '/public/assets/print.css');
@@ -640,7 +733,10 @@ $assert(str_contains($privacy, 'Cookie settings'), 'The privacy notice should ex
 $environmentExample = file_get_contents(dirname(__DIR__) . '/.env.example');
 $assert(is_string($environmentExample) && str_contains($environmentExample, 'APP_TIMEZONE=Africa/Douala'), 'The environment example should use Cameroon time.');
 $assert(is_string($environmentExample) && str_contains($environmentExample, 'CONTACT_EMAIL=info@ttechcg.com'), 'The environment example should route production inquiries to the company mailbox.');
-$assert(is_string($environmentExample) && str_contains($environmentExample, 'PICKUPSHEET_RECORDS_PASSWORD_HASH=replace-with-password-hash'), 'The environment example should require a server-managed records password hash.');
+$assert(is_string($environmentExample) && str_contains($environmentExample, 'PICKUPSHEET_RBAC_USERS=records-admin|admin|replace-with-password-hash'), 'The environment example should configure role-based records users with server-managed password hashes.');
+$credentialGenerator = file_get_contents(dirname(__DIR__) . '/bin/generate-records-credentials.php');
+$assert(is_string($credentialGenerator) && str_contains($credentialGenerator, "['viewer', 'operator', 'admin']"), 'The credential generator should restrict accounts to defined RBAC roles.');
+$assert(is_string($credentialGenerator) && str_contains($credentialGenerator, "PICKUPSHEET_RBAC_USERS='"), 'The credential generator should provide a cPanel-ready RBAC environment value.');
 $assert(is_string($environmentExample) && str_contains($environmentExample, 'RUN_MIGRATIONS=true'), 'The environment example should explicitly document migration execution.');
 $assert(is_string($environmentExample) && !str_contains($environmentExample, 'JUMPCLOUD_'), 'The environment example should not require identity-provider configuration.');
 
