@@ -78,11 +78,16 @@ final class RecordsAccess
             return null;
         }
 
-        [$username, $password] = $credentials;
+        return $this->authenticateCredentials($credentials[0], $credentials[1]);
+    }
+
+    public function authenticateCredentials(string $username, string $password): ?RecordsPrincipal
+    {
+        $username = trim($username);
         $environmentUser = $this->users[$username] ?? null;
         if ($environmentUser !== null) {
             return password_verify($password, $environmentUser['passwordHash'])
-                ? new RecordsPrincipal($username, $environmentUser['role'])
+                ? $this->environmentPrincipal($username, $environmentUser)
                 : null;
         }
 
@@ -103,7 +108,35 @@ final class RecordsAccess
             return null;
         }
 
-        return new RecordsPrincipal($managedAccount->username, $managedAccount->role);
+        return new RecordsPrincipal(
+            $managedAccount->username,
+            $managedAccount->role,
+            $managedAccount->authenticationVersion(),
+        );
+    }
+
+    public function resolvePrincipal(string $username): ?RecordsPrincipal
+    {
+        $environmentUser = $this->users[$username] ?? null;
+        if ($environmentUser !== null) {
+            return $this->environmentPrincipal($username, $environmentUser);
+        }
+
+        try {
+            $managedAccount = $this->repository?->findActiveByUsername($username);
+        } catch (Throwable) {
+            return null;
+        }
+
+        if ($managedAccount === null || !in_array($managedAccount->role, ['viewer', 'operator'], true)) {
+            return null;
+        }
+
+        return new RecordsPrincipal(
+            $managedAccount->username,
+            $managedAccount->role,
+            $managedAccount->authenticationVersion(),
+        );
     }
 
     public function isConfigured(): bool
@@ -126,5 +159,15 @@ final class RecordsAccess
     {
         return $passwordHash !== ''
             && password_get_info($passwordHash)['algoName'] !== 'unknown';
+    }
+
+    /** @param array{passwordHash: string, role: string} $user */
+    private function environmentPrincipal(string $username, array $user): RecordsPrincipal
+    {
+        return new RecordsPrincipal(
+            $username,
+            $user['role'],
+            hash('sha256', $username . '|' . $user['role'] . '|' . $user['passwordHash']),
+        );
     }
 }

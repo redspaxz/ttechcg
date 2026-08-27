@@ -22,6 +22,17 @@ final class RecordsUserAccount
         return password_verify($password, $this->passwordHash);
     }
 
+    public function authenticationVersion(): string
+    {
+        return hash('sha256', implode('|', [
+            $this->username,
+            $this->passwordHash,
+            $this->role,
+            $this->active ? '1' : '0',
+            $this->updatedAt,
+        ]));
+    }
+
     public function withUpdates(
         string $username,
         string $role,

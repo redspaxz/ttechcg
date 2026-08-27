@@ -12,6 +12,7 @@ use App\Modules\Pickupsheet\Application\PickupSheetService;
 use App\Modules\Pickupsheet\Infrastructure\DemoPickupSheetRepository;
 use App\Modules\Pickupsheet\Infrastructure\MysqlPickupSheetRepository;
 use App\Modules\Pickupsheet\Infrastructure\UnavailablePickupSheetRepository;
+use App\Modules\Pickupsheet\UI\PickupsheetAuthController;
 use App\Modules\Pickupsheet\UI\PickupsheetController;
 use App\Modules\Site\UI\SiteController;
 use App\Shared\Http\Application;
@@ -28,6 +29,7 @@ use App\Shared\Security\Captcha;
 use App\Shared\Security\Csrf;
 use App\Shared\Security\RateLimiter;
 use App\Shared\Security\RecordsAccess;
+use App\Shared\Security\RecordsSession;
 use App\Shared\Security\RecordsUserService;
 use App\Shared\Security\SecurityLogger;
 use App\Shared\View\View;
@@ -96,6 +98,7 @@ $csrf = new Csrf();
 $rateLimiter = new RateLimiter($root . '/storage/security');
 $securityLogger = new SecurityLogger();
 $recordsAccess = RecordsAccess::fromEnvironment($recordsUserRepository);
+$recordsSession = new RecordsSession();
 $recordsUserService = new RecordsUserService($recordsUserRepository, $recordsAccess->environmentUsernames());
 $contactCaptcha = new Captcha('contact');
 $pickupCaptcha = new Captcha('pickupsheet');
@@ -111,6 +114,15 @@ $contactController = new ContactController(
     $rateLimiter,
     $securityLogger,
 );
+$pickupsheetAuthController = new PickupsheetAuthController(
+    $view,
+    $csrf,
+    $recordsAccess,
+    $recordsSession,
+    $rateLimiter,
+    $securityLogger,
+    $config,
+);
 $pickupsheetController = new PickupsheetController(
     new PickupSheetService($pickupSheetRepository),
     $view,
@@ -120,6 +132,7 @@ $pickupsheetController = new PickupsheetController(
     $storageMode,
     $pickupOperational,
     $recordsAccess,
+    $recordsSession,
     $recordsUserService,
     $rateLimiter,
     $securityLogger,
@@ -132,10 +145,16 @@ $router->get('/products', fn (Request $request): Response => $siteController->pr
 $router->get('/about', fn (Request $request): Response => $siteController->about($request));
 $router->get('/contact', fn (Request $request): Response => $contactController->index($request));
 $router->post('/contact', fn (Request $request): Response => $contactController->store($request));
+$router->get('/dhl/pickupsheet/login', fn (Request $request): Response => $pickupsheetAuthController->login($request));
+$router->post('/dhl/pickupsheet/login', fn (Request $request): Response => $pickupsheetAuthController->authenticate($request));
+$router->post('/dhl/pickupsheet/logout', fn (Request $request): Response => $pickupsheetAuthController->logout($request));
+$router->get('/dhl/pickupsheet/dashboard', fn (Request $request): Response => $pickupsheetController->dashboard($request));
 $router->get('/dhl/pickupsheet', fn (Request $request): Response => $pickupsheetController->index($request));
 $router->post('/dhl/pickupsheet', fn (Request $request): Response => $pickupsheetController->store($request));
 $router->get('/dhl/pickupsheet/submissions', fn (Request $request): Response => $pickupsheetController->submissions($request));
 $router->get('/dhl/pickupsheet/submissions/page', fn (Request $request): Response => $pickupsheetController->submissionsPage($request));
+$router->get('/dhl/pickupsheet/submissions/edit', fn (Request $request): Response => $pickupsheetController->edit($request));
+$router->post('/dhl/pickupsheet/submissions/edit', fn (Request $request): Response => $pickupsheetController->updatePickupSheet($request));
 $router->get('/dhl/pickupsheet/submissions/users', fn (Request $request): Response => $pickupsheetController->users($request));
 $router->post('/dhl/pickupsheet/submissions/users', fn (Request $request): Response => $pickupsheetController->createUser($request));
 $router->post('/dhl/pickupsheet/submissions/users/update', fn (Request $request): Response => $pickupsheetController->updateUser($request));

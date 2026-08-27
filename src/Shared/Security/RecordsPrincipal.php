@@ -8,14 +8,15 @@ final class RecordsPrincipal
 {
     /** @var array<string, list<string>> */
     private const ROLE_PERMISSIONS = [
-        'viewer' => ['list', 'paginate'],
-        'operator' => ['list', 'paginate', 'print', 'export'],
-        'admin' => ['list', 'paginate', 'print', 'export', 'manage'],
+        'viewer' => ['create', 'list', 'paginate'],
+        'operator' => ['create', 'edit', 'list', 'paginate', 'print', 'export'],
+        'admin' => ['dashboard', 'create', 'list', 'paginate', 'print', 'export', 'manage'],
     ];
 
     public function __construct(
         public readonly string $username,
         public readonly string $role,
+        public readonly string $authenticationVersion = '',
     ) {
     }
 

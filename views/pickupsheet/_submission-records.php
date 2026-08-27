@@ -8,6 +8,7 @@ $errors = is_array($errors ?? null) ? $errors : [];
 $pickupOperational = (bool) ($pickupOperational ?? false);
 $canPrint = (bool) ($canPrint ?? false);
 $canExport = (bool) ($canExport ?? false);
+$canEdit = (bool) ($canEdit ?? false);
 $pagination = is_array($pagination ?? null) ? $pagination : [];
 $page = max(1, (int) ($pagination['page'] ?? 1));
 $totalPages = max(1, (int) ($pagination['totalPages'] ?? 1));
@@ -45,8 +46,11 @@ $pageUrl = static fn (int $target): string => ($basePath ?? '') . '/dhl/pickupsh
                 <span><small>Agent</small><?= $e($pickupSheet->agentName) ?></span>
                 <span><small>Shipments</small><?= $e($pickupSheet->shipmentCount()) ?></span>
                 <strong><?= $e(number_format($pickupSheet->totalCashReceivedXaf)) ?> XAF</strong>
-                <?php if ($canPrint || $canExport): ?>
+                <?php if ($canPrint || $canExport || $canEdit): ?>
                     <div class="pickup-record-actions">
+                        <?php if ($canEdit): ?>
+                            <a href="<?= $e($basePath) ?>/dhl/pickupsheet/submissions/edit?reference=<?= $e($referenceQuery) ?>">Edit record</a>
+                        <?php endif; ?>
                         <?php if ($canPrint): ?>
                             <a target="_blank" rel="noopener" href="<?= $e($basePath) ?>/dhl/pickupsheet/submissions/print?reference=<?= $e($referenceQuery) ?>">Print / PDF</a>
                         <?php endif; ?>

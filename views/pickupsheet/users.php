@@ -11,8 +11,11 @@ $old = is_array($old ?? null) ? $old : [];
     <div class="container pickup-workspace-header">
         <strong class="pickup-wordmark">Pickupsheet</strong>
         <div class="pickup-header-links">
+            <span class="pickup-session-user"><?= $e($recordsUsername ?? '') ?> · admin</span>
+            <a class="pickup-back" href="<?= $e($basePath) ?>/dhl/pickupsheet/dashboard">Dashboard <span aria-hidden="true">&#8599;</span></a>
             <a class="pickup-back" href="<?= $e($basePath) ?>/dhl/pickupsheet/submissions">Submitted sheets <span aria-hidden="true">&#8599;</span></a>
             <a class="pickup-back" href="<?= $e($basePath) ?>/dhl/pickupsheet/">New pickup sheet <span aria-hidden="true">&#8599;</span></a>
+            <form method="post" action="<?= $e($basePath) ?>/dhl/pickupsheet/logout"><input type="hidden" name="_token" value="<?= $e($csrfToken) ?>"><button class="pickup-link-button" type="submit">Sign out</button></form>
         </div>
     </div>
 
@@ -36,9 +39,9 @@ $old = is_array($old ?? null) ? $old : [];
             <aside class="records-role-guide">
                 <span>Access hierarchy</span>
                 <ol>
-                    <li><strong>Admin</strong><small>All records actions and lower-tier account management. Configured only on the server.</small></li>
-                    <li><strong>Operator</strong><small>View, print, and export pickup sheets.</small></li>
-                    <li><strong>Viewer</strong><small>View and paginate pickup sheets only.</small></li>
+                    <li><strong>Admin</strong><small>Dashboard, KPIs, all-record visibility, print, export, and lower-tier account management. Cannot edit records.</small></li>
+                    <li><strong>Operator</strong><small>Create and view pickup sheets, print or export them, and exclusively edit generated records.</small></li>
+                    <li><strong>Viewer</strong><small>Create, view, and paginate pickup sheets. Cannot edit, print, or export records.</small></li>
                 </ol>
             </aside>
 

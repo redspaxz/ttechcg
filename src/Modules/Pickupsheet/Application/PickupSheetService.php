@@ -53,8 +53,46 @@ final class PickupSheetService
         return $this->repository->findByReference($referenceNumber);
     }
 
+    /** @return array{sheetCount: int, shipmentCount: int, totalCashXaf: int, latestCreatedAt: ?string} */
+    public function summary(): array
+    {
+        return $this->repository->summary();
+    }
+
+    /** @return list<array{date: string, sheetCount: int, shipmentCount: int, totalCashXaf: int}> */
+    public function activityByDay(int $days = 14): array
+    {
+        return $this->repository->activityByDay(max(7, min($days, 31)));
+    }
+
+    /** @return list<array{destination: string, shipmentCount: int, totalCashXaf: int}> */
+    public function topDestinations(int $limit = 5): array
+    {
+        return $this->repository->topDestinations(max(1, min($limit, 10)));
+    }
+
     /** @param array<string, mixed> $input */
     public function submit(array $input): PickupSheet
+    {
+        return $this->repository->create($this->pickupSheetFromInput($input));
+    }
+
+    /** @param array<string, mixed> $input */
+    public function update(string $referenceNumber, array $input, string $actorId): PickupSheet
+    {
+        $existing = $this->findByReference($referenceNumber);
+        if ($existing === null) {
+            throw new InvalidArgumentException('Pickup sheet not found.');
+        }
+        if (preg_match('/^[a-f0-9]{24}$/', $actorId) !== 1) {
+            throw new InvalidArgumentException('The update actor is invalid.');
+        }
+
+        return $this->repository->update($this->pickupSheetFromInput($input, $existing), $actorId);
+    }
+
+    /** @param array<string, mixed> $input */
+    private function pickupSheetFromInput(array $input, ?PickupSheet $existing = null): PickupSheet
     {
         $agentName = $this->stringValue($input['agent_name'] ?? '');
         $collectionDate = $this->stringValue($input['collection_date'] ?? '');
@@ -69,7 +107,7 @@ final class PickupSheetService
             throw new InvalidArgumentException('Please provide a valid pickup-sheet date.');
         }
 
-        if ($privacyConsent !== '1') {
+        if ($existing === null && $privacyConsent !== '1') {
             throw new InvalidArgumentException('Please opt in to the privacy notice before saving the pickup sheet.');
         }
 
@@ -110,6 +148,14 @@ final class PickupSheetService
             $lineNumber = count($shipments) + 1;
             $this->validateShipment($values, $lineNumber);
 
+            $collectionTime = $submissionTime;
+            if ($existing !== null) {
+                $collectionTime = $this->stringValue($row['collection_time'] ?? '');
+                if (preg_match('/^(?:[01][0-9]|2[0-3]):[0-5][0-9]$/', $collectionTime) !== 1) {
+                    throw new InvalidArgumentException('Shipment ' . $lineNumber . ': provide a valid collection time.');
+                }
+            }
+
             $amountXaf = (int) $values['amount'];
             $shipment = new PickupShipment(
                 $lineNumber,
@@ -119,7 +165,7 @@ final class PickupSheetService
                 $amountXaf,
                 (int) $values['pieces'],
                 number_format((float) $values['weight_kg'], 3, '.', ''),
-                $submissionTime,
+                $collectionTime,
                 $values['checked_by'],
             );
 
@@ -133,17 +179,17 @@ final class PickupSheetService
 
         $submittedAt = $submissionInstant->format(DATE_ATOM);
 
-        return $this->repository->create(new PickupSheet(
-            null,
-            $this->generateReferenceNumber($collectionDate),
+        return new PickupSheet(
+            $existing?->id,
+            $existing?->referenceNumber ?? $this->generateReferenceNumber($collectionDate),
             $agentName,
             $collectionDate,
             $shipments,
             $totalCashReceivedXaf,
-            $submittedAt,
-            self::PRIVACY_NOTICE_VERSION,
-            $submittedAt,
-        ));
+            $existing?->privacyConsentAt ?? $submittedAt,
+            $existing?->privacyNoticeVersion ?? self::PRIVACY_NOTICE_VERSION,
+            $existing?->createdAt ?? $submittedAt,
+        );
     }
 
     private function generateReferenceNumber(string $collectionDate): string

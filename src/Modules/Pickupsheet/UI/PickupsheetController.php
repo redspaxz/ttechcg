@@ -13,6 +13,7 @@ use App\Shared\Security\Csrf;
 use App\Shared\Security\RateLimiter;
 use App\Shared\Security\RecordsAccess;
 use App\Shared\Security\RecordsPrincipal;
+use App\Shared\Security\RecordsSession;
 use App\Shared\Security\RecordsUserService;
 use App\Shared\Security\SecurityLogger;
 use App\Shared\Spreadsheet\XlsxWriter;
@@ -32,6 +33,7 @@ final class PickupsheetController
         private readonly string $storageMode,
         private readonly bool $pickupOperational,
         private readonly RecordsAccess $recordsAccess,
+        private readonly RecordsSession $recordsSession,
         private readonly RecordsUserService $recordsUserService,
         private readonly RateLimiter $rateLimiter,
         private readonly SecurityLogger $securityLogger,
@@ -40,6 +42,11 @@ final class PickupsheetController
 
     public function index(Request $request): Response
     {
+        $authorization = $this->authorizeRecords($request, 'create');
+        if ($authorization instanceof Response) {
+            return $authorization;
+        }
+
         $flash = $_SESSION['_pickup_flash'] ?? null;
         $errors = $_SESSION['_pickup_errors'] ?? [];
         $old = $_SESSION['_pickup_old'] ?? [];
@@ -60,6 +67,8 @@ final class PickupsheetController
             'errors' => is_array($errors) ? $errors : [],
             'old' => is_array($old) ? $old : [],
             'pickupOperational' => $this->pickupOperational,
+            'recordsRole' => $authorization->role,
+            'recordsUsername' => $authorization->username,
         ]);
 
         return Response::html($body, 200, $this->privateHeaders());
@@ -67,6 +76,11 @@ final class PickupsheetController
 
     public function store(Request $request): Response
     {
+        $authorization = $this->authorizeRecords($request, 'create');
+        if ($authorization instanceof Response) {
+            return $authorization;
+        }
+
         $rateLimitResponse = $this->rateLimit($request, 'pickup-submit', 30, 3600);
         if ($rateLimitResponse !== null) {
             return $rateLimitResponse;
@@ -139,6 +153,53 @@ final class PickupsheetController
         return Response::redirect($request->basePath . '/dhl/pickupsheet/');
     }
 
+    public function dashboard(Request $request): Response
+    {
+        $authorization = $this->authorizeRecords($request, 'dashboard');
+        if ($authorization instanceof Response) {
+            return $authorization;
+        }
+
+        $summary = ['sheetCount' => 0, 'shipmentCount' => 0, 'totalCashXaf' => 0, 'latestCreatedAt' => null];
+        $activity = [];
+        $destinations = [];
+        $recentSheets = [];
+        $accounts = [];
+        $errors = [];
+
+        try {
+            $summary = $this->service->summary();
+            $activity = $this->completeActivity($this->service->activityByDay(14), 14);
+            $destinations = $this->service->topDestinations(5);
+            $recentSheets = $this->service->recent(8);
+            $accounts = $this->recordsUserService->accounts($authorization);
+        } catch (RuntimeException $exception) {
+            error_log($exception->__toString());
+            $errors = ['Dashboard activity could not be loaded. Check the MySQL connection and account schema.'];
+        }
+
+        $body = $this->view->render('pickupsheet/dashboard', [
+            'pageTitle' => 'Pickupsheet control panel',
+            'pageDescription' => 'Administrative KPIs, activity, and access controls for Pickupsheet.',
+            'pageRobots' => 'noindex, nofollow',
+            'activePage' => 'pickupsheet',
+            'basePath' => $request->basePath,
+            'assetBase' => $request->basePath . '/public/assets',
+            'config' => $this->config,
+            'csrfToken' => $this->csrf->token(),
+            'summary' => $summary,
+            'activity' => $activity,
+            'destinations' => $destinations,
+            'recentSheets' => $recentSheets,
+            'accounts' => $accounts,
+            'errors' => $errors,
+            'recordsUsername' => $authorization->username,
+            'recordsRole' => $authorization->role,
+        ]);
+
+        return Response::html($body, 200, $this->privateHeaders());
+    }
+
     public function submissions(Request $request): Response
     {
         $authorization = $this->authorizeRecords($request, 'list');
@@ -176,6 +237,93 @@ final class PickupsheetController
         );
     }
 
+    public function edit(Request $request): Response
+    {
+        $authorization = $this->authorizeRecords($request, 'edit');
+        if ($authorization instanceof Response) {
+            return $authorization;
+        }
+
+        $pickupSheet = $this->service->findByReference($request->queryString('reference'));
+        if ($pickupSheet === null) {
+            return Response::html('Pickup sheet not found.', 404, $this->privateHeaders());
+        }
+
+        $flash = $_SESSION['_pickup_edit_flash'] ?? null;
+        $errors = $_SESSION['_pickup_edit_errors'] ?? [];
+        $old = $_SESSION['_pickup_edit_old'] ?? [];
+        unset($_SESSION['_pickup_edit_flash'], $_SESSION['_pickup_edit_errors'], $_SESSION['_pickup_edit_old']);
+
+        $body = $this->view->render('pickupsheet/edit', [
+            'pageTitle' => 'Edit ' . $pickupSheet->referenceNumber,
+            'pageDescription' => 'Correct a generated pickup sheet with an audit trail.',
+            'pageRobots' => 'noindex, nofollow',
+            'activePage' => 'pickupsheet',
+            'basePath' => $request->basePath,
+            'assetBase' => $request->basePath . '/public/assets',
+            'config' => $this->config,
+            'csrfToken' => $this->csrf->token(),
+            'pickupSheet' => $pickupSheet,
+            'flash' => is_string($flash) ? $flash : null,
+            'errors' => is_array($errors) ? $errors : [],
+            'old' => is_array($old) ? $old : [],
+            'recordsUsername' => $authorization->username,
+        ]);
+
+        return Response::html($body, 200, $this->privateHeaders());
+    }
+
+    public function updatePickupSheet(Request $request): Response
+    {
+        $authorization = $this->authorizeRecords($request, 'edit');
+        if ($authorization instanceof Response) {
+            return $authorization;
+        }
+
+        $rateLimitResponse = $this->rateLimit($request, 'pickup-records-edit', 60, 3600);
+        if ($rateLimitResponse !== null) {
+            return $rateLimitResponse;
+        }
+        if (!$this->csrf->validate($request->input('_token'))) {
+            $this->securityLogger->event('pickupsheet.edit_csrf', $request, 'denied');
+            return Response::html('Invalid or expired form token.', 419, $this->privateHeaders());
+        }
+
+        $reference = $request->input('reference');
+        $input = [
+            'agent_name' => $request->input('agent_name'),
+            'collection_date' => $request->input('collection_date'),
+            'shipments' => $request->arrayInput('shipments'),
+        ];
+
+        try {
+            $updated = $this->service->update(
+                $reference,
+                $input,
+                substr(hash('sha256', $authorization->username), 0, 24),
+            );
+            $_SESSION['_pickup_edit_flash'] = 'Pickup sheet updated. The before-and-after values were added to the audit log.';
+            $this->securityLogger->event('pickupsheet.record_edit', $request, 'accepted', [
+                'actor_id' => substr(hash('sha256', $authorization->username), 0, 24),
+                'resource_id' => substr(hash('sha256', $updated->referenceNumber), 0, 24),
+                'shipment_count' => $updated->shipmentCount(),
+            ]);
+        } catch (InvalidArgumentException $exception) {
+            $_SESSION['_pickup_edit_errors'] = [$exception->getMessage()];
+            $_SESSION['_pickup_edit_old'] = $input;
+            $this->securityLogger->event('pickupsheet.record_edit', $request, 'denied');
+        } catch (RuntimeException $exception) {
+            error_log($exception->__toString());
+            $_SESSION['_pickup_edit_errors'] = ['The pickup sheet could not be updated. Check MySQL and try again.'];
+            $_SESSION['_pickup_edit_old'] = $input;
+            $this->securityLogger->event('pickupsheet.record_edit', $request, 'failed');
+        }
+
+        return Response::redirect(
+            $request->basePath . '/dhl/pickupsheet/submissions/edit?reference=' . rawurlencode($reference),
+        );
+    }
+
     public function users(Request $request): Response
     {
         $authorization = $this->authorizeRecords($request, 'manage');
@@ -209,6 +357,7 @@ final class PickupsheetController
             'flash' => is_string($flash) ? $flash : null,
             'errors' => is_array($errors) ? $errors : [],
             'old' => is_array($old) ? $old : [],
+            'recordsUsername' => $authorization->username,
         ]);
 
         return Response::html($body, 200, $this->privateHeaders());
@@ -368,7 +517,7 @@ final class PickupsheetController
             $context['resource_id'] = substr(hash('sha256', $resource), 0, 24);
         }
 
-        $principal = $this->recordsAccess->authenticate($request);
+        $principal = $this->recordsSession->principal($this->recordsAccess);
         if ($principal !== null) {
             $context['actor_id'] = substr(hash('sha256', $principal->username), 0, 24);
             $context['role'] = $principal->role;
@@ -383,19 +532,10 @@ final class PickupsheetController
             return Response::html('You do not have permission to perform this records action.', 403, $this->privateHeaders());
         }
 
-        $rateLimitResponse = $this->rateLimit($request, 'pickup-records-auth', 10, 900);
-        if ($rateLimitResponse !== null) {
-            return $rateLimitResponse;
-        }
-
         $context['configured'] = $this->recordsAccess->isConfigured();
         $this->securityLogger->event('pickupsheet.records_access', $request, 'denied', $context);
 
-        return Response::html('Authentication is required to access pickup-sheet records.', 401, [
-            'Cache-Control' => 'private, no-store, max-age=0',
-            'WWW-Authenticate' => 'Basic realm="T&Tech Pickupsheet Records", charset="UTF-8"',
-            'X-Robots-Tag' => 'noindex, nofollow',
-        ]);
+        return Response::redirect($request->basePath . '/dhl/pickupsheet/login', 302);
     }
 
     /** @return array<string, mixed> */
@@ -428,8 +568,35 @@ final class PickupsheetController
             'canPrint' => $principal->can('print'),
             'canExport' => $principal->can('export'),
             'canManage' => $principal->can('manage'),
+            'canEdit' => $principal->can('edit'),
             'recordsRole' => $principal->role,
+            'recordsUsername' => $principal->username,
+            'csrfToken' => $this->csrf->token(),
         ];
+    }
+
+    /**
+     * @param list<array{date: string, sheetCount: int, shipmentCount: int, totalCashXaf: int}> $activity
+     * @return list<array{date: string, sheetCount: int, shipmentCount: int, totalCashXaf: int}>
+     */
+    private function completeActivity(array $activity, int $days): array
+    {
+        $byDate = [];
+        foreach ($activity as $row) {
+            $byDate[$row['date']] = $row;
+        }
+
+        $complete = [];
+        for ($offset = $days - 1; $offset >= 0; $offset--) {
+            $date = gmdate('Y-m-d', strtotime('-' . $offset . ' days'));
+            $complete[] = $byDate[$date] ?? [
+                'date' => $date,
+                'sheetCount' => 0,
+                'shipmentCount' => 0,
+                'totalCashXaf' => 0,
+            ];
+        }
+        return $complete;
     }
 
     private function recordsUserWriteGuard(Request $request): ?Response

@@ -31,6 +31,20 @@ final class DemoPickupSheetRepository implements PickupSheetRepository
         return $created;
     }
 
+    public function update(PickupSheet $pickupSheet, string $actorId): PickupSheet
+    {
+        $sheets = $_SESSION[self::SESSION_KEY] ?? [];
+        foreach (is_array($sheets) ? $sheets : [] as $index => $stored) {
+            if ($stored instanceof PickupSheet && $stored->referenceNumber === $pickupSheet->referenceNumber) {
+                $sheets[$index] = $pickupSheet;
+                $_SESSION[self::SESSION_KEY] = $sheets;
+                return $pickupSheet;
+            }
+        }
+
+        throw new \RuntimeException('Pickup sheet not found for update.');
+    }
+
     public function recent(int $limit, int $offset = 0): array
     {
         $sheets = $_SESSION[self::SESSION_KEY] ?? [];
@@ -41,6 +55,53 @@ final class DemoPickupSheetRepository implements PickupSheetRepository
     {
         $sheets = $_SESSION[self::SESSION_KEY] ?? [];
         return is_array($sheets) ? count($sheets) : 0;
+    }
+
+    public function summary(): array
+    {
+        $sheets = $this->recent(PHP_INT_MAX);
+        return [
+            'sheetCount' => count($sheets),
+            'shipmentCount' => array_sum(array_map(static fn (PickupSheet $sheet): int => $sheet->shipmentCount(), $sheets)),
+            'totalCashXaf' => array_sum(array_map(static fn (PickupSheet $sheet): int => $sheet->totalCashReceivedXaf, $sheets)),
+            'latestCreatedAt' => $sheets[0]->createdAt ?? null,
+        ];
+    }
+
+    public function activityByDay(int $days): array
+    {
+        $minimumDate = gmdate('Y-m-d', strtotime('-' . max(0, $days - 1) . ' days'));
+        $activity = [];
+        foreach ($this->recent(PHP_INT_MAX) as $sheet) {
+            $date = substr($sheet->createdAt, 0, 10);
+            if ($date < $minimumDate) {
+                continue;
+            }
+            $activity[$date] ??= ['date' => $date, 'sheetCount' => 0, 'shipmentCount' => 0, 'totalCashXaf' => 0];
+            $activity[$date]['sheetCount']++;
+            $activity[$date]['shipmentCount'] += $sheet->shipmentCount();
+            $activity[$date]['totalCashXaf'] += $sheet->totalCashReceivedXaf;
+        }
+        ksort($activity);
+        return array_values($activity);
+    }
+
+    public function topDestinations(int $limit): array
+    {
+        $destinations = [];
+        foreach ($this->recent(PHP_INT_MAX) as $sheet) {
+            foreach ($sheet->shipments as $shipment) {
+                $destinations[$shipment->destination] ??= [
+                    'destination' => $shipment->destination,
+                    'shipmentCount' => 0,
+                    'totalCashXaf' => 0,
+                ];
+                $destinations[$shipment->destination]['shipmentCount']++;
+                $destinations[$shipment->destination]['totalCashXaf'] += $shipment->amountXaf;
+            }
+        }
+        usort($destinations, static fn (array $left, array $right): int => $right['shipmentCount'] <=> $left['shipmentCount']);
+        return array_slice($destinations, 0, max(1, $limit));
     }
 
     public function findByReference(string $referenceNumber): ?PickupSheet

@@ -77,6 +77,7 @@ if (pickupForm) {
         amount: 'amount in XAF',
         pieces: 'pieces',
         weight_kg: 'weight in kilograms',
+        collection_time: 'collection time',
         checked_by: 'checked by',
     };
     const numberFormatter = new Intl.NumberFormat('en-US', { maximumFractionDigits: 0 });
@@ -195,6 +196,10 @@ if (pickupRecords) {
                 headers: { 'X-Requested-With': 'XMLHttpRequest' },
                 signal: request.signal,
             });
+            if (response.redirected && new URL(response.url).pathname.endsWith('/dhl/pickupsheet/login')) {
+                window.location.assign(response.url);
+                return;
+            }
             if (!response.ok) throw new Error(`Pagination request failed with ${response.status}`);
 
             content.innerHTML = await response.text();
