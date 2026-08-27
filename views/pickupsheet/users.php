@@ -6,6 +6,9 @@ $e = static fn (mixed $value): string => htmlspecialchars((string) $value, ENT_Q
 $accounts = is_array($accounts ?? null) ? $accounts : [];
 $errors = is_array($errors ?? null) ? $errors : [];
 $old = is_array($old ?? null) ? $old : [];
+$jumpCloudEnabled = (bool) ($config['jumpcloud_oidc_configured'] ?? false);
+$jumpCloudGroups = is_array($config['jumpcloud_role_groups'] ?? null) ? $config['jumpcloud_role_groups'] : [];
+$jumpCloudIdentity = ($recordsIdentityProvider ?? 'local') === 'jumpcloud';
 ?>
 <section class="pickup-view-workspace">
     <div class="container pickup-workspace-header">
@@ -24,7 +27,7 @@ $old = is_array($old ?? null) ? $old : [];
             <div>
                 <p class="eyebrow eyebrow-red">Administrator access</p>
                 <h1>Manage users</h1>
-                <p>Create users, reset account passwords, and control the Pickupsheet access hierarchy.</p>
+                <p><?= $jumpCloudEnabled ? 'JumpCloud group membership controls SSO roles. Local recovery accounts remain available below.' : 'Create users, reset account passwords, and control the Pickupsheet access hierarchy.' ?></p>
             </div>
         </header>
 
@@ -35,29 +38,35 @@ $old = is_array($old ?? null) ? $old : [];
             <div class="notice notice-error" role="alert"><?php foreach ($errors as $error): ?><span><?= $e($error) ?></span><?php endforeach; ?></div>
         <?php endif; ?>
 
-        <form class="pickup-form records-admin-password" method="post" action="<?= $e($basePath) ?>/dhl/pickupsheet/submissions/users/admin-password">
-            <input type="hidden" name="_token" value="<?= $e($csrfToken) ?>">
-            <div><span>Administrator security</span><h2>Reset my admin password</h2><p>Confirm the current password, then choose a new password. You will be signed out after it is changed.</p></div>
-            <label><span>Current password</span><input type="password" name="current_password" maxlength="128" autocomplete="current-password" required></label>
-            <label><span>New password</span><input type="password" name="password" minlength="12" maxlength="128" autocomplete="new-password" required></label>
-            <label><span>Confirm new password</span><input type="password" name="password_confirmation" minlength="12" maxlength="128" autocomplete="new-password" required></label>
-            <button class="button button-dark" type="submit">Reset admin password</button>
-        </form>
+        <?php if ($jumpCloudIdentity): ?>
+            <section class="pickup-form records-idp-managed">
+                <div><span>JumpCloud identity</span><h2>Password and access managed centrally</h2><p>Your password, MFA policy, account status, and Pickupsheet role are controlled in JumpCloud. Change them from the JumpCloud administrator portal.</p></div>
+            </section>
+        <?php else: ?>
+            <form class="pickup-form records-admin-password" method="post" action="<?= $e($basePath) ?>/dhl/pickupsheet/submissions/users/admin-password">
+                <input type="hidden" name="_token" value="<?= $e($csrfToken) ?>">
+                <div><span>Administrator security</span><h2>Reset my admin password</h2><p>Confirm the current password, then choose a new password. You will be signed out after it is changed.</p></div>
+                <label><span>Current password</span><input type="password" name="current_password" maxlength="128" autocomplete="current-password" required></label>
+                <label><span>New password</span><input type="password" name="password" minlength="12" maxlength="128" autocomplete="new-password" required></label>
+                <label><span>Confirm new password</span><input type="password" name="password_confirmation" minlength="12" maxlength="128" autocomplete="new-password" required></label>
+                <button class="button button-dark" type="submit">Reset admin password</button>
+            </form>
+        <?php endif; ?>
 
         <div class="records-users-layout">
             <aside class="records-role-guide">
                 <span>Access hierarchy</span>
                 <ol>
-                    <li><strong>Admin</strong><small>Dashboard, KPIs, all records, editing, paid status, audited deletion, print/export, and user management.</small></li>
-                    <li><strong>Operator</strong><small>Create, view, edit, print, export, and mark pickup sheets paid. Cannot delete records.</small></li>
-                    <li><strong>Viewer</strong><small>Create, view, and paginate pickup sheets. Cannot edit, print, or export records.</small></li>
+                    <li><strong>Admin</strong><small><?= $jumpCloudEnabled ? $e($jumpCloudGroups['admin'] ?? '') . ' — ' : '' ?>Dashboard, KPIs, all records, editing, paid status, audited deletion, print/export, and user management.</small></li>
+                    <li><strong>Operator</strong><small><?= $jumpCloudEnabled ? $e($jumpCloudGroups['operator'] ?? '') . ' — ' : '' ?>Create, view, edit, print, export, and mark pickup sheets paid. Cannot delete records.</small></li>
+                    <li><strong>Viewer</strong><small><?= $jumpCloudEnabled ? $e($jumpCloudGroups['viewer'] ?? '') . ' — ' : '' ?>Create, view, and paginate pickup sheets. Cannot edit, print, or export records.</small></li>
                 </ol>
             </aside>
 
             <form class="pickup-form records-user-create" method="post" action="<?= $e($basePath) ?>/dhl/pickupsheet/submissions/users">
                 <input type="hidden" name="_token" value="<?= $e($csrfToken) ?>">
                 <fieldset>
-                    <legend>Create lower-tier account</legend>
+                    <legend>Create local recovery account</legend>
                     <label><span>First name</span><input name="first_name" value="<?= $e($old['first_name'] ?? '') ?>" maxlength="49" autocomplete="given-name" required></label>
                     <label><span>Last name</span><input name="last_name" value="<?= $e($old['last_name'] ?? '') ?>" maxlength="49" autocomplete="family-name" required></label>
                     <label><span>Email or username</span><input name="username" value="<?= $e($old['username'] ?? '') ?>" minlength="3" maxlength="100" autocomplete="username" autocapitalize="none" spellcheck="false" required></label>
@@ -72,7 +81,7 @@ $old = is_array($old ?? null) ? $old : [];
 
         <section class="records-user-list" aria-labelledby="managed-accounts-title">
             <div class="records-user-list-heading">
-                <div><span>Managed accounts</span><h2 id="managed-accounts-title">Operators and viewers</h2></div>
+                <div><span>Managed accounts</span><h2 id="managed-accounts-title">Local operators and viewers</h2></div>
                 <strong><?= $e(count($accounts)) ?> account<?= count($accounts) === 1 ? '' : 's' ?></strong>
             </div>
 

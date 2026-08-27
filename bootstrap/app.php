@@ -27,6 +27,7 @@ use App\Shared\Infrastructure\MysqlRecordsUserRepository;
 use App\Shared\Infrastructure\UnavailableRecordsUserRepository;
 use App\Shared\Security\Captcha;
 use App\Shared\Security\Csrf;
+use App\Shared\Security\JumpCloudOidcProvider;
 use App\Shared\Security\RateLimiter;
 use App\Shared\Security\RecordsAccess;
 use App\Shared\Security\RecordsSession;
@@ -99,6 +100,9 @@ $rateLimiter = new RateLimiter($root . '/storage/security');
 $securityLogger = new SecurityLogger();
 $recordsAccess = RecordsAccess::fromEnvironment($recordsUserRepository);
 $recordsSession = new RecordsSession();
+$jumpCloud = JumpCloudOidcProvider::fromEnvironment();
+$config['jumpcloud_oidc_configured'] = $jumpCloud->isConfigured();
+$config['jumpcloud_role_groups'] = $jumpCloud->roleGroups();
 $recordsUserService = new RecordsUserService($recordsUserRepository, $recordsAccess->environmentUsernames());
 $contactCaptcha = new Captcha('contact');
 $pickupCaptcha = new Captcha('pickupsheet');
@@ -122,6 +126,7 @@ $pickupsheetAuthController = new PickupsheetAuthController(
     $rateLimiter,
     $securityLogger,
     $config,
+    $jumpCloud,
 );
 $pickupsheetController = new PickupsheetController(
     new PickupSheetService($pickupSheetRepository),
@@ -147,6 +152,8 @@ $router->get('/contact', fn (Request $request): Response => $contactController->
 $router->post('/contact', fn (Request $request): Response => $contactController->store($request));
 $router->get('/dhl/pickupsheet/login', fn (Request $request): Response => $pickupsheetAuthController->login($request));
 $router->post('/dhl/pickupsheet/login', fn (Request $request): Response => $pickupsheetAuthController->authenticate($request));
+$router->get('/dhl/pickupsheet/auth/jumpcloud', fn (Request $request): Response => $pickupsheetAuthController->jumpCloudStart($request));
+$router->get('/dhl/pickupsheet/auth/jumpcloud/callback', fn (Request $request): Response => $pickupsheetAuthController->jumpCloudCallback($request));
 $router->post('/dhl/pickupsheet/logout', fn (Request $request): Response => $pickupsheetAuthController->logout($request));
 $router->get('/dhl/pickupsheet/dashboard', fn (Request $request): Response => $pickupsheetController->dashboard($request));
 $router->get('/dhl/pickupsheet', fn (Request $request): Response => $pickupsheetController->index($request));

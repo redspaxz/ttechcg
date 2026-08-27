@@ -20,13 +20,23 @@ $e = static fn (mixed $value): string => htmlspecialchars((string) $value, ENT_Q
             <div class="notice notice-success" role="status"><?= $e($flash) ?></div>
         <?php endif; ?>
 
-        <form class="pickup-login-form" method="post" action="<?= $e($basePath) ?>/dhl/pickupsheet/login">
-            <input type="hidden" name="_token" value="<?= $e($csrfToken) ?>">
-            <label><span>Email or username</span><input name="username" value="<?= $e($username) ?>" maxlength="100" autocomplete="username" autocapitalize="none" spellcheck="false" autofocus required></label>
-            <label><span>Password</span><input type="password" name="password" maxlength="128" autocomplete="current-password" required></label>
-            <button class="button button-red" type="submit">Sign in <span aria-hidden="true">&#8594;</span></button>
-        </form>
-        <p class="pickup-login-security">Protected session · 60-minute inactivity timeout · access logged</p>
+        <?php if (($jumpCloudEnabled ?? false) === true): ?>
+            <div class="pickup-sso-login">
+                <a class="button button-dark pickup-jumpcloud-button" href="<?= $e($basePath) ?>/dhl/pickupsheet/auth/jumpcloud">Continue with JumpCloud <span aria-hidden="true">&#8594;</span></a>
+                <small>Role access is assigned from your approved JumpCloud group.</small>
+            </div>
+        <?php endif; ?>
+
+        <?php if (($localLoginEnabled ?? true) === true): ?>
+            <?php if (($jumpCloudEnabled ?? false) === true): ?><div class="pickup-login-divider"><span>Local recovery account</span></div><?php endif; ?>
+            <form class="pickup-login-form" method="post" action="<?= $e($basePath) ?>/dhl/pickupsheet/login">
+                <input type="hidden" name="_token" value="<?= $e($csrfToken) ?>">
+                <label><span>Email or username</span><input name="username" value="<?= $e($username) ?>" maxlength="100" autocomplete="username" autocapitalize="none" spellcheck="false" autofocus required></label>
+                <label><span>Password</span><input type="password" name="password" maxlength="128" autocomplete="current-password" required></label>
+                <button class="button button-red" type="submit">Sign in <span aria-hidden="true">&#8594;</span></button>
+            </form>
+        <?php endif; ?>
+        <p class="pickup-login-security">Protected session · 60-minute inactivity timeout · group-based access logged</p>
     </div>
     <aside class="pickup-login-aside" aria-hidden="true">
         <strong>Shipments.<br>Cash.<br>Control.</strong>

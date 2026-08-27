@@ -70,6 +70,7 @@ final class PickupsheetController
             'recordsRole' => $authorization->role,
             'recordsUsername' => $authorization->username,
             'recordsFullName' => $authorization->fullName(),
+            'recordsIdentityProvider' => $authorization->identityProvider,
         ]);
 
         return Response::html($body, 200, $this->privateHeaders());
@@ -430,6 +431,7 @@ final class PickupsheetController
             'old' => is_array($old) ? $old : [],
             'recordsUsername' => $authorization->username,
             'recordsFullName' => $authorization->fullName(),
+            'recordsIdentityProvider' => $authorization->identityProvider,
         ]);
 
         return Response::html($body, 200, $this->privateHeaders());
@@ -531,6 +533,15 @@ final class PickupsheetController
         $authorization = $this->authorizeRecords($request, 'manage');
         if ($authorization instanceof Response) {
             return $authorization;
+        }
+
+        if ($authorization->identityProvider !== 'local') {
+            $_SESSION['_records_users_errors'] = ['JumpCloud passwords are managed in JumpCloud and cannot be reset from Pickupsheet.'];
+            $this->securityLogger->event('pickupsheet.admin_password_reset', $request, 'denied', [
+                'actor_id' => $this->actorId($authorization),
+                'identity_provider' => $authorization->identityProvider,
+            ]);
+            return Response::redirect($request->basePath . '/dhl/pickupsheet/submissions/users');
         }
 
         $writeDenied = $this->recordsUserWriteGuard($request);

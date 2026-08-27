@@ -18,6 +18,8 @@ use App\Shared\Http\Request;
 use App\Shared\Infrastructure\DemoRecordsUserRepository;
 use App\Shared\Security\Captcha;
 use App\Shared\Security\Csrf;
+use App\Shared\Security\JumpCloudOidcProvider;
+use App\Shared\Security\OidcHttpClient;
 use App\Shared\Security\RateLimiter;
 use App\Shared\Security\RecordsAccess;
 use App\Shared\Security\RecordsSession;
@@ -377,6 +379,117 @@ $assert($rogueRecordsAccess->authenticate(new Request('GET', '/protected', [], [
     'PHP_AUTH_PW' => 'database-admin-password',
 ])) === null, 'A database role must never be able to escalate itself to administrator.');
 
+$oidcBase64Url = static fn (string $value): string => rtrim(strtr(base64_encode($value), '+/', '-_'), '=');
+$oidcOpenSslConfig = tempnam(sys_get_temp_dir(), 'ttechcg-oidc-');
+$assert(is_string($oidcOpenSslConfig), 'OIDC tests should create an isolated OpenSSL configuration.');
+file_put_contents($oidcOpenSslConfig, "openssl_conf = openssl_init\n[openssl_init]\nproviders = provider_sect\n[provider_sect]\ndefault = default_sect\n[default_sect]\nactivate = 1\n");
+$oidcPrivateKey = openssl_pkey_new([
+    'config' => $oidcOpenSslConfig,
+    'private_key_bits' => 2048,
+    'private_key_type' => OPENSSL_KEYTYPE_RSA,
+]);
+unlink($oidcOpenSslConfig);
+$oidcKeyDetails = $oidcPrivateKey !== false ? openssl_pkey_get_details($oidcPrivateKey) : false;
+$assert(is_array($oidcKeyDetails) && is_array($oidcKeyDetails['rsa'] ?? null), 'OIDC tests should create an isolated RSA signing key.');
+$oidcHttpClient = new class implements OidcHttpClient {
+    /** @var array<string, mixed> */
+    public array $tokenResponse = [];
+    /** @var array<string, mixed> */
+    public array $userInfo = [];
+    /** @var array<string, mixed> */
+    public array $jwks = [];
+
+    public function postForm(string $url, array $fields, array $headers = []): array
+    {
+        return $this->tokenResponse;
+    }
+
+    public function getJson(string $url, array $headers = []): array
+    {
+        return str_ends_with($url, '/.well-known/jwks.json') ? $this->jwks : $this->userInfo;
+    }
+};
+$oidcSettings = [
+    'enabled' => true,
+    'issuer' => 'https://oauth.id.jumpcloud.com/',
+    'client_id' => 'pickupsheet-test-client',
+    'client_secret' => 'test-client-secret-not-for-production',
+    'redirect_uri' => 'https://ttechcg.com/dhl/pickupsheet/auth/jumpcloud/callback',
+    'groups_claim' => 'groups',
+    'client_authentication' => 'client_secret_basic',
+    'admin_group' => 'Pickupsheet Admins',
+    'operator_group' => 'Pickupsheet Operators',
+    'viewer_group' => 'Pickupsheet Viewers',
+];
+$oidcProvider = new JumpCloudOidcProvider($oidcSettings, $oidcHttpClient);
+$assert($oidcProvider->isConfigured(), 'A complete JumpCloud OIDC configuration should be enabled.');
+$assert(!(new JumpCloudOidcProvider(array_merge($oidcSettings, ['issuer' => 'https://attacker.example/']), $oidcHttpClient))->isConfigured(), 'JumpCloud OIDC should reject untrusted issuer hosts.');
+$oidcHttpClient->jwks = ['keys' => [[
+    'kid' => 'pickupsheet-test-key',
+    'kty' => 'RSA',
+    'alg' => 'RS256',
+    'use' => 'sig',
+    'n' => $oidcBase64Url((string) ($oidcKeyDetails['rsa']['n'] ?? '')),
+    'e' => $oidcBase64Url((string) ($oidcKeyDetails['rsa']['e'] ?? '')),
+]]];
+$oidcHttpClient->userInfo = [
+    'sub' => 'jumpcloud-user-123',
+    'email' => 'operator@example.com',
+    'email_verified' => true,
+    'given_name' => 'Olivia',
+    'family_name' => 'Operator',
+];
+$signOidcToken = static function (string $nonce, array $groups) use ($oidcBase64Url, $oidcPrivateKey): string {
+    $header = $oidcBase64Url((string) json_encode(['alg' => 'RS256', 'kid' => 'pickupsheet-test-key', 'typ' => 'JWT']));
+    $claims = $oidcBase64Url((string) json_encode([
+        'iss' => 'https://oauth.id.jumpcloud.com/',
+        'sub' => 'jumpcloud-user-123',
+        'aud' => 'pickupsheet-test-client',
+        'iat' => time(),
+        'exp' => time() + 600,
+        'nonce' => $nonce,
+        'at_hash' => $oidcBase64Url(substr(hash('sha256', 'test-access-token', true), 0, 16)),
+        'email' => 'operator@example.com',
+        'email_verified' => true,
+        'given_name' => 'Olivia',
+        'family_name' => 'Operator',
+        'groups' => $groups,
+    ]));
+    $signingInput = $header . '.' . $claims;
+    $signature = '';
+    if ($oidcPrivateKey === false || !openssl_sign($signingInput, $signature, $oidcPrivateKey, OPENSSL_ALGO_SHA256)) {
+        throw new RuntimeException('Unable to sign the OIDC test token.');
+    }
+    return $signingInput . '.' . $oidcBase64Url($signature);
+};
+
+$_SESSION = [];
+$oidcAuthorizationUrl = $oidcProvider->authorizationUrl();
+parse_str((string) parse_url($oidcAuthorizationUrl, PHP_URL_QUERY), $oidcAuthorizationQuery);
+$oidcNonce = (string) ($_SESSION['_pickupsheet_jumpcloud_oidc']['nonce'] ?? '');
+$oidcState = (string) ($oidcAuthorizationQuery['state'] ?? '');
+$assert(str_starts_with($oidcAuthorizationUrl, 'https://oauth.id.jumpcloud.com/oauth2/auth?'), 'JumpCloud login should use the regional authorization endpoint.');
+$assert(($oidcAuthorizationQuery['code_challenge_method'] ?? '') === 'S256' && $oidcNonce !== '' && $oidcState !== '', 'JumpCloud login should issue state, nonce, and PKCE S256 protection.');
+$oidcHttpClient->tokenResponse = [
+    'access_token' => 'test-access-token',
+    'id_token' => $signOidcToken($oidcNonce, ['Pickupsheet Viewers', 'Pickupsheet Operators']),
+    'token_type' => 'Bearer',
+];
+$jumpCloudPrincipal = $oidcProvider->authenticate('valid-authorization-code', $oidcState);
+$assert($jumpCloudPrincipal->role === 'operator' && $jumpCloudPrincipal->identityProvider === 'jumpcloud', 'JumpCloud group membership should map to the highest approved Pickupsheet role.');
+$assert($jumpCloudPrincipal->fullName() === 'Olivia Operator' && $jumpCloudPrincipal->username === 'operator@example.com', 'JumpCloud profile claims should populate the account identity and Check By name.');
+$recordsSession->login($jumpCloudPrincipal);
+$resolvedJumpCloudPrincipal = $recordsSession->principal(new RecordsAccess());
+$assert($resolvedJumpCloudPrincipal?->role === 'operator' && $resolvedJumpCloudPrincipal->identityProvider === 'jumpcloud', 'A verified JumpCloud identity should remain valid in the protected first-party session.');
+$oidcReplayRejected = false;
+try {
+    $oidcProvider->authenticate('valid-authorization-code', $oidcState);
+} catch (RuntimeException) {
+    $oidcReplayRejected = true;
+}
+$assert($oidcReplayRejected, 'A JumpCloud authorization transaction should be single-use.');
+$recordsSession->logout();
+
 $previousRbacUsers = getenv('PICKUPSHEET_RBAC_USERS');
 $previousLegacyUser = getenv('PICKUPSHEET_RECORDS_USER');
 $previousLegacyHash = getenv('PICKUPSHEET_RECORDS_PASSWORD_HASH');
@@ -471,6 +584,64 @@ $pickupAuthController = new PickupsheetAuthController(
     $disabledSecurityLogger,
     $config,
 );
+
+$jumpCloudAuthController = new PickupsheetAuthController(
+    $view,
+    $pickupCsrf,
+    $recordsAccess,
+    $recordsSession,
+    $disabledRateLimiter,
+    $disabledSecurityLogger,
+    array_merge($config, ['jumpcloud_local_login' => true]),
+    $oidcProvider,
+);
+$jumpCloudLoginPage = $jumpCloudAuthController->login(new Request('GET', '/dhl/pickupsheet/login'));
+$assert(str_contains($jumpCloudLoginPage->body(), 'Continue with JumpCloud'), 'Configured Pickupsheet login should offer JumpCloud SSO.');
+$assert(str_contains($jumpCloudLoginPage->body(), 'Local recovery account'), 'Local recovery login should remain visible while the controlled fallback is enabled.');
+$jumpCloudOnlyAuthController = new PickupsheetAuthController(
+    $view,
+    $pickupCsrf,
+    $recordsAccess,
+    $recordsSession,
+    $disabledRateLimiter,
+    $disabledSecurityLogger,
+    array_merge($config, ['jumpcloud_local_login' => false]),
+    $oidcProvider,
+);
+$jumpCloudOnlyLoginPage = $jumpCloudOnlyAuthController->login(new Request('GET', '/dhl/pickupsheet/login'));
+$assert(!str_contains($jumpCloudOnlyLoginPage->body(), 'autocomplete="current-password"'), 'JumpCloud-only mode should remove the local password form.');
+$disabledLocalLogin = $jumpCloudOnlyAuthController->authenticate(new Request('POST', '/dhl/pickupsheet/login', [], [
+    '_token' => $pickupCsrf->token(),
+    'username' => $recordsUsername,
+    'password' => $recordsPassword,
+]));
+$assert($disabledLocalLogin->status() === 303 && str_contains((string) ($_SESSION['_pickup_login_error'] ?? ''), 'Use JumpCloud'), 'JumpCloud-only mode should reject direct local-password posts.');
+unset($_SESSION['_pickup_login_error']);
+$jumpCloudStart = $jumpCloudAuthController->jumpCloudStart(new Request('GET', '/dhl/pickupsheet/auth/jumpcloud'));
+$jumpCloudStartLocation = (string) ($jumpCloudStart->headers()['Location'] ?? '');
+parse_str((string) parse_url($jumpCloudStartLocation, PHP_URL_QUERY), $jumpCloudStartQuery);
+$jumpCloudCallbackNonce = (string) ($_SESSION['_pickupsheet_jumpcloud_oidc']['nonce'] ?? '');
+$oidcHttpClient->tokenResponse = [
+    'access_token' => 'test-access-token',
+    'id_token' => $signOidcToken($jumpCloudCallbackNonce, ['Pickupsheet Admins']),
+    'token_type' => 'Bearer',
+];
+$jumpCloudCallback = $jumpCloudAuthController->jumpCloudCallback(new Request('GET', '/dhl/pickupsheet/auth/jumpcloud/callback', [
+    'code' => 'valid-controller-code',
+    'state' => (string) ($jumpCloudStartQuery['state'] ?? ''),
+], [], '', ['REMOTE_ADDR' => '203.0.113.30']));
+$assert($jumpCloudStart->status() === 302 && str_starts_with($jumpCloudStartLocation, 'https://oauth.id.jumpcloud.com/oauth2/auth?'), 'The Pickupsheet SSO route should redirect to JumpCloud.');
+$assert($jumpCloudCallback->status() === 303 && ($jumpCloudCallback->headers()['Location'] ?? '') === '/dhl/pickupsheet/dashboard', 'A JumpCloud admin group member should enter the Pickupsheet dashboard.');
+$jumpCloudUsersPage = $pickupController->users(new Request('GET', '/dhl/pickupsheet/submissions/users'));
+$assert(str_contains($jumpCloudUsersPage->body(), 'Password and access managed centrally') && !str_contains($jumpCloudUsersPage->body(), 'name="current_password"'), 'JumpCloud administrators should manage their password and MFA outside Pickupsheet.');
+$jumpCloudPasswordReset = $pickupController->resetAdminPassword(new Request('POST', '/dhl/pickupsheet/submissions/users/admin-password', [], [
+    '_token' => $pickupCsrf->token(),
+    'current_password' => 'not-used',
+    'password' => 'not-used-password-123',
+    'password_confirmation' => 'not-used-password-123',
+]));
+$assert($jumpCloudPasswordReset->status() === 303 && str_contains((string) ($_SESSION['_records_users_errors'][0] ?? ''), 'managed in JumpCloud'), 'Pickupsheet should reject local password rotation for a JumpCloud identity.');
+$recordsSession->logout();
 
 $lockedPickup = $pickupController->index(new Request('GET', '/dhl/pickupsheet', [], [], ''));
 $assert($lockedPickup->status() === 302 && ($lockedPickup->headers()['Location'] ?? '') === '/dhl/pickupsheet/login', 'Pickupsheet should redirect unauthenticated users to its login portal.');
@@ -697,7 +868,7 @@ $assert(str_contains($adminDashboard->body(), '14,000'), 'The KPI dashboard shou
 $assert(str_contains($adminDashboard->body(), 'pickup-activity-chart'), 'The dashboard should render its activity graph without client-side chart dependencies.');
 $adminUsers = $pickupController->users(new Request('GET', '/dhl/pickupsheet/submissions/users', [], [], '', $recordsServer));
 $assert($adminUsers->status() === 200, 'An administrator should open records-user management.');
-$assert(str_contains($adminUsers->body(), 'Create lower-tier account'), 'The administrator should receive an account-creation form.');
+$assert(str_contains($adminUsers->body(), 'Create local recovery account'), 'The local administrator should receive a recovery account-creation form.');
 $assert(str_contains($adminUsers->body(), 'Reset my admin password'), 'The administrator should receive a current-password-confirmed password reset form.');
 $assert(str_contains($adminUsers->body(), 'Email or username') && str_contains($adminUsers->body(), 'Account status'), 'Account management should expose flexible login IDs and explicit account status.');
 $assert(str_contains($adminUsers->body(), 'name="first_name"') && str_contains($adminUsers->body(), 'name="last_name"'), 'Account management should require first and last names.');
@@ -924,8 +1095,8 @@ $assert(is_string($dhlAsset) && !str_contains($dhlAsset, '<text'), 'The disquali
 $partnerSources = file_get_contents(dirname(__DIR__) . '/public/assets/partners/README.md');
 $assert(is_string($partnerSources) && str_contains($partnerSources, 'www.dhl.com/content/dam/dhl/global/core/images/logos/dhl-logo.svg'), 'The official DHL artwork source should be documented.');
 $assert(!str_contains($home, 'href="/dhl/pickupsheet"'), 'Pickupsheet should not be discoverable from the public site chrome or homepage.');
-$assert(str_contains($home, 'styles.css?v=20260827-centered-shipments'), 'The centered shipment layout should use a cache-safe stylesheet version.');
-$assert(str_contains($home, 'app.js?v=20260827-centered-shipments'), 'The centered shipment layout should use a cache-safe application script version.');
+$assert(str_contains($home, 'styles.css?v=20260827-jumpcloud-rbac'), 'The JumpCloud RBAC update should use a cache-safe stylesheet version.');
+$assert(str_contains($home, 'app.js?v=20260827-jumpcloud-rbac'), 'The JumpCloud RBAC update should use a cache-safe application script version.');
 $assert(str_contains($home, 'analytics.js?v=20260825-security-hardening'), 'The current consent-aware Google Analytics loader should render on every page.');
 $assert(str_contains($home, 'data-analytics-accept'), 'The site should offer an explicit analytics acceptance control.');
 $assert(str_contains($home, 'data-analytics-decline'), 'The site should offer an explicit analytics decline control.');
@@ -1070,6 +1241,8 @@ $assert(str_contains($privacy, 'cookieless consent-state pings'), 'The privacy n
 $assert(str_contains($privacy, 'Analytics page views are suppressed on pickup-sheet operational pages'), 'The privacy notice should disclose sensitive-route Analytics suppression.');
 $assert(str_contains($privacy, 'Cookie settings'), 'The privacy notice should explain how to change the analytics choice.');
 $assert(str_contains($privacy, 'one-way password hash'), 'The privacy notice should disclose managed staff account data without implying plaintext password storage.');
+$assert(str_contains($privacy, 'JumpCloud single sign-on') && str_contains($privacy, 'group membership'), 'The privacy notice should disclose JumpCloud identity and role processing.');
+$assert(str_contains($privacy, 'Access and ID tokens are used only to complete sign-in and are not retained'), 'The privacy notice should state the OIDC token-retention boundary.');
 
 $environmentExample = file_get_contents(dirname(__DIR__) . '/.env.example');
 $assert(is_string($environmentExample) && str_contains($environmentExample, 'APP_TIMEZONE=Africa/Douala'), 'The environment example should use Cameroon time.');
@@ -1079,7 +1252,10 @@ $credentialGenerator = file_get_contents(dirname(__DIR__) . '/bin/generate-recor
 $assert(is_string($credentialGenerator) && str_contains($credentialGenerator, "['viewer', 'operator', 'admin']"), 'The credential generator should restrict accounts to defined RBAC roles.');
 $assert(is_string($credentialGenerator) && str_contains($credentialGenerator, "PICKUPSHEET_RBAC_USERS='"), 'The credential generator should provide a cPanel-ready RBAC environment value.');
 $assert(is_string($environmentExample) && str_contains($environmentExample, 'RUN_MIGRATIONS=true'), 'The environment example should explicitly document migration execution.');
-$assert(is_string($environmentExample) && !str_contains($environmentExample, 'JUMPCLOUD_'), 'The environment example should not require identity-provider configuration.');
+$assert(is_string($environmentExample) && str_contains($environmentExample, 'JUMPCLOUD_OIDC_ENABLED=false'), 'The environment example should keep JumpCloud disabled until credentials are supplied.');
+$assert(is_string($environmentExample) && str_contains($environmentExample, 'JUMPCLOUD_OIDC_REDIRECT_URI=https://ttechcg.com/dhl/pickupsheet/auth/jumpcloud/callback'), 'The environment example should document the exact JumpCloud callback URI.');
+$assert(is_string($environmentExample) && str_contains($environmentExample, 'JUMPCLOUD_RBAC_ADMIN_GROUP=Pickupsheet Admins'), 'The environment example should map JumpCloud groups to Pickupsheet roles.');
+$assert(is_string($environmentExample) && str_contains($environmentExample, 'JUMPCLOUD_OIDC_LOCAL_LOGIN=true'), 'The first JumpCloud deployment should retain a controlled local recovery login.');
 
 $styles = file_get_contents(dirname(__DIR__) . '/public/assets/styles.css');
 $assert(is_string($styles) && str_contains($styles, '--navy: #0b0b0c;'), 'T&Tech near-black should be the minimal corporate foundation.');
@@ -1222,6 +1398,14 @@ $assert(is_string($adminCredentialMigration) && str_contains($adminCredentialMig
 $assert(str_contains($recordsUserMysqlRepository, 'saveAdminPasswordHash'), 'An administrator should be able to securely rotate the server-defined portal password.');
 $findActiveMethod = substr($recordsUserMysqlRepository, 0, (int) strpos($recordsUserMysqlRepository, 'public function findById'));
 $assert(!str_contains($findActiveMethod, '$this->ensureSchema();'), 'Anonymous or managed-user authentication must not trigger schema creation.');
+$jumpCloudProviderSource = file_get_contents(dirname(__DIR__) . '/src/Shared/Security/JumpCloudOidcProvider.php');
+$oidcHttpSource = file_get_contents(dirname(__DIR__) . '/src/Shared/Security/NativeOidcHttpClient.php');
+$assert(is_string($jumpCloudProviderSource) && str_contains($jumpCloudProviderSource, "'code_challenge_method' => 'S256'"), 'JumpCloud authorization should use PKCE S256.');
+$assert(is_string($jumpCloudProviderSource) && str_contains($jumpCloudProviderSource, 'openssl_verify('), 'JumpCloud ID tokens should be cryptographically verified.');
+$assert(is_string($jumpCloudProviderSource) && str_contains($jumpCloudProviderSource, 'isset($claims[\'at_hash\'])'), 'JumpCloud access tokens should be bound to the ID token whenever an at_hash claim is issued.');
+$assert(is_string($jumpCloudProviderSource) && str_contains($jumpCloudProviderSource, 'ALLOWED_ISSUERS'), 'JumpCloud regional issuer hosts should be allowlisted against SSRF and token confusion.');
+$assert(is_string($jumpCloudProviderSource) && str_contains($jumpCloudProviderSource, "['admin', 'operator', 'viewer']"), 'JumpCloud group mapping should apply a fixed role hierarchy.');
+$assert(is_string($oidcHttpSource) && str_contains($oidcHttpSource, 'CURLOPT_SSL_VERIFYPEER => true') && str_contains($oidcHttpSource, 'CURLOPT_FOLLOWLOCATION => false'), 'OIDC back-channel requests should verify TLS and reject redirects.');
 $bootstrap = file_get_contents(dirname(__DIR__) . '/bootstrap/app.php');
 $assert(is_string($bootstrap) && str_contains($bootstrap, "'httponly' => true"), 'The security session cookie should be inaccessible to client-side scripts.');
 $assert(is_string($bootstrap) && str_contains($bootstrap, "'samesite' => 'Lax'"), 'The security session cookie should use a SameSite policy.');
@@ -1229,7 +1413,8 @@ $assert(is_string($bootstrap) && str_contains($bootstrap, "session.use_strict_mo
 $assert(is_string($bootstrap) && str_contains($bootstrap, "'__Host-ttechcg_session'"), 'The production session cookie should use the host-only secure prefix.');
 $assert(is_string($bootstrap) && str_contains($bootstrap, '$connection !== null && $runMigrations'), 'Production migrations should require an explicit environment switch.');
 $assert(is_string($bootstrap) && str_contains($bootstrap, 'RecordsAccess::fromEnvironment($recordsUserRepository)'), 'Stored pickup-sheet records should combine fail-closed environment admins with managed lower-tier accounts.');
-$assert(is_string($bootstrap) && !str_contains($bootstrap, 'JumpCloudOidcProvider'), 'Pickupsheet should not require an identity provider.');
+$assert(is_string($bootstrap) && str_contains($bootstrap, 'JumpCloudOidcProvider::fromEnvironment()'), 'Pickupsheet should initialize the optional JumpCloud OIDC provider from server-managed configuration.');
+$assert(is_string($bootstrap) && str_contains($bootstrap, "'/dhl/pickupsheet/auth/jumpcloud/callback'"), 'Pickupsheet should expose the exact JumpCloud OIDC callback route.');
 $assert(is_string($bootstrap) && str_contains($bootstrap, "'/dhl/pickupsheet'"), 'Pickupsheet should be routed under the DHL namespace.');
 $assert(is_string($bootstrap) && str_contains($bootstrap, "'/dhl/pickupsheet/submissions/page'"), 'Pickupsheet should expose a protected AJAX pagination endpoint.');
 $assert(is_string($bootstrap) && str_contains($bootstrap, "'/dhl/pickupsheet/submissions/users'"), 'Pickupsheet should expose administrator-only account management.');

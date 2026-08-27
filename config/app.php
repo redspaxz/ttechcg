@@ -10,6 +10,7 @@ return [
     'timezone' => getenv('APP_TIMEZONE') ?: 'Africa/Douala',
     'contact_email' => getenv('CONTACT_EMAIL') ?: 'info@ttechcg.com',
     'contact_from_email' => getenv('CONTACT_FROM_EMAIL') ?: 'website@ttechcg.com',
+    'jumpcloud_local_login' => filter_var(getenv('JUMPCLOUD_OIDC_LOCAL_LOGIN') ?: 'true', FILTER_VALIDATE_BOOL),
     'locations' => [
         [
             'city' => 'Bamenda',

@@ -19,6 +19,7 @@ final class RecordsPrincipal
         public readonly string $authenticationVersion = '',
         public readonly string $firstName = '',
         public readonly string $lastName = '',
+        public readonly string $identityProvider = 'local',
     ) {
     }
 
