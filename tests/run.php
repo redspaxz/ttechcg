@@ -449,6 +449,8 @@ $assert($lockedPickup->status() === 302 && ($lockedPickup->headers()['Location']
 $loginPage = $pickupAuthController->login(new Request('GET', '/dhl/pickupsheet/login'));
 $assert($loginPage->status() === 200 && str_contains($loginPage->body(), 'Welcome back.'), 'The Pickupsheet login portal should render directly.');
 $assert(str_contains($loginPage->body(), 'autocomplete="current-password"'), 'The login portal should expose password-manager-compatible fields.');
+$assert(!str_contains($loginPage->body(), 'class="site-header"') && !str_contains($loginPage->body(), 'class="site-footer"'), 'Pickupsheet pages should omit the corporate header and footer.');
+$assert(!str_contains($loginPage->body(), 'data-analytics-consent'), 'The Analytics consent panel should not interrupt the operational Pickupsheet shell.');
 $invalidLogin = $pickupAuthController->authenticate(new Request('POST', '/dhl/pickupsheet/login', [], [
     '_token' => $pickupCsrf->token(),
     'username' => $recordsUsername,
@@ -470,6 +472,7 @@ $assert(str_contains($emptyDashboard->body(), 'Manage users and RBAC'), 'The das
 $openPickup = $pickupController->index(new Request('GET', '/dhl/pickupsheet', [], [], ''));
 $assert($openPickup->status() === 200, 'A signed-in administrator should open the pickup form.');
 $assert(str_contains($openPickup->body(), 'data-pickup-form'), 'The pickup form should be immediately available.');
+$assert(!str_contains($openPickup->body(), 'class="site-header"') && !str_contains($openPickup->body(), 'class="site-footer"'), 'The signed-in Pickupsheet workspace should contain only its operational shell.');
 $assert(!str_contains($openPickup->body(), 'dhl-logo.svg'), 'The pickup form should not display the DHL logo.');
 $assert(str_contains($openPickup->body(), 'name="shipments[0][checked_by]"'), 'The checker identity should be an editable shipment field.');
 $assert(($openPickup->headers()['Cache-Control'] ?? '') === 'private, no-store, max-age=0', 'The open pickup form should not be cached.');
@@ -832,6 +835,7 @@ $about = $view->render('site/about', array_merge($common, [
     'pageDescription' => 'Test description',
     'activePage' => 'about',
 ]));
+$assert(str_contains($home, 'class="site-header"') && str_contains($home, 'class="site-footer"'), 'Public corporate pages should retain the company header and footer.');
 $assert(str_contains($about, 'Headquartered in Cameroon'), 'The about page should identify Cameroon as the company headquarters.');
 $assert(str_contains($about, 'locations in Bamenda and Douala'), 'The about page should identify both Cameroon locations.');
 

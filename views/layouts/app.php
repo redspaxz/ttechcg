@@ -5,8 +5,9 @@ declare(strict_types=1);
 $e = static fn (mixed $value): string => htmlspecialchars((string) $value, ENT_QUOTES, 'UTF-8');
 $url = static fn (string $path): string => ($basePath ?? '') . ($path === '/' ? '/' : $path);
 $activePage = $activePage ?? '';
+$isPickupsheet = $activePage === 'pickupsheet';
 $pageRobots = $pageRobots ?? 'index, follow';
-$analyticsPageView = $activePage === 'pickupsheet' ? 'disabled' : 'enabled';
+$analyticsPageView = $isPickupsheet ? 'disabled' : 'enabled';
 ?>
 <!doctype html>
 <html lang="en" data-analytics-page-view="<?= $analyticsPageView ?>">
@@ -26,6 +27,7 @@ $analyticsPageView = $activePage === 'pickupsheet' ? 'disabled' : 'enabled';
 </head>
 <body>
     <a class="skip-link" href="#main-content">Skip to content</a>
+    <?php if (!$isPickupsheet): ?>
     <header class="site-header" data-site-header>
         <div class="container header-inner">
             <a class="site-logo" href="<?= $e($url('/')) ?>" aria-label="T and Tech Consulting Group home">
@@ -46,11 +48,13 @@ $analyticsPageView = $activePage === 'pickupsheet' ? 'disabled' : 'enabled';
             </nav>
         </div>
     </header>
+    <?php endif; ?>
 
     <main id="main-content">
         <?= $content ?>
     </main>
 
+    <?php if (!$isPickupsheet): ?>
     <footer class="site-footer">
         <div class="container footer-top">
             <div class="footer-statement">
@@ -86,5 +90,6 @@ $analyticsPageView = $activePage === 'pickupsheet' ? 'disabled' : 'enabled';
             <a href="<?= $e($url('/privacy')) ?>">Privacy details</a>
         </div>
     </section>
+    <?php endif; ?>
 </body>
 </html>
