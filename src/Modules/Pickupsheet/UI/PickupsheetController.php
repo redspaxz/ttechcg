@@ -69,6 +69,7 @@ final class PickupsheetController
             'pickupOperational' => $this->pickupOperational,
             'recordsRole' => $authorization->role,
             'recordsUsername' => $authorization->username,
+            'recordsFullName' => $authorization->fullName(),
         ]);
 
         return Response::html($body, 200, $this->privateHeaders());
@@ -94,7 +95,7 @@ final class PickupsheetController
         $input = [
             'agent_name' => $request->input('agent_name'),
             'collection_date' => $request->input('collection_date'),
-            'shipments' => $request->arrayInput('shipments'),
+            'shipments' => $this->shipmentsCheckedByPrincipal($request->arrayInput('shipments'), $authorization),
             'privacy_consent' => $request->input('privacy_consent'),
         ];
 
@@ -195,6 +196,7 @@ final class PickupsheetController
             'errors' => $errors,
             'recordsUsername' => $authorization->username,
             'recordsRole' => $authorization->role,
+            'recordsFullName' => $authorization->fullName(),
         ]);
 
         return Response::html($body, 200, $this->privateHeaders());
@@ -272,6 +274,7 @@ final class PickupsheetController
             'old' => is_array($old) ? $old : [],
             'recordsUsername' => $authorization->username,
             'recordsRole' => $authorization->role,
+            'recordsFullName' => $authorization->fullName(),
         ]);
 
         return Response::html($body, 200, $this->privateHeaders());
@@ -297,7 +300,7 @@ final class PickupsheetController
         $input = [
             'agent_name' => $request->input('agent_name'),
             'collection_date' => $request->input('collection_date'),
-            'shipments' => $request->arrayInput('shipments'),
+            'shipments' => $this->shipmentsCheckedByPrincipal($request->arrayInput('shipments'), $authorization),
         ];
 
         try {
@@ -426,6 +429,7 @@ final class PickupsheetController
             'errors' => is_array($errors) ? $errors : [],
             'old' => is_array($old) ? $old : [],
             'recordsUsername' => $authorization->username,
+            'recordsFullName' => $authorization->fullName(),
         ]);
 
         return Response::html($body, 200, $this->privateHeaders());
@@ -445,7 +449,10 @@ final class PickupsheetController
 
         $input = [
             'username' => $request->input('username'),
+            'first_name' => $request->input('first_name'),
+            'last_name' => $request->input('last_name'),
             'role' => $request->input('role'),
+            'active' => $request->input('active'),
             'password' => $request->rawInput('password'),
             'password_confirmation' => $request->rawInput('password_confirmation'),
         ];
@@ -459,7 +466,13 @@ final class PickupsheetController
             ]);
         } catch (InvalidArgumentException $exception) {
             $_SESSION['_records_users_errors'] = [$exception->getMessage()];
-            $_SESSION['_records_users_old'] = ['username' => $input['username'], 'role' => $input['role']];
+            $_SESSION['_records_users_old'] = [
+                'username' => $input['username'],
+                'first_name' => $input['first_name'],
+                'last_name' => $input['last_name'],
+                'role' => $input['role'],
+                'active' => $input['active'],
+            ];
             $this->securityLogger->event('pickupsheet.records_user_create', $request, 'denied');
         } catch (RuntimeException $exception) {
             error_log($exception->__toString());
@@ -485,6 +498,8 @@ final class PickupsheetController
         $input = [
             'id' => $request->input('id'),
             'username' => $request->input('username'),
+            'first_name' => $request->input('first_name'),
+            'last_name' => $request->input('last_name'),
             'role' => $request->input('role'),
             'active' => $request->input('active'),
             'password' => $request->rawInput('password'),
@@ -690,6 +705,7 @@ final class PickupsheetController
             'canDelete' => $principal->can('delete'),
             'recordsRole' => $principal->role,
             'recordsUsername' => $principal->username,
+            'recordsFullName' => $principal->fullName(),
             'csrfToken' => $this->csrf->token(),
         ];
     }
@@ -749,6 +765,19 @@ final class PickupsheetController
     private function actorId(RecordsPrincipal $principal): string
     {
         return substr(hash('sha256', $principal->username), 0, 24);
+    }
+
+    /** @param list<mixed> $shipments @return list<mixed> */
+    private function shipmentsCheckedByPrincipal(array $shipments, RecordsPrincipal $principal): array
+    {
+        $fullName = $principal->fullName();
+        return array_map(static function (mixed $shipment) use ($fullName): mixed {
+            if (!is_array($shipment)) {
+                return $shipment;
+            }
+            $shipment['checked_by'] = $fullName;
+            return $shipment;
+        }, $shipments);
     }
 
     private function pageNumber(Request $request): int

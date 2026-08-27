@@ -25,7 +25,7 @@ $maximumCash = max([1, ...array_map(static fn (array $row): int => (int) ($row['
     <div class="container pickup-workspace-header pickup-admin-header">
         <strong class="pickup-wordmark">Pickupsheet control</strong>
         <div class="pickup-header-links">
-            <span class="pickup-session-user"><?= $e($recordsUsername) ?> · admin</span>
+            <span class="pickup-session-user" title="<?= $e($recordsUsername) ?>"><?= $e($recordsFullName ?? $recordsUsername) ?> · admin</span>
             <form method="post" action="<?= $e($basePath) ?>/dhl/pickupsheet/logout"><input type="hidden" name="_token" value="<?= $e($csrfToken) ?>"><button class="pickup-link-button" type="submit">Sign out</button></form>
         </div>
     </div>

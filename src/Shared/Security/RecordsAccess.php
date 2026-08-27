@@ -11,12 +11,12 @@ final class RecordsAccess
 {
     private const DUMMY_PASSWORD_HASH = '$2y$10$92IXUNpkjO0rOQ5byMi.Ye4oKoEa3Ro9llC/.og/at2.uheWG/igi';
 
-    /** @var array<string, array{passwordHash: string, role: string}> */
+    /** @var array<string, array{passwordHash: string, role: string, firstName: string, lastName: string}> */
     private array $users = [];
     private readonly ?RecordsAdminCredentialRepository $adminCredentialRepository;
 
     /**
-     * @param list<array{username: string, passwordHash: string, role: string}> $users
+     * @param list<array{username: string, passwordHash: string, role: string, firstName?: string, lastName?: string}> $users
      */
     public function __construct(
         array $users = [],
@@ -26,12 +26,19 @@ final class RecordsAccess
         $this->adminCredentialRepository = $adminCredentialRepository
             ?? ($repository instanceof RecordsAdminCredentialRepository ? $repository : null);
         foreach ($users as $user) {
-            $username = trim($user['username'] ?? '');
+            $username = strtolower(trim($user['username'] ?? ''));
             $passwordHash = trim($user['passwordHash'] ?? '');
             $role = strtolower(trim($user['role'] ?? ''));
+            $fallbackName = RecordsPrincipal::fallbackNameParts($username);
+            $firstName = trim($user['firstName'] ?? '');
+            $lastName = trim($user['lastName'] ?? '');
+            $firstName = $firstName !== '' ? $firstName : $fallbackName['firstName'];
+            $lastName = $lastName !== '' ? $lastName : $fallbackName['lastName'];
 
             if (!$this->validUsername($username)
                 || !$this->validPasswordHash($passwordHash)
+                || !$this->validName($firstName)
+                || !$this->validName($lastName)
                 || !RecordsPrincipal::isValidRole($role)
                 || isset($this->users[$username])) {
                 continue;
@@ -40,6 +47,8 @@ final class RecordsAccess
             $this->users[$username] = [
                 'passwordHash' => $passwordHash,
                 'role' => $role,
+                'firstName' => $firstName,
+                'lastName' => $lastName,
             ];
         }
     }
@@ -53,15 +62,17 @@ final class RecordsAccess
         $entries = trim((string) (getenv('PICKUPSHEET_RBAC_USERS') ?: ''));
 
         foreach (array_filter(array_map('trim', explode(';', $entries))) as $entry) {
-            $parts = array_map('trim', explode('|', $entry, 3));
-            if (count($parts) !== 3) {
+            $parts = array_map('trim', explode('|', $entry));
+            if (!in_array(count($parts), [3, 5], true)) {
                 continue;
             }
 
             $users[] = [
                 'username' => $parts[0],
                 'role' => strtolower($parts[1]),
-                'passwordHash' => $parts[2],
+                'firstName' => count($parts) === 5 ? $parts[2] : '',
+                'lastName' => count($parts) === 5 ? $parts[3] : '',
+                'passwordHash' => count($parts) === 5 ? $parts[4] : $parts[2],
             ];
         }
 
@@ -71,6 +82,8 @@ final class RecordsAccess
             $users[] = [
                 'username' => $legacyUsername,
                 'role' => 'admin',
+                'firstName' => trim((string) (getenv('PICKUPSHEET_RECORDS_FIRST_NAME') ?: '')),
+                'lastName' => trim((string) (getenv('PICKUPSHEET_RECORDS_LAST_NAME') ?: '')),
                 'passwordHash' => $legacyPasswordHash,
             ];
         }
@@ -90,7 +103,7 @@ final class RecordsAccess
 
     public function authenticateCredentials(string $username, string $password): ?RecordsPrincipal
     {
-        $username = trim($username);
+        $username = strtolower(trim($username));
         $environmentUser = $this->users[$username] ?? null;
         if ($environmentUser !== null) {
             $passwordHash = $this->environmentPasswordHash($username, $environmentUser['passwordHash']);
@@ -102,7 +115,9 @@ final class RecordsAccess
                 ? new RecordsPrincipal(
                     $username,
                     $environmentUser['role'],
-                    hash('sha256', $username . '|' . $environmentUser['role'] . '|' . $passwordHash),
+                    $this->environmentAuthenticationVersion($username, $environmentUser, $passwordHash),
+                    $environmentUser['firstName'],
+                    $environmentUser['lastName'],
                 )
                 : null;
         }
@@ -128,6 +143,8 @@ final class RecordsAccess
             $managedAccount->username,
             $managedAccount->role,
             $managedAccount->authenticationVersion(),
+            $managedAccount->firstName,
+            $managedAccount->lastName,
         );
     }
 
@@ -152,6 +169,8 @@ final class RecordsAccess
             $managedAccount->username,
             $managedAccount->role,
             $managedAccount->authenticationVersion(),
+            $managedAccount->firstName,
+            $managedAccount->lastName,
         );
     }
 
@@ -168,7 +187,9 @@ final class RecordsAccess
 
     private function validUsername(string $username): bool
     {
-        return preg_match('/^[A-Za-z0-9._@-]{1,100}$/', $username) === 1;
+        $validEmail = filter_var($username, FILTER_VALIDATE_EMAIL) !== false && strlen($username) <= 100;
+        $validUsername = preg_match('/^[A-Za-z0-9][A-Za-z0-9._-]{0,99}$/', $username) === 1;
+        return $validEmail || $validUsername;
     }
 
     private function validPasswordHash(string $passwordHash): bool
@@ -177,7 +198,12 @@ final class RecordsAccess
             && password_get_info($passwordHash)['algoName'] !== 'unknown';
     }
 
-    /** @param array{passwordHash: string, role: string} $user */
+    private function validName(string $name): bool
+    {
+        return preg_match("/^[\\p{L}\\p{M}][\\p{L}\\p{M} .'\\x{2019}-]{0,48}$/u", $name) === 1;
+    }
+
+    /** @param array{passwordHash: string, role: string, firstName: string, lastName: string} $user */
     private function environmentPrincipal(string $username, array $user): ?RecordsPrincipal
     {
         $passwordHash = $this->environmentPasswordHash($username, $user['passwordHash']);
@@ -187,8 +213,22 @@ final class RecordsAccess
         return new RecordsPrincipal(
             $username,
             $user['role'],
-            hash('sha256', $username . '|' . $user['role'] . '|' . $passwordHash),
+            $this->environmentAuthenticationVersion($username, $user, $passwordHash),
+            $user['firstName'],
+            $user['lastName'],
         );
+    }
+
+    /** @param array{passwordHash: string, role: string, firstName: string, lastName: string} $user */
+    private function environmentAuthenticationVersion(string $username, array $user, string $passwordHash): string
+    {
+        return hash('sha256', implode('|', [
+            $username,
+            $user['role'],
+            $user['firstName'],
+            $user['lastName'],
+            $passwordHash,
+        ]));
     }
 
     private function environmentPasswordHash(string $username, string $fallbackHash): ?string

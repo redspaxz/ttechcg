@@ -161,7 +161,9 @@ final class PickupSheetService
                 'checked_by' => $this->stringValue($row['checked_by'] ?? ''),
             ];
 
-            if (implode('', $values) === '') {
+            $shipmentValues = $values;
+            unset($shipmentValues['checked_by']);
+            if (implode('', $shipmentValues) === '') {
                 continue;
             }
 

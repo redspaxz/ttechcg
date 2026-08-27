@@ -43,7 +43,10 @@ final class RecordsUserService
     {
         $this->assertAdmin($actor);
         $username = $this->username($input['username'] ?? '');
+        $firstName = $this->name($input['first_name'] ?? '', 'First name');
+        $lastName = $this->name($input['last_name'] ?? '', 'Last name');
         $role = $this->managedRole($input['role'] ?? '');
+        $active = $this->accountStatus($input['active'] ?? '');
         $password = $this->password($input['password'] ?? '', $input['password_confirmation'] ?? '');
         $this->assertUsernameAvailable($username);
 
@@ -52,7 +55,15 @@ final class RecordsUserService
             throw new RuntimeException('Unable to secure the account password.');
         }
 
-        return $this->repository->create($username, $passwordHash, $role, $this->actorId($actor));
+        return $this->repository->create(
+            $username,
+            $firstName,
+            $lastName,
+            $passwordHash,
+            $role,
+            $active,
+            $this->actorId($actor),
+        );
     }
 
     /** @param array<string, string> $input */
@@ -70,7 +81,10 @@ final class RecordsUserService
         }
 
         $username = $this->username($input['username'] ?? '');
+        $firstName = $this->name($input['first_name'] ?? '', 'First name');
+        $lastName = $this->name($input['last_name'] ?? '', 'Last name');
         $role = $this->managedRole($input['role'] ?? '');
+        $active = $this->accountStatus($input['active'] ?? '');
         $this->assertUsernameAvailable($username, $id);
 
         $passwordHash = null;
@@ -86,8 +100,10 @@ final class RecordsUserService
         $updated = $this->repository->update(
             $id,
             $username,
+            $firstName,
+            $lastName,
             $role,
-            ($input['active'] ?? '') === '1',
+            $active,
             $passwordHash,
             $this->actorId($actor),
         );
@@ -133,11 +149,30 @@ final class RecordsUserService
     private function username(string $username): string
     {
         $username = strtolower(trim($username));
-        if (preg_match('/^[a-z0-9][a-z0-9._@-]{2,99}$/', $username) !== 1) {
-            throw new InvalidArgumentException('Username must be 3–100 characters and use only letters, numbers, dots, underscores, @, or hyphens.');
+        $validEmail = filter_var($username, FILTER_VALIDATE_EMAIL) !== false && strlen($username) <= 100;
+        $validUsername = preg_match('/^[a-z0-9][a-z0-9._-]{2,99}$/', $username) === 1;
+        if (!$validEmail && !$validUsername) {
+            throw new InvalidArgumentException('Login ID must be a valid email address or a 3-100 character username.');
         }
 
         return $username;
+    }
+
+    private function name(string $name, string $label): string
+    {
+        $name = trim(preg_replace('/\s+/u', ' ', $name) ?? '');
+        if (preg_match("/^[\\p{L}\\p{M}][\\p{L}\\p{M} .'\\x{2019}-]{0,48}$/u", $name) !== 1) {
+            throw new InvalidArgumentException($label . ' is required and must be no more than 49 characters.');
+        }
+        return $name;
+    }
+
+    private function accountStatus(string $active): bool
+    {
+        if (!in_array($active, ['0', '1'], true)) {
+            throw new InvalidArgumentException('Account status must be Active or Inactive.');
+        }
+        return $active === '1';
     }
 
     private function managedRole(string $role): string

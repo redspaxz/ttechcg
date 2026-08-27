@@ -5,6 +5,7 @@ declare(strict_types=1);
 $e = static fn (mixed $value): string => htmlspecialchars((string) $value, ENT_QUOTES, 'UTF-8');
 $errors = is_array($errors ?? null) ? $errors : [];
 $old = is_array($old ?? null) ? $old : [];
+$checkerName = (string) ($recordsFullName ?? $recordsUsername ?? '');
 $shipmentRows = is_array($old['shipments'] ?? null)
     ? $old['shipments']
     : array_map(static fn ($shipment): array => [
@@ -18,7 +19,7 @@ $shipmentRows = is_array($old['shipments'] ?? null)
         'checked_by' => $shipment->checkedBy,
     ], $pickupSheet->shipments);
 $shipmentRows = $shipmentRows === [] ? [[]] : $shipmentRows;
-$renderEditRow = static function (string|int $index, array $values = []) use ($e): void {
+$renderEditRow = static function (string|int $index, array $values = []) use ($e, $checkerName): void {
     $number = is_int($index) ? $index + 1 : '__NUMBER__';
     ?>
     <tr class="shipment-row" data-shipment-row>
@@ -30,7 +31,7 @@ $renderEditRow = static function (string|int $index, array $values = []) use ($e
         <td data-label="Pieces"><span class="sr-only" data-row-label>Shipment <?= $e($number) ?> pieces</span><input data-field="pieces" name="shipments[<?= $e($index) ?>][pieces]" value="<?= $e($values['pieces'] ?? '') ?>" inputmode="numeric" pattern="[0-9]{1,3}" required></td>
         <td data-label="Weight"><span class="sr-only" data-row-label>Shipment <?= $e($number) ?> weight</span><input data-field="weight_kg" name="shipments[<?= $e($index) ?>][weight_kg]" value="<?= $e($values['weight_kg'] ?? '') ?>" inputmode="decimal" required></td>
         <td data-label="Time"><span class="sr-only" data-row-label>Shipment <?= $e($number) ?> collection time</span><input type="time" data-field="collection_time" name="shipments[<?= $e($index) ?>][collection_time]" value="<?= $e($values['collection_time'] ?? date('H:i')) ?>" required></td>
-        <td data-label="Checked by"><span class="sr-only" data-row-label>Shipment <?= $e($number) ?> checked by</span><input data-field="checked_by" name="shipments[<?= $e($index) ?>][checked_by]" value="<?= $e($values['checked_by'] ?? '') ?>" maxlength="100" required></td>
+        <td data-label="Checked by"><span class="sr-only" data-row-label>Shipment <?= $e($number) ?> checked by</span><input data-field="checked_by" data-identity-field name="shipments[<?= $e($index) ?>][checked_by]" value="<?= $e($checkerName) ?>" maxlength="100" readonly aria-readonly="true"></td>
         <td class="shipment-row-action"><button type="button" data-remove-shipment>Remove</button></td>
     </tr>
     <?php
@@ -40,7 +41,7 @@ $renderEditRow = static function (string|int $index, array $values = []) use ($e
     <div class="container pickup-workspace-header">
         <strong class="pickup-wordmark">Edit Pickupsheet</strong>
         <div class="pickup-header-links">
-            <span class="pickup-session-user"><?= $e($recordsUsername) ?> · <?= $e($recordsRole) ?></span>
+            <span class="pickup-session-user" title="<?= $e($recordsUsername) ?>"><?= $e($checkerName) ?> · <?= $e($recordsRole) ?></span>
             <a class="pickup-back" href="<?= $e($basePath) ?>/dhl/pickupsheet/submissions">Submitted sheets <span aria-hidden="true">&#8599;</span></a>
             <form method="post" action="<?= $e($basePath) ?>/dhl/pickupsheet/logout"><input type="hidden" name="_token" value="<?= $e($csrfToken) ?>"><button class="pickup-link-button" type="submit">Sign out</button></form>
         </div>

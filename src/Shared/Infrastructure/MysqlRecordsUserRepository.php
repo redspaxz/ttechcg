@@ -57,21 +57,36 @@ final class MysqlRecordsUserRepository implements RecordsUserRepository, Records
 
     public function findActiveByUsername(string $username): ?RecordsUserAccount
     {
-        $statement = $this->connection->prepare(
-            'SELECT id, username, password_hash, role, active, created_at, updated_at
-             FROM pickup_records_users
-             WHERE BINARY username = :username AND active = 1
-             LIMIT 1',
-        );
-        $statement->execute(['username' => $username]);
-        return $this->account($statement->fetch());
+        try {
+            $statement = $this->connection->prepare(
+                'SELECT id, username, first_name, last_name, password_hash, role, active, created_at, updated_at
+                 FROM pickup_records_users
+                 WHERE BINARY username = :username AND active = 1
+                 LIMIT 1',
+            );
+            $statement->execute(['username' => $username]);
+            return $this->account($statement->fetch());
+        } catch (PDOException $exception) {
+            if ((int) ($exception->errorInfo[1] ?? 0) !== 1054) {
+                throw $exception;
+            }
+
+            $statement = $this->connection->prepare(
+                'SELECT id, username, password_hash, role, active, created_at, updated_at
+                 FROM pickup_records_users
+                 WHERE BINARY username = :username AND active = 1
+                 LIMIT 1',
+            );
+            $statement->execute(['username' => $username]);
+            return $this->account($statement->fetch());
+        }
     }
 
     public function findById(int $id): ?RecordsUserAccount
     {
         $this->ensureSchema();
         $statement = $this->connection->prepare(
-            'SELECT id, username, password_hash, role, active, created_at, updated_at
+            'SELECT id, username, first_name, last_name, password_hash, role, active, created_at, updated_at
              FROM pickup_records_users
              WHERE id = :id
              LIMIT 1',
@@ -84,7 +99,7 @@ final class MysqlRecordsUserRepository implements RecordsUserRepository, Records
     {
         $this->ensureSchema();
         $statement = $this->connection->prepare(
-            "SELECT id, username, password_hash, role, active, created_at, updated_at
+            "SELECT id, username, first_name, last_name, password_hash, role, active, created_at, updated_at
              FROM pickup_records_users
              ORDER BY FIELD(role, 'operator', 'viewer'), username",
         );
@@ -117,21 +132,27 @@ final class MysqlRecordsUserRepository implements RecordsUserRepository, Records
 
     public function create(
         string $username,
+        string $firstName,
+        string $lastName,
         string $passwordHash,
         string $role,
+        bool $active,
         string $actorId,
     ): RecordsUserAccount {
         $this->ensureSchema();
         $statement = $this->connection->prepare(
             'INSERT INTO pickup_records_users
-                (username, password_hash, role, active, created_by, updated_by, created_at, updated_at)
+                (username, first_name, last_name, password_hash, role, active, created_by, updated_by, created_at, updated_at)
              VALUES
-                (:username, :password_hash, :role, 1, :created_by, :updated_by, UTC_TIMESTAMP(), UTC_TIMESTAMP())',
+                (:username, :first_name, :last_name, :password_hash, :role, :active, :created_by, :updated_by, UTC_TIMESTAMP(), UTC_TIMESTAMP())',
         );
         $statement->execute([
             'username' => $username,
+            'first_name' => $firstName,
+            'last_name' => $lastName,
             'password_hash' => $passwordHash,
             'role' => $role,
+            'active' => $active ? 1 : 0,
             'created_by' => $actorId,
             'updated_by' => $actorId,
         ]);
@@ -143,6 +164,8 @@ final class MysqlRecordsUserRepository implements RecordsUserRepository, Records
     public function update(
         int $id,
         string $username,
+        string $firstName,
+        string $lastName,
         string $role,
         bool $active,
         ?string $passwordHash,
@@ -151,6 +174,8 @@ final class MysqlRecordsUserRepository implements RecordsUserRepository, Records
         $this->ensureSchema();
         $assignments = [
             'username = :username',
+            'first_name = :first_name',
+            'last_name = :last_name',
             'role = :role',
             'active = :active',
             'updated_by = :updated_by',
@@ -159,6 +184,8 @@ final class MysqlRecordsUserRepository implements RecordsUserRepository, Records
         $parameters = [
             'id' => $id,
             'username' => $username,
+            'first_name' => $firstName,
+            'last_name' => $lastName,
             'role' => $role,
             'active' => $active ? 1 : 0,
             'updated_by' => $actorId,
@@ -184,12 +211,26 @@ final class MysqlRecordsUserRepository implements RecordsUserRepository, Records
         return new RecordsUserAccount(
             (int) $row['id'],
             (string) $row['username'],
+            $this->storedName($row['first_name'] ?? null, (string) $row['username'], true),
+            $this->storedName($row['last_name'] ?? null, (string) $row['username'], false),
             (string) $row['password_hash'],
             (string) $row['role'],
             (bool) $row['active'],
             (string) $row['created_at'],
             (string) $row['updated_at'],
         );
+    }
+
+    private function storedName(mixed $value, string $username, bool $first): string
+    {
+        if (is_string($value) && trim($value) !== '') {
+            return trim($value);
+        }
+        $parts = preg_split('/[._@-]+/', $username, -1, PREG_SPLIT_NO_EMPTY) ?: [];
+        if ($first) {
+            return substr(ucfirst(strtolower((string) ($parts[0] ?? 'Records'))), 0, 49);
+        }
+        return substr(ucfirst(strtolower(implode(' ', array_slice($parts, 1)))) ?: 'User', 0, 49);
     }
 
     private function ensureSchema(): void
@@ -199,7 +240,7 @@ final class MysqlRecordsUserRepository implements RecordsUserRepository, Records
         }
 
         try {
-            $this->connection->query('SELECT 1 FROM pickup_records_users LIMIT 1');
+            $this->connection->query('SELECT first_name, last_name FROM pickup_records_users LIMIT 1');
             $this->schemaReady = true;
             return;
         } catch (PDOException) {
@@ -210,6 +251,8 @@ final class MysqlRecordsUserRepository implements RecordsUserRepository, Records
             'CREATE TABLE IF NOT EXISTS pickup_records_users (
                 id BIGINT UNSIGNED AUTO_INCREMENT PRIMARY KEY,
                 username VARCHAR(100) NOT NULL,
+                first_name VARCHAR(49) NOT NULL,
+                last_name VARCHAR(49) NOT NULL,
                 password_hash VARCHAR(255) NOT NULL,
                 role VARCHAR(20) NOT NULL,
                 active TINYINT(1) NOT NULL DEFAULT 1,
@@ -221,6 +264,29 @@ final class MysqlRecordsUserRepository implements RecordsUserRepository, Records
                 INDEX pickup_records_users_role_active_idx (role, active)
             ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci',
         );
+
+        try {
+            $this->connection->query('SELECT first_name, last_name FROM pickup_records_users LIMIT 1');
+        } catch (PDOException $exception) {
+            if ((int) ($exception->errorInfo[1] ?? 0) !== 1054) {
+                throw $exception;
+            }
+            $this->connection->exec(
+                'ALTER TABLE pickup_records_users
+                    ADD COLUMN first_name VARCHAR(49) NULL AFTER username,
+                    ADD COLUMN last_name VARCHAR(49) NULL AFTER first_name',
+            );
+            $this->connection->exec(
+                "UPDATE pickup_records_users
+                 SET first_name = LEFT(username, 49), last_name = 'User'
+                 WHERE first_name IS NULL OR first_name = '' OR last_name IS NULL OR last_name = ''",
+            );
+            $this->connection->exec(
+                'ALTER TABLE pickup_records_users
+                    MODIFY COLUMN first_name VARCHAR(49) NOT NULL,
+                    MODIFY COLUMN last_name VARCHAR(49) NOT NULL',
+            );
+        }
         $this->schemaReady = true;
     }
 

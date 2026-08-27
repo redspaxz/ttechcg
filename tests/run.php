@@ -277,16 +277,22 @@ $recordsUserRepository = new DemoRecordsUserRepository();
 $recordsAccess = new RecordsAccess([
     [
         'username' => $recordsUsername,
+        'firstName' => 'Records',
+        'lastName' => 'Administrator',
         'passwordHash' => password_hash($recordsPassword, PASSWORD_DEFAULT),
         'role' => 'admin',
     ],
     [
         'username' => $viewerUsername,
+        'firstName' => 'Victoria',
+        'lastName' => 'Viewer',
         'passwordHash' => password_hash($viewerPassword, PASSWORD_DEFAULT),
         'role' => 'viewer',
     ],
     [
         'username' => $operatorUsername,
+        'firstName' => 'Oliver',
+        'lastName' => 'Operator',
         'passwordHash' => password_hash($operatorPassword, PASSWORD_DEFAULT),
         'role' => 'operator',
     ],
@@ -312,6 +318,7 @@ $adminPrincipal = $recordsAccess->authenticate(new Request('GET', '/protected', 
 $viewerPrincipal = $recordsAccess->authenticate(new Request('GET', '/protected', [], [], '', $viewerServer));
 $operatorPrincipal = $recordsAccess->authenticate(new Request('GET', '/protected', [], [], '', $operatorServer));
 $assert($adminPrincipal?->role === 'admin' && $adminPrincipal->can('manage') && $adminPrincipal->can('dashboard'), 'An admin should manage users and receive the activity dashboard.');
+$assert($adminPrincipal?->fullName() === 'Records Administrator', 'Authenticated principals should expose the account first and last name.');
 $assert($adminPrincipal?->can('edit') === true && $adminPrincipal->can('mark_paid') === true && $adminPrincipal->can('delete') === true, 'An administrator should edit, mark paid, and delete pickup records.');
 $assert($viewerPrincipal?->can('create') === true && $viewerPrincipal->can('list') === true && $viewerPrincipal->can('edit') === false && $viewerPrincipal->can('print') === false, 'A viewer should create and view records but cannot edit, print, or export them.');
 $assert($operatorPrincipal?->can('edit') === true && $operatorPrincipal->can('mark_paid') === true && $operatorPrincipal->can('delete') === false && $operatorPrincipal->can('print') === true && $operatorPrincipal->can('export') === true, 'An operator should edit, mark paid, print, and export records without delete access.');
@@ -323,7 +330,10 @@ $reservedManagedUsernameRejected = false;
 try {
     $recordsUserService->create([
         'username' => $recordsUsername,
+        'first_name' => 'Reserved',
+        'last_name' => 'Account',
         'role' => 'viewer',
+        'active' => '1',
         'password' => 'reserved-password-123',
         'password_confirmation' => 'reserved-password-123',
     ], $adminPrincipal);
@@ -331,6 +341,21 @@ try {
     $reservedManagedUsernameRejected = str_contains($exception->getMessage(), 'reserved');
 }
 $assert($reservedManagedUsernameRejected, 'A managed account must not shadow an environment-defined administrator.');
+$missingManagedNameRejected = false;
+try {
+    $recordsUserService->create([
+        'username' => 'missing-name-user',
+        'first_name' => '',
+        'last_name' => '',
+        'role' => 'viewer',
+        'active' => '1',
+        'password' => 'missing-name-password-123',
+        'password_confirmation' => 'missing-name-password-123',
+    ], $adminPrincipal);
+} catch (InvalidArgumentException $exception) {
+    $missingManagedNameRejected = str_contains($exception->getMessage(), 'First name is required');
+}
+$assert($missingManagedNameRejected, 'A managed account must have a required first and last name.');
 $assert(!(new RecordsAccess([[
     'username' => 'records-owner',
     'passwordHash' => password_hash('test-owner-password', PASSWORD_DEFAULT),
@@ -339,8 +364,11 @@ $assert(!(new RecordsAccess([[
 $rogueRecordsUserRepository = new DemoRecordsUserRepository();
 $rogueRecordsUserRepository->create(
     'database-admin',
+    'Database',
+    'Administrator',
     password_hash('database-admin-password', PASSWORD_DEFAULT),
     'admin',
+    true,
     'test-actor',
 );
 $rogueRecordsAccess = new RecordsAccess([], $rogueRecordsUserRepository);
@@ -353,15 +381,15 @@ $previousRbacUsers = getenv('PICKUPSHEET_RBAC_USERS');
 $previousLegacyUser = getenv('PICKUPSHEET_RECORDS_USER');
 $previousLegacyHash = getenv('PICKUPSHEET_RECORDS_PASSWORD_HASH');
 $environmentViewerHash = password_hash('environment-viewer-password', PASSWORD_DEFAULT);
-putenv('PICKUPSHEET_RBAC_USERS=environment-viewer|viewer|' . $environmentViewerHash);
+putenv('PICKUPSHEET_RBAC_USERS=environment.viewer@example.com|viewer|Environment|Viewer|' . $environmentViewerHash);
 putenv('PICKUPSHEET_RECORDS_USER');
 putenv('PICKUPSHEET_RECORDS_PASSWORD_HASH');
 $environmentAccess = RecordsAccess::fromEnvironment();
 $environmentPrincipal = $environmentAccess->authenticate(new Request('GET', '/protected', [], [], '', [
-    'PHP_AUTH_USER' => 'environment-viewer',
+    'PHP_AUTH_USER' => 'ENVIRONMENT.VIEWER@EXAMPLE.COM',
     'PHP_AUTH_PW' => 'environment-viewer-password',
 ]));
-$assert($environmentPrincipal?->role === 'viewer', 'RBAC accounts should load from the server environment.');
+$assert($environmentPrincipal?->role === 'viewer' && $environmentPrincipal->fullName() === 'Environment Viewer', 'RBAC accounts should accept a case-insensitive email login ID and names from the server environment.');
 
 putenv('PICKUPSHEET_RBAC_USERS');
 putenv('PICKUPSHEET_RECORDS_USER=legacy-admin');
@@ -474,7 +502,8 @@ $assert($openPickup->status() === 200, 'A signed-in administrator should open th
 $assert(str_contains($openPickup->body(), 'data-pickup-form'), 'The pickup form should be immediately available.');
 $assert(!str_contains($openPickup->body(), 'class="site-header"') && !str_contains($openPickup->body(), 'class="site-footer"'), 'The signed-in Pickupsheet workspace should contain only its operational shell.');
 $assert(!str_contains($openPickup->body(), 'dhl-logo.svg'), 'The pickup form should not display the DHL logo.');
-$assert(str_contains($openPickup->body(), 'name="shipments[0][checked_by]"'), 'The checker identity should be an editable shipment field.');
+$assert(str_contains($openPickup->body(), 'name="shipments[0][checked_by]"') && str_contains($openPickup->body(), 'data-identity-field'), 'The checker identity should be populated from the authenticated account.');
+$assert(str_contains($openPickup->body(), 'value="Records Administrator"') && str_contains($openPickup->body(), 'readonly'), 'The account full name should render as a read-only Check By value.');
 $assert(($openPickup->headers()['Cache-Control'] ?? '') === 'private, no-store, max-age=0', 'The open pickup form should not be cached.');
 
 $recordsSession->logout();
@@ -516,7 +545,7 @@ $pickupControllerResponse = $pickupController->store(new Request('POST', '/dhl/p
         'amount' => '12000',
         'pieces' => '2',
         'weight_kg' => '1.25',
-        'checked_by' => 'Controller Checker',
+        'checked_by' => 'Spoofed Checker',
     ]],
 ], ''));
 $assert($pickupControllerResponse->status() === 303, 'A valid pickup sheet should redirect after saving.');
@@ -525,7 +554,7 @@ $assert(str_contains((string) ($_SESSION['_pickup_flash'] ?? ''), '12,000 XAF'),
 $savedControllerSheet = $_SESSION['_demo_pickup_sheets'][0] ?? null;
 $assert($savedControllerSheet instanceof App\Modules\Pickupsheet\Domain\PickupSheet, 'The controller should persist a pickup-sheet aggregate.');
 $assert($savedControllerSheet->status === 'open' && !$savedControllerSheet->isPaid(), 'Every new pickup sheet should start with open status.');
-$assert(($savedControllerSheet->shipments[0]->checkedBy ?? '') === 'Controller Checker', 'The server should retain the validated checker entered with the shipment.');
+$assert(($savedControllerSheet->shipments[0]->checkedBy ?? '') === 'Records Administrator', 'The server should ignore a submitted checker and persist the authenticated account name.');
 $assert((bool) preg_match('/^[0-9]{2}:[0-9]{2}$/', $savedControllerSheet->shipments[0]->collectionTime ?? ''), 'The controller should persist the server-generated submission time.');
 $savedReference = $savedControllerSheet->referenceNumber;
 
@@ -617,13 +646,14 @@ $updateByOperator = $pickupController->updatePickupSheet(new Request('POST', '/d
         'pieces' => '2',
         'weight_kg' => '1.25',
         'collection_time' => '10:15',
-        'checked_by' => 'Controller Checker',
+        'checked_by' => 'Spoofed Operator',
     ]],
 ], ''));
 $assert($updateByOperator->status() === 303, 'An operator should save an audited pickup-sheet correction.');
 $updatedControllerSheet = (new PickupSheetService(new DemoPickupSheetRepository()))->findByReference($savedReference);
 $assert($updatedControllerSheet?->totalCashReceivedXaf === 13000, 'An operator edit should recalculate and persist the sheet total.');
 $assert(($updatedControllerSheet->shipments[0]->collectionTime ?? '') === '10:15', 'An operator should be able to correct collection time.');
+$assert(($updatedControllerSheet->shipments[0]->checkedBy ?? '') === 'Oliver Operator', 'An operator edit should stamp Check By with the operator account name.');
 $markPaidByOperator = $pickupController->markPickupSheetPaid(new Request('POST', '/dhl/pickupsheet/submissions/paid', [], [
     '_token' => $pickupCsrf->token(),
     'reference' => $savedReference,
@@ -653,13 +683,14 @@ $adminUpdate = $pickupController->updatePickupSheet(new Request('POST', '/dhl/pi
         'pieces' => '2',
         'weight_kg' => '1.25',
         'collection_time' => '10:15',
-        'checked_by' => 'Controller Checker',
+        'checked_by' => 'Spoofed Administrator',
     ]],
 ]));
-$assert($adminEdit->status() === 200 && str_contains($adminEdit->body(), 'records-admin · admin'), 'An administrator should open the audited record editor.');
+$assert($adminEdit->status() === 200 && str_contains($adminEdit->body(), 'Records Administrator · admin'), 'An administrator should open the audited record editor with the account name.');
 $assert($adminUpdate->status() === 303, 'An administrator should save an audited pickup-sheet correction.');
 $adminUpdatedSheet = (new PickupSheetService(new DemoPickupSheetRepository()))->findByReference($savedReference);
 $assert($adminUpdatedSheet?->totalCashReceivedXaf === 14000 && $adminUpdatedSheet->isPaid(), 'An administrator edit should persist while retaining paid status.');
+$assert(($adminUpdatedSheet->shipments[0]->checkedBy ?? '') === 'Records Administrator', 'An administrator edit should stamp Check By with the administrator account name.');
 $adminDashboard = $pickupController->dashboard(new Request('GET', '/dhl/pickupsheet/dashboard'));
 $assert($adminDashboard->status() === 200, 'An administrator should open the KPI dashboard.');
 $assert(str_contains($adminDashboard->body(), '14,000'), 'The KPI dashboard should reflect the administrator-corrected cash activity.');
@@ -668,6 +699,8 @@ $adminUsers = $pickupController->users(new Request('GET', '/dhl/pickupsheet/subm
 $assert($adminUsers->status() === 200, 'An administrator should open records-user management.');
 $assert(str_contains($adminUsers->body(), 'Create lower-tier account'), 'The administrator should receive an account-creation form.');
 $assert(str_contains($adminUsers->body(), 'Reset my admin password'), 'The administrator should receive a current-password-confirmed password reset form.');
+$assert(str_contains($adminUsers->body(), 'Email or username') && str_contains($adminUsers->body(), 'Account status'), 'Account management should expose flexible login IDs and explicit account status.');
+$assert(str_contains($adminUsers->body(), 'name="first_name"') && str_contains($adminUsers->body(), 'name="last_name"'), 'Account management should require first and last names.');
 
 $invalidUserCsrf = $pickupController->createUser(new Request('POST', '/dhl/pickupsheet/submissions/users', [], [
     '_token' => 'invalid-token',
@@ -681,19 +714,22 @@ $assert($invalidUserCsrf->status() === 419, 'Account creation should require a v
 $createManagedUser = $pickupController->createUser(new Request('POST', '/dhl/pickupsheet/submissions/users', [], [
     '_token' => $pickupCsrf->token(),
     'username' => 'managed-operator',
+    'first_name' => 'Marc',
+    'last_name' => 'Operator',
     'role' => 'operator',
+    'active' => '1',
     'password' => 'managed-password-123',
     'password_confirmation' => 'managed-password-123',
 ], '', $recordsServer));
 $assert($createManagedUser->status() === 303, 'An administrator should be able to create a lower-tier account.');
 $managedAccount = $recordsUserRepository->all()[0] ?? null;
-$assert($managedAccount?->role === 'operator' && $managedAccount->active, 'A created lower-tier account should persist its role and active status.');
+$assert($managedAccount?->role === 'operator' && $managedAccount->active && $managedAccount->fullName() === 'Marc Operator', 'A created lower-tier account should persist required names, role, and active status.');
 $adminUsersWithAccount = $pickupController->users(new Request('GET', '/dhl/pickupsheet/submissions/users', [], [], '', $recordsServer));
 $assert(str_contains($adminUsersWithAccount->body(), 'managed-operator'), 'The management page should list a created lower-tier account.');
 $usersView = file_get_contents(dirname(__DIR__) . '/views/pickupsheet/users.php');
 $assert(is_string($usersView) && !str_contains($usersView, 'passwordHash'), 'The management view must never access or render a stored password hash.');
 $managedPrincipal = $recordsAccess->authenticateCredentials('managed-operator', 'managed-password-123');
-$assert($managedPrincipal?->role === 'operator', 'A newly created managed operator should authenticate through the portal credential service.');
+$assert($managedPrincipal?->role === 'operator' && $managedPrincipal->fullName() === 'Marc Operator', 'A newly created managed operator should authenticate with its account name.');
 $recordsSession->login($managedPrincipal);
 $managedExport = $pickupController->export(new Request('GET', '/dhl/pickupsheet/submissions/export', ['reference' => $savedReference]));
 $assert($managedExport->status() === 200, 'A newly created operator should authenticate and export records.');
@@ -703,6 +739,8 @@ $promoteManagedAdmin = $pickupController->updateUser(new Request('POST', '/dhl/p
     '_token' => $pickupCsrf->token(),
     'id' => (string) $managedAccount->id,
     'username' => 'managed-operator',
+    'first_name' => 'Marc',
+    'last_name' => 'Operator',
     'role' => 'admin',
     'active' => '1',
     'password' => '',
@@ -715,6 +753,8 @@ $demoteManagedViewer = $pickupController->updateUser(new Request('POST', '/dhl/p
     '_token' => $pickupCsrf->token(),
     'id' => (string) $managedAccount->id,
     'username' => 'managed-viewer',
+    'first_name' => 'Marie',
+    'last_name' => 'Viewer',
     'role' => 'viewer',
     'active' => '1',
     'password' => 'new-managed-password-456',
@@ -723,7 +763,7 @@ $demoteManagedViewer = $pickupController->updateUser(new Request('POST', '/dhl/p
 $assert($demoteManagedViewer->status() === 303, 'An administrator should adjust a lower-tier username, role, and password.');
 $assert($recordsAccess->authenticateCredentials('managed-viewer', 'managed-password-123') === null, 'A rotated managed password should invalidate the previous password immediately.');
 $managedViewerPrincipal = $recordsAccess->authenticateCredentials('managed-viewer', 'new-managed-password-456');
-$assert($managedViewerPrincipal?->role === 'viewer', 'The updated managed account should authenticate with its new viewer role.');
+$assert($managedViewerPrincipal?->role === 'viewer' && $managedViewerPrincipal->fullName() === 'Marie Viewer', 'The updated managed account should authenticate with its new viewer role and name.');
 $recordsSession->login($managedViewerPrincipal);
 $managedViewerExport = $pickupController->export(new Request('GET', '/dhl/pickupsheet/submissions/export', ['reference' => $savedReference]));
 $assert($managedViewerExport->status() === 403, 'Role changes should take effect on the next request.');
@@ -734,6 +774,8 @@ $disableManagedViewer = $pickupController->updateUser(new Request('POST', '/dhl/
     '_token' => $pickupCsrf->token(),
     'id' => (string) $managedAccount->id,
     'username' => 'managed-viewer',
+    'first_name' => 'Marie',
+    'last_name' => 'Viewer',
     'role' => 'viewer',
     'active' => '0',
     'password' => '',
@@ -741,6 +783,8 @@ $disableManagedViewer = $pickupController->updateUser(new Request('POST', '/dhl/
 ], '', $recordsServer));
 $assert($disableManagedViewer->status() === 303, 'An administrator should be able to disable a lower-tier account.');
 $assert($recordsAccess->authenticateCredentials('managed-viewer', 'new-managed-password-456') === null, 'A disabled managed account should immediately reject new logins.');
+$inactiveAccountPage = $pickupController->users(new Request('GET', '/dhl/pickupsheet/submissions/users'));
+$assert(str_contains($inactiveAccountPage->body(), '>Inactive</span>') && str_contains($inactiveAccountPage->body(), '<option value="0" selected>Inactive</option>'), 'The admin area should clearly display and select an inactive account status.');
 $_SESSION['_pickupsheet_identity'] = $staleManagedIdentity;
 $disabledManagedList = $pickupController->submissions(new Request('GET', '/dhl/pickupsheet/submissions'));
 $assert($disabledManagedList->status() === 302, 'Disabling a managed account should invalidate its existing portal session immediately.');
@@ -761,7 +805,7 @@ $assert(str_contains($printResponse->body(), $savedReference), 'The printable sh
 $assert(str_contains($printResponse->body(), 'PICK-UP SHEET'), 'The printable sheet should reproduce the original uppercase form heading.');
 $assert(str_contains($printResponse->body(), 'CONTROLLER AGENT'), 'The printable sheet should uppercase the agent value in its generated content.');
 $assert(str_contains($printResponse->body(), 'CONTROLLER CLIENT'), 'The printable sheet should uppercase consignor values in its generated content.');
-$assert(str_contains($printResponse->body(), 'CONTROLLER CHECKER'), 'The printable sheet should uppercase checker values in its generated content.');
+$assert(str_contains($printResponse->body(), 'RECORDS ADMINISTRATOR'), 'The printable sheet should uppercase the authenticated checker name in its generated content.');
 $assert(str_contains($printResponse->body(), '29/07/2026'), 'The printable sheet should use the original day/month/year date format.');
 $assert(str_contains($printResponse->body(), 'paper-empty-row'), 'The printable sheet should retain blank continuation rows like the original form.');
 $assert(is_string($printStyles) && str_contains($printStyles, '@page { size: A4 portrait;'), 'The printable sheet should use the original portrait page orientation.');
@@ -880,8 +924,8 @@ $assert(is_string($dhlAsset) && !str_contains($dhlAsset, '<text'), 'The disquali
 $partnerSources = file_get_contents(dirname(__DIR__) . '/public/assets/partners/README.md');
 $assert(is_string($partnerSources) && str_contains($partnerSources, 'www.dhl.com/content/dam/dhl/global/core/images/logos/dhl-logo.svg'), 'The official DHL artwork source should be documented.');
 $assert(!str_contains($home, 'href="/dhl/pickupsheet"'), 'Pickupsheet should not be discoverable from the public site chrome or homepage.');
-$assert(str_contains($home, 'styles.css?v=20260827-record-lifecycle'), 'The record-lifecycle update should use a cache-safe stylesheet version.');
-$assert(str_contains($home, 'app.js?v=20260827-record-lifecycle'), 'The record-lifecycle update should use a cache-safe application script version.');
+$assert(str_contains($home, 'styles.css?v=20260827-account-identity'), 'The account-identity update should use a cache-safe stylesheet version.');
+$assert(str_contains($home, 'app.js?v=20260827-account-identity'), 'The account-identity update should use a cache-safe application script version.');
 $assert(str_contains($home, 'analytics.js?v=20260825-security-hardening'), 'The current consent-aware Google Analytics loader should render on every page.');
 $assert(str_contains($home, 'data-analytics-accept'), 'The site should offer an explicit analytics acceptance control.');
 $assert(str_contains($home, 'data-analytics-decline'), 'The site should offer an explicit analytics decline control.');
@@ -981,8 +1025,8 @@ $assert(str_contains($product, 'shipments[0][pieces]'), 'The pickup form should 
 $assert(str_contains($product, 'shipments[0][weight_kg]'), 'The pickup form should collect shipment weight from the PDF.');
 $assert(!str_contains($product, 'shipments[0][collection_time]'), 'The pickup form should not allow operators to alter the collection time.');
 $assert(str_contains($product, 'Time collected is recorded automatically when this pickup sheet is submitted.'), 'The pickup form should explain its server-recorded submission time.');
-$assert(str_contains($product, 'shipments[0][checked_by]'), 'The pickup form should collect the checker for each shipment.');
-$assert(str_contains($product, 'placeholder="Checker name"'), 'The checker field should clearly describe the expected value.');
+$assert(str_contains($product, 'shipments[0][checked_by]'), 'The pickup form should submit its account-controlled checker identity.');
+$assert(str_contains($product, 'data-identity-field') && str_contains($product, 'readonly aria-readonly="true"'), 'The checker field should be populated and locked to the signed-in account name.');
 $assert(str_contains($product, 'action="/dhl/pickupsheet/logout"'), 'The protected workspace should provide a CSRF-protected logout action.');
 $assert(str_contains($product, 'records-viewer'), 'The protected workspace should identify the signed-in user.');
 $assert(str_contains($product, 'data-shipment-count'), 'The pickup form should calculate shipments collected.');
@@ -1005,7 +1049,8 @@ $privacy = $view->render('site/privacy', array_merge($common, [
 $assert(str_contains($privacy, 'Information we collect'), 'The privacy notice should explain collected information.');
 $assert(str_contains($privacy, 'agent name, collection date, consignor, AWB number'), 'The privacy notice should disclose pickup-sheet fields.');
 $assert(str_contains($privacy, 'record and reconcile cash shipment collections'), 'The privacy notice should state the pickup-sheet processing purpose.');
-$assert(str_contains($privacy, 'checker identity entered for each shipment'), 'The privacy notice should explain the entered checker identity.');
+$assert(str_contains($privacy, 'checker identity associated with the authenticated account'), 'The privacy notice should explain the account-controlled checker identity.');
+$assert(str_contains($privacy, 'first name, last name, email address or username'), 'The privacy notice should disclose stored account identity fields.');
 $assert(str_contains($privacy, 'records the collection time automatically'), 'The privacy notice should explain the server-generated collection time.');
 $assert(str_contains($privacy, 'Every Pickupsheet screen requires an authorised staff login'), 'The privacy notice should disclose portal authentication.');
 $assert(str_contains($privacy, 'Operators and administrators can edit records and change an open sheet to paid'), 'The privacy notice should disclose the record-edit and payment-status boundary.');
@@ -1029,7 +1074,7 @@ $assert(str_contains($privacy, 'one-way password hash'), 'The privacy notice sho
 $environmentExample = file_get_contents(dirname(__DIR__) . '/.env.example');
 $assert(is_string($environmentExample) && str_contains($environmentExample, 'APP_TIMEZONE=Africa/Douala'), 'The environment example should use Cameroon time.');
 $assert(is_string($environmentExample) && str_contains($environmentExample, 'CONTACT_EMAIL=info@ttechcg.com'), 'The environment example should route production inquiries to the company mailbox.');
-$assert(is_string($environmentExample) && str_contains($environmentExample, 'PICKUPSHEET_RBAC_USERS=records-admin|admin|replace-with-password-hash'), 'The environment example should configure role-based records users with server-managed password hashes.');
+$assert(is_string($environmentExample) && str_contains($environmentExample, 'PICKUPSHEET_RBAC_USERS=records-admin|admin|Records|Administrator|replace-with-password-hash'), 'The environment example should configure role-based records users with names and server-managed password hashes.');
 $credentialGenerator = file_get_contents(dirname(__DIR__) . '/bin/generate-records-credentials.php');
 $assert(is_string($credentialGenerator) && str_contains($credentialGenerator, "['viewer', 'operator', 'admin']"), 'The credential generator should restrict accounts to defined RBAC roles.');
 $assert(is_string($credentialGenerator) && str_contains($credentialGenerator, "PICKUPSHEET_RBAC_USERS='"), 'The credential generator should provide a cPanel-ready RBAC environment value.');
@@ -1067,6 +1112,8 @@ $assert(is_string($styles) && str_contains($styles, '.shipment-row'), 'Shipment 
 $assert(is_string($styles) && str_contains($styles, 'content: attr(data-label);'), 'Shipment rows should expose their field labels in the mobile card layout.');
 $assert(is_string($styles) && str_contains($styles, '/* Pickup-sheet records */'), 'Submitted pickup sheets should have a dedicated table layout.');
 $assert(is_string($styles) && str_contains($styles, '.pickup-record-actions'), 'Each submitted sheet should style its print and spreadsheet actions.');
+$assert(is_string($styles) && str_contains($styles, '.pickup-record-actions > form { flex: 0 0 116px; }'), 'Submitted-sheet links and form actions should share one consistent width.');
+$assert(is_string($styles) && str_contains($styles, 'height: 42px;'), 'Submitted-sheet actions should share one consistent height.');
 $assert(is_string($styles) && str_contains($styles, '.pickup-records-loading'), 'AJAX pagination should have a visible loading overlay.');
 $assert(is_string($styles) && str_contains($styles, '@keyframes pickup-records-spin'), 'The loading overlay should provide spinner animation.');
 $assert(is_string($styles) && str_contains($styles, '.pickup-pagination'), 'Submitted sheets should provide responsive pagination controls.');
@@ -1082,6 +1129,7 @@ $assert(is_string($script) && str_contains($script, "matchMedia('(min-width: 821
 $assert(is_string($script) && str_contains($script, "document.querySelector('[data-pickup-form]')"), 'The pickup form should initialize its dynamic row editor.');
 $assert(is_string($script) && str_contains($script, 'maximumRows = 50'), 'The browser should enforce the server shipment-row limit.');
 $assert(is_string($script) && str_contains($script, 'numberFormatter.format(total)'), 'The browser should calculate and format cash totals.');
+$assert(is_string($script) && str_contains($script, "[data-field]:not([data-identity-field])"), 'Account-populated checker fields should not make an otherwise blank shipment count as complete.');
 $assert(is_string($script) && str_contains($script, "document.querySelector('[data-pickup-records]')"), 'The browser should initialize submitted-sheet pagination.');
 $assert(is_string($script) && str_contains($script, 'await fetch(pageEndpoint'), 'Pagination should load records asynchronously.');
 $assert(is_string($script) && str_contains($script, "spinner.hidden = !loading"), 'AJAX pagination should toggle its loading spinner.');
@@ -1157,9 +1205,13 @@ $recordsUserMigration = file_get_contents(dirname(__DIR__) . '/database/migratio
 $assert(is_string($recordsUserMigration) && str_contains($recordsUserMigration, 'CREATE TABLE IF NOT EXISTS pickup_records_users'), 'MySQL should persist managed records-user accounts.');
 $assert(is_string($recordsUserMigration) && str_contains($recordsUserMigration, 'UNIQUE INDEX pickup_records_users_username_idx'), 'Managed records usernames should be unique.');
 $assert(is_string($recordsUserMigration) && str_contains($recordsUserMigration, 'created_by CHAR(24)'), 'Managed account changes should retain a pseudonymous administrator audit identifier.');
+$recordsUserNamesMigration = file_get_contents(dirname(__DIR__) . '/database/migrations/009_add_pickup_records_user_names.sql');
+$assert(is_string($recordsUserNamesMigration) && str_contains($recordsUserNamesMigration, 'first_name VARCHAR(49)') && str_contains($recordsUserNamesMigration, 'last_name VARCHAR(49)'), 'Managed users should receive required first and last name storage.');
+$assert(is_string($recordsUserNamesMigration) && str_contains($recordsUserNamesMigration, 'MODIFY COLUMN first_name VARCHAR(49) NOT NULL'), 'The name migration should enforce required identity fields after backfilling existing users.');
 $recordsUserMysqlRepository = file_get_contents(dirname(__DIR__) . '/src/Shared/Infrastructure/MysqlRecordsUserRepository.php');
 $assert(is_string($recordsUserMysqlRepository) && str_contains($recordsUserMysqlRepository, 'BINARY username = :username AND active = 1'), 'Managed account authentication should require an exact username and active status.');
 $assert(is_string($recordsUserMysqlRepository) && str_contains($recordsUserMysqlRepository, 'password_hash = :password_hash'), 'Administrators should be able to rotate managed account passwords.');
+$assert(is_string($recordsUserMysqlRepository) && str_contains($recordsUserMysqlRepository, 'first_name = :first_name') && str_contains($recordsUserMysqlRepository, 'last_name = :last_name'), 'Administrators should be able to maintain required account names.');
 $assert(is_string($recordsUserMysqlRepository) && str_contains($recordsUserMysqlRepository, 'private function ensureSchema()'), 'Administrator account management should initialize its idempotent schema without cPanel CLI access.');
 $adminCredentialMigration = file_get_contents(dirname(__DIR__) . '/database/migrations/008_create_pickup_records_admin_credentials.sql');
 $assert(is_string($adminCredentialMigration) && str_contains($adminCredentialMigration, 'CREATE TABLE IF NOT EXISTS pickup_records_admin_credentials'), 'MySQL should persist administrator password overrides outside source-controlled environment configuration.');

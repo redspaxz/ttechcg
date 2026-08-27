@@ -68,8 +68,11 @@ final class DemoRecordsUserRepository implements RecordsUserRepository, RecordsA
 
     public function create(
         string $username,
+        string $firstName,
+        string $lastName,
         string $passwordHash,
         string $role,
+        bool $active,
         string $actorId,
     ): RecordsUserAccount {
         $accounts = $this->all();
@@ -77,9 +80,11 @@ final class DemoRecordsUserRepository implements RecordsUserRepository, RecordsA
         $account = new RecordsUserAccount(
             $accounts === [] ? 1 : max(array_map(static fn (RecordsUserAccount $item): int => $item->id, $accounts)) + 1,
             $username,
+            $firstName,
+            $lastName,
             $passwordHash,
             $role,
-            true,
+            $active,
             $now,
             $now,
         );
@@ -91,6 +96,8 @@ final class DemoRecordsUserRepository implements RecordsUserRepository, RecordsA
     public function update(
         int $id,
         string $username,
+        string $firstName,
+        string $lastName,
         string $role,
         bool $active,
         ?string $passwordHash,
@@ -104,6 +111,8 @@ final class DemoRecordsUserRepository implements RecordsUserRepository, RecordsA
 
             $accounts[$index] = $account->withUpdates(
                 $username,
+                $firstName,
+                $lastName,
                 $role,
                 $active,
                 $passwordHash,

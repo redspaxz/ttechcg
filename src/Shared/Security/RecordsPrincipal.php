@@ -17,6 +17,8 @@ final class RecordsPrincipal
         public readonly string $username,
         public readonly string $role,
         public readonly string $authenticationVersion = '',
+        public readonly string $firstName = '',
+        public readonly string $lastName = '',
     ) {
     }
 
@@ -28,5 +30,25 @@ final class RecordsPrincipal
     public static function isValidRole(string $role): bool
     {
         return array_key_exists($role, self::ROLE_PERMISSIONS);
+    }
+
+    public function fullName(): string
+    {
+        $name = trim($this->firstName . ' ' . $this->lastName);
+        if ($name !== '') {
+            return $name;
+        }
+
+        $fallback = self::fallbackNameParts($this->username);
+        return $fallback['firstName'] . ' ' . $fallback['lastName'];
+    }
+
+    /** @return array{firstName: string, lastName: string} */
+    public static function fallbackNameParts(string $username): array
+    {
+        $words = preg_split('/[._@-]+/', trim($username), -1, PREG_SPLIT_NO_EMPTY) ?: [];
+        $firstName = substr(ucfirst(strtolower((string) ($words[0] ?? 'Records'))), 0, 49);
+        $lastName = substr(ucfirst(strtolower(implode(' ', array_slice($words, 1)))) ?: 'User', 0, 49);
+        return ['firstName' => $firstName, 'lastName' => $lastName];
     }
 }

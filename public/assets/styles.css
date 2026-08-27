@@ -1195,14 +1195,15 @@ button, a, input, select, textarea { -webkit-tap-highlight-color: transparent; }
 .records-user-list-heading > strong { color: #493800; font-size: 0.78rem; text-transform: uppercase; }
 .records-user-card {
     display: grid;
-    grid-template-columns: minmax(170px, 0.8fr) minmax(160px, 0.6fr) repeat(2, minmax(190px, 1fr)) auto auto;
+    grid-template-columns: repeat(4, minmax(160px, 1fr));
     gap: 16px;
     align-items: end;
     margin-bottom: 14px;
     padding: 20px;
 }
 .records-user-identity { grid-column: 1 / -1; display: flex; align-items: center; justify-content: space-between; gap: 20px; }
-.records-user-identity strong { color: #241b00; font-size: 1.15rem; }
+.records-user-identity strong { display: block; color: #241b00; font-size: 1.15rem; }
+.records-user-identity small { display: block; margin-top: 4px; color: #655000; font-size: 0.72rem; }
 .records-user-identity span { color: #168a45; font-size: 0.65rem; font-weight: 850; letter-spacing: 0.08em; text-transform: uppercase; }
 .records-user-identity span[data-active="false"] { color: var(--dhl-red); }
 .records-user-active { display: flex !important; min-height: 48px; align-items: center; gap: 9px !important; white-space: nowrap; }
@@ -1684,7 +1685,7 @@ button, a, input, select, textarea { -webkit-tap-highlight-color: transparent; }
 }
 .pickup-add-row,
 .shipment-row-action button {
-    min-height: 42px;
+    height: 42px;
     border: 1px solid rgba(69, 50, 0, 0.42);
     background: transparent;
     color: #392b00;
@@ -1956,12 +1957,16 @@ button, a, input, select, textarea { -webkit-tap-highlight-color: transparent; }
 .pickup-record-details[open] > summary i { transform: rotate(45deg); }
 .pickup-record-body { padding: 0 22px 22px; }
 .pickup-record-actions { display: flex; justify-content: flex-end; gap: 8px; }
+.pickup-record-actions > a,
+.pickup-record-actions > form { flex: 0 0 116px; }
 .pickup-record-actions form { margin: 0; }
 .pickup-record-actions a,
 .pickup-record-actions button {
     display: inline-flex;
-    min-height: 40px;
+    width: 100%;
+    min-height: 42px;
     align-items: center;
+    justify-content: center;
     padding: 9px 14px;
     border: 1px solid var(--dhl-red);
     background: var(--dhl-red);
@@ -1970,6 +1975,7 @@ button, a, input, select, textarea { -webkit-tap-highlight-color: transparent; }
     font-weight: 800;
     text-decoration: none;
     cursor: pointer;
+    text-align: center;
 }
 .pickup-record-actions a:first-child { background: #fff; color: var(--dhl-red); }
 .pickup-record-actions .pickup-record-paid { background: #fff; color: #0b633a; border-color: #0b633a; }

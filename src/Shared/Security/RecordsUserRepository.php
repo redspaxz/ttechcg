@@ -17,14 +17,19 @@ interface RecordsUserRepository
 
     public function create(
         string $username,
+        string $firstName,
+        string $lastName,
         string $passwordHash,
         string $role,
+        bool $active,
         string $actorId,
     ): RecordsUserAccount;
 
     public function update(
         int $id,
         string $username,
+        string $firstName,
+        string $lastName,
         string $role,
         bool $active,
         ?string $passwordHash,

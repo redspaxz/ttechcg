@@ -89,7 +89,7 @@ if (pickupForm) {
         let total = 0;
 
         rows().forEach((row) => {
-            const inputs = Array.from(row.querySelectorAll('[data-field]'));
+            const inputs = Array.from(row.querySelectorAll('[data-field]:not([data-identity-field])'));
             const populated = inputs.some((input) => input.value.trim() !== '');
             if (populated) shipmentCount += 1;
 

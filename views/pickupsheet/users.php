@@ -11,7 +11,7 @@ $old = is_array($old ?? null) ? $old : [];
     <div class="container pickup-workspace-header">
         <strong class="pickup-wordmark">Pickupsheet</strong>
         <div class="pickup-header-links">
-            <span class="pickup-session-user"><?= $e($recordsUsername ?? '') ?> · admin</span>
+            <span class="pickup-session-user" title="<?= $e($recordsUsername ?? '') ?>"><?= $e($recordsFullName ?? $recordsUsername ?? '') ?> · admin</span>
             <a class="pickup-back" href="<?= $e($basePath) ?>/dhl/pickupsheet/dashboard">Dashboard <span aria-hidden="true">&#8599;</span></a>
             <a class="pickup-back" href="<?= $e($basePath) ?>/dhl/pickupsheet/submissions">Submitted sheets <span aria-hidden="true">&#8599;</span></a>
             <a class="pickup-back" href="<?= $e($basePath) ?>/dhl/pickupsheet/">New pickup sheet <span aria-hidden="true">&#8599;</span></a>
@@ -58,8 +58,11 @@ $old = is_array($old ?? null) ? $old : [];
                 <input type="hidden" name="_token" value="<?= $e($csrfToken) ?>">
                 <fieldset>
                     <legend>Create lower-tier account</legend>
-                    <label><span>Username</span><input name="username" value="<?= $e($old['username'] ?? '') ?>" minlength="3" maxlength="100" pattern="[a-z0-9][a-z0-9._@-]{2,99}" autocomplete="off" required></label>
+                    <label><span>First name</span><input name="first_name" value="<?= $e($old['first_name'] ?? '') ?>" maxlength="49" autocomplete="given-name" required></label>
+                    <label><span>Last name</span><input name="last_name" value="<?= $e($old['last_name'] ?? '') ?>" maxlength="49" autocomplete="family-name" required></label>
+                    <label><span>Email or username</span><input name="username" value="<?= $e($old['username'] ?? '') ?>" minlength="3" maxlength="100" autocomplete="username" autocapitalize="none" spellcheck="false" required></label>
                     <label><span>Role</span><select name="role" required><option value="viewer" <?= ($old['role'] ?? '') === 'viewer' ? 'selected' : '' ?>>Viewer</option><option value="operator" <?= ($old['role'] ?? '') === 'operator' ? 'selected' : '' ?>>Operator</option></select></label>
+                    <label><span>Account status</span><select name="active" required><option value="1" <?= ($old['active'] ?? '1') === '1' ? 'selected' : '' ?>>Active</option><option value="0" <?= ($old['active'] ?? '') === '0' ? 'selected' : '' ?>>Inactive</option></select></label>
                     <label><span>Password</span><input type="password" name="password" minlength="12" maxlength="128" autocomplete="new-password" required></label>
                     <label><span>Confirm password</span><input type="password" name="password_confirmation" minlength="12" maxlength="128" autocomplete="new-password" required></label>
                     <button class="button button-dark" type="submit">Create account</button>
@@ -82,14 +85,16 @@ $old = is_array($old ?? null) ? $old : [];
                     <input type="hidden" name="_token" value="<?= $e($csrfToken) ?>">
                     <input type="hidden" name="id" value="<?= $e($account->id) ?>">
                     <div class="records-user-identity">
-                        <strong><?= $e($account->username) ?></strong>
-                        <span data-active="<?= $account->active ? 'true' : 'false' ?>"><?= $account->active ? 'Active' : 'Disabled' ?></span>
+                        <div><strong><?= $e($account->fullName()) ?></strong><small><?= $e($account->username) ?></small></div>
+                        <span data-active="<?= $account->active ? 'true' : 'false' ?>"><?= $account->active ? 'Active' : 'Inactive' ?></span>
                     </div>
-                    <label><span>Username</span><input name="username" value="<?= $e($account->username) ?>" minlength="3" maxlength="100" pattern="[a-z0-9][a-z0-9._@-]{2,99}" required></label>
+                    <label><span>First name</span><input name="first_name" value="<?= $e($account->firstName) ?>" maxlength="49" autocomplete="given-name" required></label>
+                    <label><span>Last name</span><input name="last_name" value="<?= $e($account->lastName) ?>" maxlength="49" autocomplete="family-name" required></label>
+                    <label><span>Email or username</span><input name="username" value="<?= $e($account->username) ?>" minlength="3" maxlength="100" autocomplete="username" autocapitalize="none" spellcheck="false" required></label>
                     <label><span>Role</span><select name="role" required><option value="viewer" <?= $account->role === 'viewer' ? 'selected' : '' ?>>Viewer</option><option value="operator" <?= $account->role === 'operator' ? 'selected' : '' ?>>Operator</option></select></label>
+                    <label><span>Account status</span><select name="active" required><option value="1" <?= $account->active ? 'selected' : '' ?>>Active</option><option value="0" <?= !$account->active ? 'selected' : '' ?>>Inactive</option></select></label>
                     <label><span>Reset password <small>Optional</small></span><input type="password" name="password" minlength="12" maxlength="128" autocomplete="new-password"></label>
                     <label><span>Confirm new password</span><input type="password" name="password_confirmation" minlength="12" maxlength="128" autocomplete="new-password"></label>
-                    <label class="records-user-active"><input type="checkbox" name="active" value="1" <?= $account->active ? 'checked' : '' ?>><span>Account enabled</span></label>
                     <button class="button button-dark" type="submit">Save changes</button>
                 </form>
             <?php endforeach; ?>

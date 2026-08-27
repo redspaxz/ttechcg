@@ -9,13 +9,14 @@ $shipmentRows = $shipmentRows !== [] ? array_slice($shipmentRows, 0, 50) : [[]];
 $pickupOperational = (bool) ($pickupOperational ?? false);
 $csrfToken = (string) ($csrfToken ?? '');
 $captcha = is_array($captcha ?? null) ? $captcha : [];
+$checkerName = (string) ($recordsFullName ?? $recordsUsername ?? '');
 $flash = $flash ?? null;
 $errors = is_array($errors ?? null) ? $errors : [];
 $field = static function (mixed $row, string $name) use ($e): string {
     return $e(is_array($row) ? ($row[$name] ?? '') : '');
 };
 
-$renderShipmentRow = static function (int|string $index, mixed $row = []) use ($field): void {
+$renderShipmentRow = static function (int|string $index, mixed $row = []) use ($field, $checkerName, $e): void {
     $rowNumber = is_int($index) ? (string) ($index + 1) : '__NUMBER__';
     ?>
     <tr class="shipment-row" data-shipment-row>
@@ -26,7 +27,7 @@ $renderShipmentRow = static function (int|string $index, mixed $row = []) use ($
         <td data-label="Amount (XAF)"><label class="sr-only" data-row-label>Shipment <?= $rowNumber ?> amount in XAF</label><input data-field="amount" name="shipments[<?= $index ?>][amount]" value="<?= $field($row, 'amount') ?>" type="number" inputmode="numeric" min="1" max="999999999" step="1" required autocomplete="off" placeholder="0"></td>
         <td data-label="Pieces"><label class="sr-only" data-row-label>Shipment <?= $rowNumber ?> pieces</label><input data-field="pieces" name="shipments[<?= $index ?>][pieces]" value="<?= $field($row, 'pieces') ?>" type="number" inputmode="numeric" min="1" max="999" step="1" required autocomplete="off" placeholder="1"></td>
         <td data-label="Weight (kg)"><label class="sr-only" data-row-label>Shipment <?= $rowNumber ?> weight in kilograms</label><input data-field="weight_kg" name="shipments[<?= $index ?>][weight_kg]" value="<?= $field($row, 'weight_kg') ?>" type="number" inputmode="decimal" min="0.001" max="9999.999" step="0.001" required autocomplete="off" placeholder="0.500"></td>
-        <td data-label="Checked by"><label class="sr-only" data-row-label>Shipment <?= $rowNumber ?> checked by</label><input data-field="checked_by" name="shipments[<?= $index ?>][checked_by]" value="<?= $field($row, 'checked_by') ?>" maxlength="100" required autocomplete="off" placeholder="Checker name"></td>
+        <td data-label="Checked by"><label class="sr-only" data-row-label>Shipment <?= $rowNumber ?> checked by</label><input data-field="checked_by" data-identity-field name="shipments[<?= $index ?>][checked_by]" value="<?= $e($checkerName) ?>" maxlength="100" readonly aria-readonly="true"></td>
         <td class="shipment-row-action" data-label="Row action"><button type="button" data-remove-shipment aria-label="Remove shipment <?= $rowNumber ?>">Remove</button></td>
     </tr>
     <?php
@@ -36,7 +37,7 @@ $renderShipmentRow = static function (int|string $index, mixed $row = []) use ($
     <div class="container pickup-workspace-header">
         <strong class="pickup-wordmark">Pickupsheet</strong>
         <div class="pickup-header-links">
-            <span class="pickup-session-user"><?= $e($recordsUsername ?? '') ?> · <?= $e($recordsRole ?? '') ?></span>
+            <span class="pickup-session-user" title="<?= $e($recordsUsername ?? '') ?>"><?= $e($checkerName) ?> · <?= $e($recordsRole ?? '') ?></span>
             <?php if (($recordsRole ?? '') === 'admin'): ?><a class="pickup-back" href="<?= $e($basePath) ?>/dhl/pickupsheet/dashboard">Dashboard <span aria-hidden="true">↗</span></a><?php endif; ?>
             <a class="pickup-back" href="<?= $e($basePath) ?>/dhl/pickupsheet/submissions">Submitted sheets <span aria-hidden="true">↗</span></a>
             <form method="post" action="<?= $e($basePath) ?>/dhl/pickupsheet/logout"><input type="hidden" name="_token" value="<?= $e($csrfToken) ?>"><button class="pickup-link-button" type="submit">Sign out</button></form>
@@ -123,7 +124,7 @@ $renderShipmentRow = static function (int|string $index, mixed $row = []) use ($
                 </fieldset>
                 <label class="consent-field pickup-consent">
                     <input type="checkbox" name="privacy_consent" value="1" required <?= ($old['privacy_consent'] ?? '') === '1' ? 'checked' : '' ?>>
-                    <span>I consent to T&amp;Tech processing the agent, consignor, shipment, and checker information entered here to operate the pickup-sheet service, as described in the <a href="<?= $e($basePath) ?>/privacy" target="_blank" rel="noopener">privacy notice</a>.</span>
+                    <span>I consent to T&amp;Tech processing the agent, consignor, shipment, and account-associated checker information to operate the pickup-sheet service, as described in the <a href="<?= $e($basePath) ?>/privacy" target="_blank" rel="noopener">privacy notice</a>.</span>
                 </label>
             </div>
 

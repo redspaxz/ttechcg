@@ -42,8 +42,11 @@ final class UnavailableRecordsUserRepository implements RecordsUserRepository, R
 
     public function create(
         string $username,
+        string $firstName,
+        string $lastName,
         string $passwordHash,
         string $role,
+        bool $active,
         string $actorId,
     ): RecordsUserAccount {
         throw new RuntimeException('Managed records-user storage is unavailable.');
@@ -52,6 +55,8 @@ final class UnavailableRecordsUserRepository implements RecordsUserRepository, R
     public function update(
         int $id,
         string $username,
+        string $firstName,
+        string $lastName,
         string $role,
         bool $active,
         ?string $passwordHash,
