@@ -27,7 +27,7 @@ $jumpCloudIdentity = ($recordsIdentityProvider ?? 'local') === 'jumpcloud';
             <div>
                 <p class="eyebrow eyebrow-red">Administrator access</p>
                 <h1>Manage users</h1>
-                <p><?= $jumpCloudEnabled ? 'JumpCloud group membership controls SSO roles. Local recovery accounts remain available below.' : 'Create users, reset account passwords, and control the Pickupsheet access hierarchy.' ?></p>
+                <p><?= $jumpCloudEnabled ? 'JumpCloud group membership controls SSO roles. Local accounts remain available below.' : 'Create users, reset account passwords, and control the Pickupsheet access hierarchy.' ?></p>
             </div>
         </header>
 
@@ -66,7 +66,7 @@ $jumpCloudIdentity = ($recordsIdentityProvider ?? 'local') === 'jumpcloud';
             <form class="pickup-form records-user-create" method="post" action="<?= $e($basePath) ?>/dhl/pickupsheet/submissions/users">
                 <input type="hidden" name="_token" value="<?= $e($csrfToken) ?>">
                 <fieldset>
-                    <legend>Create local recovery account</legend>
+                    <legend>Create local account</legend>
                     <label><span>First name</span><input name="first_name" value="<?= $e($old['first_name'] ?? '') ?>" maxlength="49" autocomplete="given-name" required></label>
                     <label><span>Last name</span><input name="last_name" value="<?= $e($old['last_name'] ?? '') ?>" maxlength="49" autocomplete="family-name" required></label>
                     <label><span>Email or username</span><input name="username" value="<?= $e($old['username'] ?? '') ?>" minlength="3" maxlength="100" autocomplete="username" autocapitalize="none" spellcheck="false" required></label>

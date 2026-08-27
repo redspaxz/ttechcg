@@ -57,7 +57,6 @@ final class PickupsheetAuthController
             'flash' => is_string($flash) ? $flash : null,
             'username' => is_string($username) ? $username : '',
             'jumpCloudEnabled' => $this->jumpCloudConfigured(),
-            'localLoginEnabled' => $this->localLoginEnabled(),
         ]);
 
         return Response::html($body, 200, $this->privateHeaders());
@@ -68,12 +67,6 @@ final class PickupsheetAuthController
         if (!$this->csrf->validate($request->input('_token'))) {
             $this->securityLogger->event('pickupsheet.login_csrf', $request, 'denied');
             return Response::html('Invalid or expired form token.', 419, $this->privateHeaders());
-        }
-
-        if (!$this->localLoginEnabled()) {
-            $_SESSION['_pickup_login_error'] = 'Use JumpCloud to sign in to this workspace.';
-            $this->securityLogger->event('pickupsheet.local_login', $request, 'disabled');
-            return Response::redirect($request->basePath . '/dhl/pickupsheet/login');
         }
 
         try {
@@ -232,8 +225,4 @@ final class PickupsheetAuthController
         return $this->jumpCloud?->isConfigured() === true;
     }
 
-    private function localLoginEnabled(): bool
-    {
-        return !$this->jumpCloudConfigured() || (bool) ($this->config['jumpcloud_local_login'] ?? true);
-    }
 }

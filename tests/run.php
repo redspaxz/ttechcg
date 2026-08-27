@@ -592,31 +592,20 @@ $jumpCloudAuthController = new PickupsheetAuthController(
     $recordsSession,
     $disabledRateLimiter,
     $disabledSecurityLogger,
-    array_merge($config, ['jumpcloud_local_login' => true]),
+    $config,
     $oidcProvider,
 );
 $jumpCloudLoginPage = $jumpCloudAuthController->login(new Request('GET', '/dhl/pickupsheet/login'));
 $assert(str_contains($jumpCloudLoginPage->body(), 'Continue with JumpCloud'), 'Configured Pickupsheet login should offer JumpCloud SSO.');
-$assert(str_contains($jumpCloudLoginPage->body(), 'Local recovery account'), 'Local recovery login should remain visible while the controlled fallback is enabled.');
-$jumpCloudOnlyAuthController = new PickupsheetAuthController(
-    $view,
-    $pickupCsrf,
-    $recordsAccess,
-    $recordsSession,
-    $disabledRateLimiter,
-    $disabledSecurityLogger,
-    array_merge($config, ['jumpcloud_local_login' => false]),
-    $oidcProvider,
-);
-$jumpCloudOnlyLoginPage = $jumpCloudOnlyAuthController->login(new Request('GET', '/dhl/pickupsheet/login'));
-$assert(!str_contains($jumpCloudOnlyLoginPage->body(), 'autocomplete="current-password"'), 'JumpCloud-only mode should remove the local password form.');
-$disabledLocalLogin = $jumpCloudOnlyAuthController->authenticate(new Request('POST', '/dhl/pickupsheet/login', [], [
+$assert(str_contains($jumpCloudLoginPage->body(), 'Sign in with local account'), 'Local account login should remain available alongside JumpCloud.');
+$assert(str_contains($jumpCloudLoginPage->body(), 'autocomplete="current-password"'), 'Configured Pickupsheet login should retain the local password form.');
+$jumpCloudLocalLogin = $jumpCloudAuthController->authenticate(new Request('POST', '/dhl/pickupsheet/login', [], [
     '_token' => $pickupCsrf->token(),
     'username' => $recordsUsername,
     'password' => $recordsPassword,
 ]));
-$assert($disabledLocalLogin->status() === 303 && str_contains((string) ($_SESSION['_pickup_login_error'] ?? ''), 'Use JumpCloud'), 'JumpCloud-only mode should reject direct local-password posts.');
-unset($_SESSION['_pickup_login_error']);
+$assert($jumpCloudLocalLogin->status() === 303 && ($jumpCloudLocalLogin->headers()['Location'] ?? '') === '/dhl/pickupsheet/dashboard', 'A local account should remain usable when JumpCloud is configured.');
+$recordsSession->logout();
 $jumpCloudStart = $jumpCloudAuthController->jumpCloudStart(new Request('GET', '/dhl/pickupsheet/auth/jumpcloud'));
 $jumpCloudStartLocation = (string) ($jumpCloudStart->headers()['Location'] ?? '');
 parse_str((string) parse_url($jumpCloudStartLocation, PHP_URL_QUERY), $jumpCloudStartQuery);
@@ -868,7 +857,7 @@ $assert(str_contains($adminDashboard->body(), '14,000'), 'The KPI dashboard shou
 $assert(str_contains($adminDashboard->body(), 'pickup-activity-chart'), 'The dashboard should render its activity graph without client-side chart dependencies.');
 $adminUsers = $pickupController->users(new Request('GET', '/dhl/pickupsheet/submissions/users', [], [], '', $recordsServer));
 $assert($adminUsers->status() === 200, 'An administrator should open records-user management.');
-$assert(str_contains($adminUsers->body(), 'Create local recovery account'), 'The local administrator should receive a recovery account-creation form.');
+$assert(str_contains($adminUsers->body(), 'Create local account'), 'The administrator should receive a local account-creation form.');
 $assert(str_contains($adminUsers->body(), 'Reset my admin password'), 'The administrator should receive a current-password-confirmed password reset form.');
 $assert(str_contains($adminUsers->body(), 'Email or username') && str_contains($adminUsers->body(), 'Account status'), 'Account management should expose flexible login IDs and explicit account status.');
 $assert(str_contains($adminUsers->body(), 'name="first_name"') && str_contains($adminUsers->body(), 'name="last_name"'), 'Account management should require first and last names.');
@@ -1255,7 +1244,7 @@ $assert(is_string($environmentExample) && str_contains($environmentExample, 'RUN
 $assert(is_string($environmentExample) && str_contains($environmentExample, 'JUMPCLOUD_OIDC_ENABLED=false'), 'The environment example should keep JumpCloud disabled until credentials are supplied.');
 $assert(is_string($environmentExample) && str_contains($environmentExample, 'JUMPCLOUD_OIDC_REDIRECT_URI=https://ttechcg.com/dhl/pickupsheet/auth/jumpcloud/callback'), 'The environment example should document the exact JumpCloud callback URI.');
 $assert(is_string($environmentExample) && str_contains($environmentExample, 'JUMPCLOUD_RBAC_ADMIN_GROUP=Pickupsheet Admins'), 'The environment example should map JumpCloud groups to Pickupsheet roles.');
-$assert(is_string($environmentExample) && str_contains($environmentExample, 'JUMPCLOUD_OIDC_LOCAL_LOGIN=true'), 'The first JumpCloud deployment should retain a controlled local recovery login.');
+$assert(is_string($environmentExample) && !str_contains($environmentExample, 'JUMPCLOUD_OIDC_LOCAL_LOGIN'), 'Local account login should not have a configuration switch that JumpCloud can disable.');
 
 $styles = file_get_contents(dirname(__DIR__) . '/public/assets/styles.css');
 $assert(is_string($styles) && str_contains($styles, '--navy: #0b0b0c;'), 'T&Tech near-black should be the minimal corporate foundation.');
