@@ -924,8 +924,8 @@ $assert(is_string($dhlAsset) && !str_contains($dhlAsset, '<text'), 'The disquali
 $partnerSources = file_get_contents(dirname(__DIR__) . '/public/assets/partners/README.md');
 $assert(is_string($partnerSources) && str_contains($partnerSources, 'www.dhl.com/content/dam/dhl/global/core/images/logos/dhl-logo.svg'), 'The official DHL artwork source should be documented.');
 $assert(!str_contains($home, 'href="/dhl/pickupsheet"'), 'Pickupsheet should not be discoverable from the public site chrome or homepage.');
-$assert(str_contains($home, 'styles.css?v=20260827-account-identity'), 'The account-identity update should use a cache-safe stylesheet version.');
-$assert(str_contains($home, 'app.js?v=20260827-account-identity'), 'The account-identity update should use a cache-safe application script version.');
+$assert(str_contains($home, 'styles.css?v=20260827-centered-shipments'), 'The centered shipment layout should use a cache-safe stylesheet version.');
+$assert(str_contains($home, 'app.js?v=20260827-centered-shipments'), 'The centered shipment layout should use a cache-safe application script version.');
 $assert(str_contains($home, 'analytics.js?v=20260825-security-hardening'), 'The current consent-aware Google Analytics loader should render on every page.');
 $assert(str_contains($home, 'data-analytics-accept'), 'The site should offer an explicit analytics acceptance control.');
 $assert(str_contains($home, 'data-analytics-decline'), 'The site should offer an explicit analytics decline control.');
@@ -1121,6 +1121,10 @@ $assert(is_string($styles) && str_contains($styles, '.records-users-layout'), 'A
 $assert(is_string($styles) && str_contains($styles, '.records-user-card'), 'Managed accounts should render as editable account cards.');
 $assert(is_string($styles) && str_contains($styles, '/* Pickupsheet login portal */'), 'Pickupsheet should have a dedicated responsive login portal.');
 $assert(is_string($styles) && str_contains($styles, '.pickup-admin-workspace') && str_contains($styles, '.pickup-kpi-grid'), 'The administrator should have a dedicated KPI control-panel layout.');
+$assert(is_string($styles) && str_contains($styles, '.shipment-editor > *') && str_contains($styles, 'max-width: 1180px;'), 'The cash-shipment editor should be centered within the available screen width.');
+$assert(is_string($styles) && str_contains($styles, '.shipment-editor-heading > div { grid-column: 2; text-align: center; }'), 'The Cash Shipments heading should remain visually centered beside its row action.');
+$assert(is_string($styles) && str_contains($styles, '.shipment-table {') && str_contains($styles, 'min-width: 0;'), 'Shipment tables should shrink to the available desktop width instead of forcing horizontal overflow.');
+$assert(is_string($styles) && str_contains($styles, '.shipment-table-edit th:nth-child(10) { width: 8%; }'), 'Editable shipment columns should use a proportional fit-to-screen layout.');
 
 $script = file_get_contents(dirname(__DIR__) . '/public/assets/app.js');
 $assert(is_string($script) && str_contains($script, "event.key === 'Escape'"), 'The mobile navigation should close with Escape.');

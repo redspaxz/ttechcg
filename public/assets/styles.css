@@ -1110,11 +1110,6 @@ button, a, input, select, textarea { -webkit-tap-highlight-color: transparent; }
 .pickup-dashboard-table-wrap th { color: #888; font-size: 0.62rem; letter-spacing: 0.08em; text-transform: uppercase; }
 .pickup-dashboard-table-wrap tr:last-child td { border-bottom: 0; }
 .pickup-dashboard-table-wrap a { color: #fff; font-weight: 800; }
-.shipment-table-edit { min-width: 1260px; }
-.shipment-table-edit th:nth-child(8) { width: 120px; }
-.shipment-table-edit th:nth-child(9) { width: 155px; }
-.shipment-table-edit th:nth-child(10) { width: 82px; }
-
 @media (max-width: 960px) {
     .pickup-login-shell { grid-template-columns: 1fr; }
     .pickup-login-aside { min-height: 420px; }
@@ -1662,14 +1657,24 @@ button, a, input, select, textarea { -webkit-tap-highlight-color: transparent; }
     letter-spacing: 0.08em;
     text-transform: uppercase;
 }
-.shipment-editor { padding: 30px; }
+.shipment-editor {
+    display: grid;
+    justify-items: center;
+    padding: 30px;
+}
+.shipment-editor > * {
+    width: 100%;
+    max-width: 1180px;
+}
 .shipment-editor-heading {
-    display: flex;
+    display: grid;
+    grid-template-columns: minmax(120px, 1fr) auto minmax(120px, 1fr);
     align-items: end;
-    justify-content: space-between;
     gap: 24px;
     margin-bottom: 24px;
 }
+.shipment-editor-heading > div { grid-column: 2; text-align: center; }
+.shipment-editor-heading > .pickup-add-row { grid-column: 3; justify-self: end; }
 .shipment-editor-heading span {
     color: var(--dhl-red);
     font-size: 0.65rem;
@@ -1700,12 +1705,13 @@ button, a, input, select, textarea { -webkit-tap-highlight-color: transparent; }
 .shipment-scroll-hint { display: none; }
 .shipment-table-wrap {
     width: 100%;
+    margin-inline: auto;
     overflow-x: auto;
     border: 1px solid rgba(69, 50, 0, 0.34);
 }
 .shipment-table {
     width: 100%;
-    min-width: 1095px;
+    min-width: 0;
     border-collapse: collapse;
     table-layout: fixed;
 }
@@ -1725,15 +1731,25 @@ button, a, input, select, textarea { -webkit-tap-highlight-color: transparent; }
     letter-spacing: 0.07em;
     text-transform: uppercase;
 }
-.shipment-table th:first-child { width: 44px; text-align: center; }
-.shipment-table th:nth-child(2) { width: 190px; }
-.shipment-table th:nth-child(3) { width: 140px; }
-.shipment-table th:nth-child(4) { width: 80px; }
-.shipment-table th:nth-child(5) { width: 125px; }
-.shipment-table th:nth-child(6) { width: 72px; }
-.shipment-table th:nth-child(7) { width: 105px; }
-.shipment-table th:nth-child(8) { width: 155px; }
-.shipment-table th:nth-child(9) { width: 82px; }
+.shipment-table th:first-child { width: 4%; text-align: center; }
+.shipment-table th:nth-child(2) { width: 18%; }
+.shipment-table th:nth-child(3) { width: 14%; }
+.shipment-table th:nth-child(4) { width: 8%; }
+.shipment-table th:nth-child(5) { width: 12%; }
+.shipment-table th:nth-child(6) { width: 7%; }
+.shipment-table th:nth-child(7) { width: 9%; }
+.shipment-table th:nth-child(8) { width: 19%; }
+.shipment-table th:nth-child(9) { width: 9%; }
+.shipment-table-edit th:first-child { width: 4%; }
+.shipment-table-edit th:nth-child(2) { width: 16%; }
+.shipment-table-edit th:nth-child(3) { width: 12%; }
+.shipment-table-edit th:nth-child(4) { width: 7%; }
+.shipment-table-edit th:nth-child(5) { width: 11%; }
+.shipment-table-edit th:nth-child(6) { width: 6%; }
+.shipment-table-edit th:nth-child(7) { width: 8%; }
+.shipment-table-edit th:nth-child(8) { width: 10%; }
+.shipment-table-edit th:nth-child(9) { width: 18%; }
+.shipment-table-edit th:nth-child(10) { width: 8%; }
 .shipment-table tbody th {
     color: #493800;
     font-size: 0.72rem;
@@ -1743,7 +1759,7 @@ button, a, input, select, textarea { -webkit-tap-highlight-color: transparent; }
 .shipment-table th:last-child { border-right: 0; }
 .shipment-table tbody tr:last-child td,
 .shipment-table tbody tr:last-child th { border-bottom: 0; }
-.shipment-table input { min-height: 42px; padding: 9px; background: rgba(255, 255, 255, 0.56); }
+.shipment-table input { min-width: 0; min-height: 42px; padding: 9px; background: rgba(255, 255, 255, 0.56); }
 .pickup-code-input { text-transform: uppercase; }
 .shipment-row-action button { width: 100%; min-height: 42px; padding: 7px; font-size: 0.62rem; }
 .pickup-summary {
@@ -1824,7 +1840,7 @@ button, a, input, select, textarea { -webkit-tap-highlight-color: transparent; }
     .pickup-summary > div:first-child { border-right: 0; border-bottom: 1px solid rgba(69, 50, 0, 0.3); }
 }
 
-@media (max-width: 700px) {
+@media (max-width: 900px) {
     .pickup-workspace { padding: 22px 0 64px; }
     .pickup-workspace-header { min-height: 86px; align-items: flex-start; flex-direction: column; justify-content: center; gap: 10px; }
     .pickup-header-links { width: 100%; align-items: flex-start; flex-direction: column; gap: 8px; }
@@ -1836,7 +1852,8 @@ button, a, input, select, textarea { -webkit-tap-highlight-color: transparent; }
     .pickup-security-grid,
     .pickup-submit-row { padding: 20px 16px; }
     .pickup-meta-fields { grid-template-columns: 1fr; }
-    .shipment-editor-heading { align-items: stretch; flex-direction: column; }
+    .shipment-editor-heading { display: flex; align-items: stretch; flex-direction: column; }
+    .shipment-editor-heading > div { text-align: center; }
     .pickup-add-row { width: 100%; }
     .shipment-scroll-hint { display: block; margin: -8px 0 18px; color: #655000; font-size: 0.7rem; line-height: 1.5; }
     .shipment-table-wrap { overflow: visible; border: 0; }
