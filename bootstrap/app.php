@@ -19,12 +19,16 @@ use App\Shared\Http\Request;
 use App\Shared\Http\Response;
 use App\Shared\Http\Router;
 use App\Shared\Infrastructure\Database;
+use App\Shared\Infrastructure\DemoRecordsUserRepository;
 use App\Shared\Infrastructure\Environment;
 use App\Shared\Infrastructure\MigrationRunner;
+use App\Shared\Infrastructure\MysqlRecordsUserRepository;
+use App\Shared\Infrastructure\UnavailableRecordsUserRepository;
 use App\Shared\Security\Captcha;
 use App\Shared\Security\Csrf;
 use App\Shared\Security\RateLimiter;
 use App\Shared\Security\RecordsAccess;
+use App\Shared\Security\RecordsUserService;
 use App\Shared\Security\SecurityLogger;
 use App\Shared\View\View;
 
@@ -74,6 +78,11 @@ $pickupSheetRepository = match (true) {
     $isProduction => new UnavailablePickupSheetRepository(),
     default => new DemoPickupSheetRepository(),
 };
+$recordsUserRepository = match (true) {
+    $connection !== null => new MysqlRecordsUserRepository($connection),
+    $isProduction => new UnavailableRecordsUserRepository(),
+    default => new DemoRecordsUserRepository(),
+};
 $storageMode = $connection === null ? 'Demo workspace' : 'MySQL connected';
 $contactEmail = (string) ($config['contact_email'] ?? '');
 $notifier = filter_var($contactEmail, FILTER_VALIDATE_EMAIL)
@@ -86,7 +95,8 @@ $view = new View($root . '/views');
 $csrf = new Csrf();
 $rateLimiter = new RateLimiter($root . '/storage/security');
 $securityLogger = new SecurityLogger();
-$recordsAccess = RecordsAccess::fromEnvironment();
+$recordsAccess = RecordsAccess::fromEnvironment($recordsUserRepository);
+$recordsUserService = new RecordsUserService($recordsUserRepository, $recordsAccess->environmentUsernames());
 $contactCaptcha = new Captcha('contact');
 $pickupCaptcha = new Captcha('pickupsheet');
 $siteController = new SiteController($view, $config, $storageMode, $contactOperational);
@@ -110,6 +120,7 @@ $pickupsheetController = new PickupsheetController(
     $storageMode,
     $pickupOperational,
     $recordsAccess,
+    $recordsUserService,
     $rateLimiter,
     $securityLogger,
 );
@@ -125,6 +136,9 @@ $router->get('/dhl/pickupsheet', fn (Request $request): Response => $pickupsheet
 $router->post('/dhl/pickupsheet', fn (Request $request): Response => $pickupsheetController->store($request));
 $router->get('/dhl/pickupsheet/submissions', fn (Request $request): Response => $pickupsheetController->submissions($request));
 $router->get('/dhl/pickupsheet/submissions/page', fn (Request $request): Response => $pickupsheetController->submissionsPage($request));
+$router->get('/dhl/pickupsheet/submissions/users', fn (Request $request): Response => $pickupsheetController->users($request));
+$router->post('/dhl/pickupsheet/submissions/users', fn (Request $request): Response => $pickupsheetController->createUser($request));
+$router->post('/dhl/pickupsheet/submissions/users/update', fn (Request $request): Response => $pickupsheetController->updateUser($request));
 $router->get('/dhl/pickupsheet/submissions/print', fn (Request $request): Response => $pickupsheetController->print($request));
 $router->get('/dhl/pickupsheet/submissions/export', fn (Request $request): Response => $pickupsheetController->export($request));
 $router->get('/pickupsheet', fn (Request $request): Response => Response::redirect($request->basePath . '/dhl/pickupsheet/', 308));

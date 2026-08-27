@@ -46,6 +46,12 @@ final class Request
         return is_string($value) ? trim($value) : $default;
     }
 
+    public function rawInput(string $key, string $default = ''): string
+    {
+        $value = $this->body[$key] ?? $default;
+        return is_string($value) ? $value : $default;
+    }
+
     /** @return array<mixed> */
     public function arrayInput(string $key): array
     {

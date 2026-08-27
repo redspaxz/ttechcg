@@ -7,7 +7,12 @@ $e = static fn (mixed $value): string => htmlspecialchars((string) $value, ENT_Q
 <section class="pickup-view-workspace">
     <div class="container pickup-workspace-header">
         <strong class="pickup-wordmark">Pickupsheet</strong>
-        <a class="pickup-back" href="<?= $e($basePath) ?>/dhl/pickupsheet/">New pickup sheet <span aria-hidden="true">&#8599;</span></a>
+        <div class="pickup-header-links">
+            <?php if ((bool) ($canManage ?? false)): ?>
+                <a class="pickup-back" href="<?= $e($basePath) ?>/dhl/pickupsheet/submissions/users">Manage access <span aria-hidden="true">&#8599;</span></a>
+            <?php endif; ?>
+            <a class="pickup-back" href="<?= $e($basePath) ?>/dhl/pickupsheet/">New pickup sheet <span aria-hidden="true">&#8599;</span></a>
+        </div>
     </div>
 
     <div class="container pickup-submissions-shell">
@@ -15,7 +20,7 @@ $e = static fn (mixed $value): string => htmlspecialchars((string) $value, ENT_Q
             <div>
                 <p class="eyebrow eyebrow-red">Pickup records</p>
                 <h1>Submitted sheets</h1>
-                <p>Records are displayed 10 sheets per page. Expand a reference to review its shipment table.</p>
+                <p>Signed in as <?= $e($recordsRole ?? 'viewer') ?>. Records are displayed 10 sheets per page. Expand a reference to review its shipment table.</p>
             </div>
         </header>
 

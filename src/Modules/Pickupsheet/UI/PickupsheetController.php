@@ -13,6 +13,7 @@ use App\Shared\Security\Csrf;
 use App\Shared\Security\RateLimiter;
 use App\Shared\Security\RecordsAccess;
 use App\Shared\Security\RecordsPrincipal;
+use App\Shared\Security\RecordsUserService;
 use App\Shared\Security\SecurityLogger;
 use App\Shared\Spreadsheet\XlsxWriter;
 use App\Shared\View\View;
@@ -31,6 +32,7 @@ final class PickupsheetController
         private readonly string $storageMode,
         private readonly bool $pickupOperational,
         private readonly RecordsAccess $recordsAccess,
+        private readonly RecordsUserService $recordsUserService,
         private readonly RateLimiter $rateLimiter,
         private readonly SecurityLogger $securityLogger,
     ) {
@@ -174,6 +176,124 @@ final class PickupsheetController
         );
     }
 
+    public function users(Request $request): Response
+    {
+        $authorization = $this->authorizeRecords($request, 'manage');
+        if ($authorization instanceof Response) {
+            return $authorization;
+        }
+
+        $flash = $_SESSION['_records_users_flash'] ?? null;
+        $errors = $_SESSION['_records_users_errors'] ?? [];
+        $old = $_SESSION['_records_users_old'] ?? [];
+        unset($_SESSION['_records_users_flash'], $_SESSION['_records_users_errors'], $_SESSION['_records_users_old']);
+
+        $accounts = [];
+        try {
+            $accounts = $this->recordsUserService->accounts($authorization);
+        } catch (RuntimeException $exception) {
+            error_log($exception->__toString());
+            $errors = ['Account storage is unavailable. Apply the records-user migration and check the MySQL connection.'];
+        }
+
+        $body = $this->view->render('pickupsheet/users', [
+            'pageTitle' => 'Pickup records access',
+            'pageDescription' => 'Manage lower-tier pickup records accounts.',
+            'pageRobots' => 'noindex, nofollow',
+            'activePage' => 'pickupsheet',
+            'basePath' => $request->basePath,
+            'assetBase' => $request->basePath . '/public/assets',
+            'config' => $this->config,
+            'csrfToken' => $this->csrf->token(),
+            'accounts' => $accounts,
+            'flash' => is_string($flash) ? $flash : null,
+            'errors' => is_array($errors) ? $errors : [],
+            'old' => is_array($old) ? $old : [],
+        ]);
+
+        return Response::html($body, 200, $this->privateHeaders());
+    }
+
+    public function createUser(Request $request): Response
+    {
+        $authorization = $this->authorizeRecords($request, 'manage');
+        if ($authorization instanceof Response) {
+            return $authorization;
+        }
+
+        $writeDenied = $this->recordsUserWriteGuard($request);
+        if ($writeDenied !== null) {
+            return $writeDenied;
+        }
+
+        $input = [
+            'username' => $request->input('username'),
+            'role' => $request->input('role'),
+            'password' => $request->rawInput('password'),
+            'password_confirmation' => $request->rawInput('password_confirmation'),
+        ];
+
+        try {
+            $account = $this->recordsUserService->create($input, $authorization);
+            $_SESSION['_records_users_flash'] = sprintf('Account %s created as %s.', $account->username, $account->role);
+            $this->securityLogger->event('pickupsheet.records_user_create', $request, 'accepted', [
+                'target_id' => substr(hash('sha256', $account->username), 0, 24),
+                'role' => $account->role,
+            ]);
+        } catch (InvalidArgumentException $exception) {
+            $_SESSION['_records_users_errors'] = [$exception->getMessage()];
+            $_SESSION['_records_users_old'] = ['username' => $input['username'], 'role' => $input['role']];
+            $this->securityLogger->event('pickupsheet.records_user_create', $request, 'denied');
+        } catch (RuntimeException $exception) {
+            error_log($exception->__toString());
+            $_SESSION['_records_users_errors'] = ['The account could not be created. Check the MySQL connection and try again.'];
+            $this->securityLogger->event('pickupsheet.records_user_create', $request, 'failed');
+        }
+
+        return Response::redirect($request->basePath . '/dhl/pickupsheet/submissions/users');
+    }
+
+    public function updateUser(Request $request): Response
+    {
+        $authorization = $this->authorizeRecords($request, 'manage');
+        if ($authorization instanceof Response) {
+            return $authorization;
+        }
+
+        $writeDenied = $this->recordsUserWriteGuard($request);
+        if ($writeDenied !== null) {
+            return $writeDenied;
+        }
+
+        $input = [
+            'id' => $request->input('id'),
+            'username' => $request->input('username'),
+            'role' => $request->input('role'),
+            'active' => $request->input('active'),
+            'password' => $request->rawInput('password'),
+            'password_confirmation' => $request->rawInput('password_confirmation'),
+        ];
+
+        try {
+            $account = $this->recordsUserService->update($input, $authorization);
+            $_SESSION['_records_users_flash'] = sprintf('Account %s updated.', $account->username);
+            $this->securityLogger->event('pickupsheet.records_user_update', $request, 'accepted', [
+                'target_id' => substr(hash('sha256', $account->username), 0, 24),
+                'role' => $account->role,
+                'active' => $account->active,
+            ]);
+        } catch (InvalidArgumentException $exception) {
+            $_SESSION['_records_users_errors'] = [$exception->getMessage()];
+            $this->securityLogger->event('pickupsheet.records_user_update', $request, 'denied');
+        } catch (RuntimeException $exception) {
+            error_log($exception->__toString());
+            $_SESSION['_records_users_errors'] = ['The account could not be updated. Check the MySQL connection and try again.'];
+            $this->securityLogger->event('pickupsheet.records_user_update', $request, 'failed');
+        }
+
+        return Response::redirect($request->basePath . '/dhl/pickupsheet/submissions/users');
+    }
+
     public function print(Request $request): Response
     {
         $authorization = $this->authorizeRecords($request, 'print');
@@ -307,8 +427,24 @@ final class PickupsheetController
             'errors' => $errors,
             'canPrint' => $principal->can('print'),
             'canExport' => $principal->can('export'),
+            'canManage' => $principal->can('manage'),
             'recordsRole' => $principal->role,
         ];
+    }
+
+    private function recordsUserWriteGuard(Request $request): ?Response
+    {
+        $rateLimitResponse = $this->rateLimit($request, 'pickup-records-users-write', 30, 3600);
+        if ($rateLimitResponse !== null) {
+            return $rateLimitResponse;
+        }
+
+        if (!$this->csrf->validate($request->input('_token'))) {
+            $this->securityLogger->event('pickupsheet.records_users_csrf', $request, 'denied');
+            return Response::html('Invalid or expired form token.', 419, $this->privateHeaders());
+        }
+
+        return null;
     }
 
     private function pageNumber(Request $request): int

@@ -14,10 +14,12 @@ use App\Modules\Pickupsheet\Infrastructure\UnavailablePickupSheetRepository;
 use App\Modules\Pickupsheet\UI\PickupsheetController;
 use App\Modules\Site\UI\SiteController;
 use App\Shared\Http\Request;
+use App\Shared\Infrastructure\DemoRecordsUserRepository;
 use App\Shared\Security\Captcha;
 use App\Shared\Security\Csrf;
 use App\Shared\Security\RateLimiter;
 use App\Shared\Security\RecordsAccess;
+use App\Shared\Security\RecordsUserService;
 use App\Shared\Security\SecurityLogger;
 use App\Shared\Spreadsheet\XlsxWriter;
 use App\Shared\View\View;
@@ -224,6 +226,8 @@ $request = new Request('GET', '/products', [], [], '');
 $assert($request->path === '/products', 'Request should retain the routed path.');
 $arrayRequest = new Request('POST', '/dhl/pickupsheet', [], ['shipments' => [['awb_number' => '1234567890']]], '');
 $assert(($arrayRequest->arrayInput('shipments')[0]['awb_number'] ?? '') === '1234567890', 'Request should expose nested shipment arrays.');
+$rawPasswordRequest = new Request('POST', '/protected', [], ['password' => '  retain-spaces  '], '');
+$assert($rawPasswordRequest->rawInput('password') === '  retain-spaces  ', 'Password input should not be silently trimmed.');
 $basicRequest = new Request('GET', '/protected', [], [], '', [
     'HTTP_AUTHORIZATION' => 'Basic ' . base64_encode('records-admin:test-password'),
     'HTTP_CF_CONNECTING_IP' => '203.0.113.15',
@@ -267,6 +271,7 @@ $viewerUsername = 'records-viewer';
 $viewerPassword = 'test-viewer-password';
 $operatorUsername = 'records-operator';
 $operatorPassword = 'test-operator-password';
+$recordsUserRepository = new DemoRecordsUserRepository();
 $recordsAccess = new RecordsAccess([
     [
         'username' => $recordsUsername,
@@ -283,7 +288,8 @@ $recordsAccess = new RecordsAccess([
         'passwordHash' => password_hash($operatorPassword, PASSWORD_DEFAULT),
         'role' => 'operator',
     ],
-]);
+], $recordsUserRepository);
+$recordsUserService = new RecordsUserService($recordsUserRepository, $recordsAccess->environmentUsernames());
 $recordsServer = [
     'PHP_AUTH_USER' => $recordsUsername,
     'PHP_AUTH_PW' => $recordsPassword,
@@ -309,11 +315,35 @@ $assert($recordsAccess->authenticate(new Request('GET', '/protected', [], [], ''
     'PHP_AUTH_USER' => $viewerUsername,
     'PHP_AUTH_PW' => 'incorrect-password',
 ])) === null, 'RBAC authentication should reject an incorrect password.');
+$reservedManagedUsernameRejected = false;
+try {
+    $recordsUserService->create([
+        'username' => $recordsUsername,
+        'role' => 'viewer',
+        'password' => 'reserved-password-123',
+        'password_confirmation' => 'reserved-password-123',
+    ], $adminPrincipal);
+} catch (InvalidArgumentException $exception) {
+    $reservedManagedUsernameRejected = str_contains($exception->getMessage(), 'reserved');
+}
+$assert($reservedManagedUsernameRejected, 'A managed account must not shadow an environment-defined administrator.');
 $assert(!(new RecordsAccess([[
     'username' => 'records-owner',
     'passwordHash' => password_hash('test-owner-password', PASSWORD_DEFAULT),
     'role' => 'owner',
 ]]))->isConfigured(), 'An undefined role should fail closed.');
+$rogueRecordsUserRepository = new DemoRecordsUserRepository();
+$rogueRecordsUserRepository->create(
+    'database-admin',
+    password_hash('database-admin-password', PASSWORD_DEFAULT),
+    'admin',
+    'test-actor',
+);
+$rogueRecordsAccess = new RecordsAccess([], $rogueRecordsUserRepository);
+$assert($rogueRecordsAccess->authenticate(new Request('GET', '/protected', [], [], '', [
+    'PHP_AUTH_USER' => 'database-admin',
+    'PHP_AUTH_PW' => 'database-admin-password',
+])) === null, 'A database role must never be able to escalate itself to administrator.');
 
 $previousRbacUsers = getenv('PICKUPSHEET_RBAC_USERS');
 $previousLegacyUser = getenv('PICKUPSHEET_RECORDS_USER');
@@ -395,6 +425,7 @@ $pickupController = new PickupsheetController(
     'Demo workspace',
     true,
     $recordsAccess,
+    $recordsUserService,
     $disabledRateLimiter,
     $disabledSecurityLogger,
 );
@@ -462,6 +493,7 @@ $assert(!str_contains($openSubmissions->body(), 'dhl-logo.svg'), 'The submitted-
 $assert(str_contains($openSubmissions->body(), 'Controller Client'), 'The direct table should show shipment rows.');
 $assert(str_contains($openSubmissions->body(), 'Print / PDF'), 'Each submitted sheet should provide a print-to-PDF action.');
 $assert(str_contains($openSubmissions->body(), 'Export Excel'), 'Each submitted sheet should provide an Excel export action.');
+$assert(str_contains($openSubmissions->body(), 'Manage access'), 'An administrator should receive the account-management action.');
 $assert(str_contains($openSubmissions->body(), 'Records are displayed 10 sheets per page.'), 'The records view should disclose its ten-record page size.');
 $assert(str_contains($openSubmissions->body(), 'data-pickup-records-spinner'), 'The records view should provide an AJAX loading spinner.');
 $assert(str_contains($openSubmissions->body(), 'data-page-endpoint="/dhl/pickupsheet/submissions/page"'), 'The records view should identify its protected pagination endpoint.');
@@ -482,6 +514,7 @@ $viewerPrint = $pickupController->print(new Request('GET', '/dhl/pickupsheet/sub
 $viewerExport = $pickupController->export(new Request('GET', '/dhl/pickupsheet/submissions/export', ['reference' => $savedReference], [], '', $viewerServer));
 $assert($viewerSubmissions->status() === 200 && $viewerPageFragment->status() === 200, 'A viewer should be able to list and paginate pickup sheets.');
 $assert(!str_contains($viewerSubmissions->body(), 'Print / PDF') && !str_contains($viewerSubmissions->body(), 'Export Excel'), 'A viewer should not be shown actions they cannot use.');
+$assert(!str_contains($viewerSubmissions->body(), 'Manage access'), 'A viewer should not be shown administrator account controls.');
 $assert($viewerPrint->status() === 403 && $viewerExport->status() === 403, 'A viewer should be forbidden from printing and exporting pickup sheets.');
 $assert(!isset($viewerPrint->headers()['WWW-Authenticate']), 'A forbidden authenticated user should not receive another login challenge.');
 $assert(($viewerPrint->headers()['Cache-Control'] ?? '') === 'private, no-store, max-age=0', 'RBAC denial responses should not be cached.');
@@ -489,6 +522,95 @@ $assert(($viewerPrint->headers()['Cache-Control'] ?? '') === 'private, no-store,
 $operatorPrint = $pickupController->print(new Request('GET', '/dhl/pickupsheet/submissions/print', ['reference' => $savedReference], [], '', $operatorServer));
 $operatorExport = $pickupController->export(new Request('GET', '/dhl/pickupsheet/submissions/export', ['reference' => $savedReference], [], '', $operatorServer));
 $assert($operatorPrint->status() === 200 && $operatorExport->status() === 200, 'An operator should be able to print and export pickup sheets.');
+$operatorSubmissions = $pickupController->submissions(new Request('GET', '/dhl/pickupsheet/submissions', [], [], '', $operatorServer));
+$assert(!str_contains($operatorSubmissions->body(), 'Manage access'), 'An operator should not be shown administrator account controls.');
+
+$viewerUsers = $pickupController->users(new Request('GET', '/dhl/pickupsheet/submissions/users', [], [], '', $viewerServer));
+$operatorUsers = $pickupController->users(new Request('GET', '/dhl/pickupsheet/submissions/users', [], [], '', $operatorServer));
+$assert($viewerUsers->status() === 403 && $operatorUsers->status() === 403, 'Only administrators should reach records-user management.');
+
+$adminUsers = $pickupController->users(new Request('GET', '/dhl/pickupsheet/submissions/users', [], [], '', $recordsServer));
+$assert($adminUsers->status() === 200, 'An administrator should open records-user management.');
+$assert(str_contains($adminUsers->body(), 'Create lower-tier account'), 'The administrator should receive an account-creation form.');
+$assert(str_contains($adminUsers->body(), 'Server-managed administrators cannot be changed here.'), 'The management page should explain the enforced role hierarchy.');
+
+$invalidUserCsrf = $pickupController->createUser(new Request('POST', '/dhl/pickupsheet/submissions/users', [], [
+    '_token' => 'invalid-token',
+    'username' => 'managed-operator',
+    'role' => 'operator',
+    'password' => 'managed-password-123',
+    'password_confirmation' => 'managed-password-123',
+], '', $recordsServer));
+$assert($invalidUserCsrf->status() === 419, 'Account creation should require a valid CSRF token.');
+
+$createManagedUser = $pickupController->createUser(new Request('POST', '/dhl/pickupsheet/submissions/users', [], [
+    '_token' => $pickupCsrf->token(),
+    'username' => 'managed-operator',
+    'role' => 'operator',
+    'password' => 'managed-password-123',
+    'password_confirmation' => 'managed-password-123',
+], '', $recordsServer));
+$assert($createManagedUser->status() === 303, 'An administrator should be able to create a lower-tier account.');
+$managedAccount = $recordsUserRepository->all()[0] ?? null;
+$assert($managedAccount?->role === 'operator' && $managedAccount->active, 'A created lower-tier account should persist its role and active status.');
+$adminUsersWithAccount = $pickupController->users(new Request('GET', '/dhl/pickupsheet/submissions/users', [], [], '', $recordsServer));
+$assert(str_contains($adminUsersWithAccount->body(), 'managed-operator'), 'The management page should list a created lower-tier account.');
+$usersView = file_get_contents(dirname(__DIR__) . '/views/pickupsheet/users.php');
+$assert(is_string($usersView) && !str_contains($usersView, 'passwordHash'), 'The management view must never access or render a stored password hash.');
+$managedServer = [
+    'PHP_AUTH_USER' => 'managed-operator',
+    'PHP_AUTH_PW' => 'managed-password-123',
+    'REMOTE_ADDR' => '203.0.113.26',
+];
+$managedExport = $pickupController->export(new Request('GET', '/dhl/pickupsheet/submissions/export', ['reference' => $savedReference], [], '', $managedServer));
+$assert($managedExport->status() === 200, 'A newly created operator should authenticate and export records.');
+
+$promoteManagedAdmin = $pickupController->updateUser(new Request('POST', '/dhl/pickupsheet/submissions/users/update', [], [
+    '_token' => $pickupCsrf->token(),
+    'id' => (string) $managedAccount->id,
+    'username' => 'managed-operator',
+    'role' => 'admin',
+    'active' => '1',
+    'password' => '',
+    'password_confirmation' => '',
+], '', $recordsServer));
+$assert($promoteManagedAdmin->status() === 303, 'A rejected hierarchy change should return to account management.');
+$assert($recordsUserRepository->findById($managedAccount->id)?->role === 'operator', 'A managed account must never be promoted to administrator.');
+
+$demoteManagedViewer = $pickupController->updateUser(new Request('POST', '/dhl/pickupsheet/submissions/users/update', [], [
+    '_token' => $pickupCsrf->token(),
+    'id' => (string) $managedAccount->id,
+    'username' => 'managed-viewer',
+    'role' => 'viewer',
+    'active' => '1',
+    'password' => 'new-managed-password-456',
+    'password_confirmation' => 'new-managed-password-456',
+], '', $recordsServer));
+$assert($demoteManagedViewer->status() === 303, 'An administrator should adjust a lower-tier username, role, and password.');
+$managedViewerServer = [
+    'PHP_AUTH_USER' => 'managed-viewer',
+    'PHP_AUTH_PW' => 'new-managed-password-456',
+    'REMOTE_ADDR' => '203.0.113.26',
+];
+$managedViewerOldPassword = $managedViewerServer;
+$managedViewerOldPassword['PHP_AUTH_PW'] = 'managed-password-123';
+$oldManagedPasswordList = $pickupController->submissions(new Request('GET', '/dhl/pickupsheet/submissions', [], [], '', $managedViewerOldPassword));
+$assert($oldManagedPasswordList->status() === 401, 'A rotated managed password should invalidate the previous password immediately.');
+$managedViewerExport = $pickupController->export(new Request('GET', '/dhl/pickupsheet/submissions/export', ['reference' => $savedReference], [], '', $managedViewerServer));
+$assert($managedViewerExport->status() === 403, 'Role changes should take effect on the next request.');
+
+$disableManagedViewer = $pickupController->updateUser(new Request('POST', '/dhl/pickupsheet/submissions/users/update', [], [
+    '_token' => $pickupCsrf->token(),
+    'id' => (string) $managedAccount->id,
+    'username' => 'managed-viewer',
+    'role' => 'viewer',
+    'active' => '0',
+    'password' => '',
+    'password_confirmation' => '',
+], '', $recordsServer));
+$assert($disableManagedViewer->status() === 303, 'An administrator should be able to disable a lower-tier account.');
+$disabledManagedList = $pickupController->submissions(new Request('GET', '/dhl/pickupsheet/submissions', [], [], '', $managedViewerServer));
+$assert($disabledManagedList->status() === 401, 'A disabled managed account should immediately lose access.');
 
 $printResponse = $pickupController->print(new Request('GET', '/dhl/pickupsheet/submissions/print', ['reference' => $savedReference], [], '', $recordsServer));
 $printStyles = file_get_contents(dirname(__DIR__) . '/public/assets/print.css');
@@ -729,6 +851,7 @@ $assert(str_contains($privacy, 'Declining keeps analytics storage denied'), 'The
 $assert(str_contains($privacy, 'cookieless consent-state pings'), 'The privacy notice should disclose pre-consent Consent Mode pings.');
 $assert(str_contains($privacy, 'Analytics page views are suppressed on pickup-sheet operational pages'), 'The privacy notice should disclose sensitive-route Analytics suppression.');
 $assert(str_contains($privacy, 'Cookie settings'), 'The privacy notice should explain how to change the analytics choice.');
+$assert(str_contains($privacy, 'one-way password hash'), 'The privacy notice should disclose managed staff account data without implying plaintext password storage.');
 
 $environmentExample = file_get_contents(dirname(__DIR__) . '/.env.example');
 $assert(is_string($environmentExample) && str_contains($environmentExample, 'APP_TIMEZONE=Africa/Douala'), 'The environment example should use Cameroon time.');
@@ -774,6 +897,8 @@ $assert(is_string($styles) && str_contains($styles, '.pickup-record-actions'), '
 $assert(is_string($styles) && str_contains($styles, '.pickup-records-loading'), 'AJAX pagination should have a visible loading overlay.');
 $assert(is_string($styles) && str_contains($styles, '@keyframes pickup-records-spin'), 'The loading overlay should provide spinner animation.');
 $assert(is_string($styles) && str_contains($styles, '.pickup-pagination'), 'Submitted sheets should provide responsive pagination controls.');
+$assert(is_string($styles) && str_contains($styles, '.records-users-layout'), 'Administrator account management should have a dedicated responsive layout.');
+$assert(is_string($styles) && str_contains($styles, '.records-user-card'), 'Managed accounts should render as editable account cards.');
 
 $script = file_get_contents(dirname(__DIR__) . '/public/assets/app.js');
 $assert(is_string($script) && str_contains($script, "event.key === 'Escape'"), 'The mobile navigation should close with Escape.');
@@ -840,16 +965,24 @@ $assert(is_string($pickupMysqlRepository) && str_contains($pickupMysqlRepository
 $assert(is_string($pickupMysqlRepository) && str_contains($pickupMysqlRepository, 'findByReference'), 'MySQL persistence should support reference-scoped print and export queries.');
 $assert(is_string($pickupMysqlRepository) && str_contains($pickupMysqlRepository, 'LIMIT :limit OFFSET :offset'), 'MySQL should paginate pickup sheets at query time.');
 $assert(is_string($pickupMysqlRepository) && str_contains($pickupMysqlRepository, 'SELECT COUNT(*) FROM pickup_sheets'), 'MySQL should count records for pagination metadata.');
+$recordsUserMigration = file_get_contents(dirname(__DIR__) . '/database/migrations/005_create_pickup_records_users.sql');
+$assert(is_string($recordsUserMigration) && str_contains($recordsUserMigration, 'CREATE TABLE IF NOT EXISTS pickup_records_users'), 'MySQL should persist managed records-user accounts.');
+$assert(is_string($recordsUserMigration) && str_contains($recordsUserMigration, 'UNIQUE INDEX pickup_records_users_username_idx'), 'Managed records usernames should be unique.');
+$assert(is_string($recordsUserMigration) && str_contains($recordsUserMigration, 'created_by CHAR(24)'), 'Managed account changes should retain a pseudonymous administrator audit identifier.');
+$recordsUserMysqlRepository = file_get_contents(dirname(__DIR__) . '/src/Shared/Infrastructure/MysqlRecordsUserRepository.php');
+$assert(is_string($recordsUserMysqlRepository) && str_contains($recordsUserMysqlRepository, 'BINARY username = :username AND active = 1'), 'Managed account authentication should require an exact username and active status.');
+$assert(is_string($recordsUserMysqlRepository) && str_contains($recordsUserMysqlRepository, 'password_hash = :password_hash'), 'Administrators should be able to rotate managed account passwords.');
 $bootstrap = file_get_contents(dirname(__DIR__) . '/bootstrap/app.php');
 $assert(is_string($bootstrap) && str_contains($bootstrap, "'httponly' => true"), 'The security session cookie should be inaccessible to client-side scripts.');
 $assert(is_string($bootstrap) && str_contains($bootstrap, "'samesite' => 'Lax'"), 'The security session cookie should use a SameSite policy.');
 $assert(is_string($bootstrap) && str_contains($bootstrap, "session.use_strict_mode', '1'"), 'PHP should reject uninitialized attacker-selected session identifiers.');
 $assert(is_string($bootstrap) && str_contains($bootstrap, "'__Host-ttechcg_session'"), 'The production session cookie should use the host-only secure prefix.');
 $assert(is_string($bootstrap) && str_contains($bootstrap, '$connection !== null && $runMigrations'), 'Production migrations should require an explicit environment switch.');
-$assert(is_string($bootstrap) && str_contains($bootstrap, 'RecordsAccess::fromEnvironment()'), 'Stored pickup-sheet records should use fail-closed environment-backed access control.');
+$assert(is_string($bootstrap) && str_contains($bootstrap, 'RecordsAccess::fromEnvironment($recordsUserRepository)'), 'Stored pickup-sheet records should combine fail-closed environment admins with managed lower-tier accounts.');
 $assert(is_string($bootstrap) && !str_contains($bootstrap, 'JumpCloudOidcProvider'), 'Pickupsheet should not require an identity provider.');
 $assert(is_string($bootstrap) && str_contains($bootstrap, "'/dhl/pickupsheet'"), 'Pickupsheet should be routed under the DHL namespace.');
 $assert(is_string($bootstrap) && str_contains($bootstrap, "'/dhl/pickupsheet/submissions/page'"), 'Pickupsheet should expose a protected AJAX pagination endpoint.');
+$assert(is_string($bootstrap) && str_contains($bootstrap, "'/dhl/pickupsheet/submissions/users'"), 'Pickupsheet should expose administrator-only account management.');
 $assert(is_string($bootstrap) && str_contains($bootstrap, "'/pickupsheet'"), 'The legacy Pickupsheet entry should retain a permanent redirect.');
 $assert(is_string($bootstrap) && str_contains($bootstrap, 'rawurlencode($reference)'), 'Legacy print and export redirects should preserve the reference query safely.');
 $assert(is_string($bootstrap) && !str_contains($bootstrap, "'/dhl/pickupsheet/login'"), 'Pickupsheet authentication routes should remain removed.');

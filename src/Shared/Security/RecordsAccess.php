@@ -5,6 +5,7 @@ declare(strict_types=1);
 namespace App\Shared\Security;
 
 use App\Shared\Http\Request;
+use Throwable;
 
 final class RecordsAccess
 {
@@ -16,8 +17,10 @@ final class RecordsAccess
     /**
      * @param list<array{username: string, passwordHash: string, role: string}> $users
      */
-    public function __construct(array $users = [])
-    {
+    public function __construct(
+        array $users = [],
+        private readonly ?RecordsUserRepository $repository = null,
+    ) {
         foreach ($users as $user) {
             $username = trim($user['username'] ?? '');
             $passwordHash = trim($user['passwordHash'] ?? '');
@@ -37,7 +40,7 @@ final class RecordsAccess
         }
     }
 
-    public static function fromEnvironment(): self
+    public static function fromEnvironment(?RecordsUserRepository $repository = null): self
     {
         $users = [];
         $entries = trim((string) (getenv('PICKUPSHEET_RBAC_USERS') ?: ''));
@@ -65,7 +68,7 @@ final class RecordsAccess
             ];
         }
 
-        return new self($users);
+        return new self($users, $repository);
     }
 
     public function authenticate(Request $request): ?RecordsPrincipal
@@ -76,18 +79,42 @@ final class RecordsAccess
         }
 
         [$username, $password] = $credentials;
-        $user = $this->users[$username] ?? null;
-        $passwordMatches = password_verify($password, $user['passwordHash'] ?? self::DUMMY_PASSWORD_HASH);
-        if ($user === null || !$passwordMatches) {
+        $environmentUser = $this->users[$username] ?? null;
+        if ($environmentUser !== null) {
+            return password_verify($password, $environmentUser['passwordHash'])
+                ? new RecordsPrincipal($username, $environmentUser['role'])
+                : null;
+        }
+
+        $managedAccount = null;
+        try {
+            $managedAccount = $this->repository?->findActiveByUsername($username);
+        } catch (Throwable) {
+            // Authentication fails closed; the management page reports storage availability.
+        }
+
+        if ($managedAccount === null) {
+            password_verify($password, self::DUMMY_PASSWORD_HASH);
             return null;
         }
 
-        return new RecordsPrincipal($username, $user['role']);
+        if (!$managedAccount->verifies($password)
+            || !in_array($managedAccount->role, ['viewer', 'operator'], true)) {
+            return null;
+        }
+
+        return new RecordsPrincipal($managedAccount->username, $managedAccount->role);
     }
 
     public function isConfigured(): bool
     {
-        return $this->users !== [];
+        return $this->users !== [] || $this->repository !== null;
+    }
+
+    /** @return list<string> */
+    public function environmentUsernames(): array
+    {
+        return array_keys($this->users);
     }
 
     private function validUsername(string $username): bool
