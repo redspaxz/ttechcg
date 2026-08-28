@@ -1121,7 +1121,7 @@ $assert(is_string($dhlAsset) && !str_contains($dhlAsset, '<text'), 'The disquali
 $partnerSources = file_get_contents(dirname(__DIR__) . '/public/assets/partners/README.md');
 $assert(is_string($partnerSources) && str_contains($partnerSources, 'www.dhl.com/content/dam/dhl/global/core/images/logos/dhl-logo.svg'), 'The official DHL artwork source should be documented.');
 $assert(!str_contains($home, 'href="/dhl/pickupsheet"'), 'Pickupsheet should not be discoverable from the public site chrome or homepage.');
-$assert(str_contains($home, 'styles.css?v=20260828-dual-login'), 'The dual-login update should use a cache-safe stylesheet version.');
+$assert(str_contains($home, 'styles.css?v=20260828-record-card-layout'), 'The submitted-sheet card update should use a cache-safe stylesheet version.');
 $assert(str_contains($home, 'app.js?v=20260827-jumpcloud-rbac'), 'The JumpCloud RBAC update should use a cache-safe application script version.');
 $assert(str_contains($home, 'analytics.js?v=20260825-security-hardening'), 'The current consent-aware Google Analytics loader should render on every page.');
 $assert(str_contains($home, 'data-analytics-accept'), 'The site should offer an explicit analytics acceptance control.');
@@ -1317,7 +1317,9 @@ $assert(is_string($styles) && str_contains($styles, '.shipment-row'), 'Shipment 
 $assert(is_string($styles) && str_contains($styles, 'content: attr(data-label);'), 'Shipment rows should expose their field labels in the mobile card layout.');
 $assert(is_string($styles) && str_contains($styles, '/* Pickup-sheet records */'), 'Submitted pickup sheets should have a dedicated table layout.');
 $assert(is_string($styles) && str_contains($styles, '.pickup-record-actions'), 'Each submitted sheet should style its print and spreadsheet actions.');
-$assert(is_string($styles) && str_contains($styles, '.pickup-record-actions > form { flex: 0 0 116px; }'), 'Submitted-sheet links and form actions should share one consistent width.');
+$assert(is_string($styles) && str_contains($styles, 'grid-template-columns: repeat(auto-fit, minmax(116px, 1fr));'), 'Admin actions should use equal proportional columns without squeezing card metadata.');
+$assert(is_string($styles) && str_contains($styles, 'grid-column: 1 / -1;'), 'Submitted-sheet actions should occupy their own full-width card row.');
+$assert(is_string($styles) && str_contains($styles, 'grid-template-columns: repeat(2, minmax(0, 1fr));'), 'Submitted-sheet actions should retain proportional two-column sizing on mobile screens.');
 $assert(is_string($styles) && str_contains($styles, 'height: 42px;'), 'Submitted-sheet actions should share one consistent height.');
 $assert(is_string($styles) && str_contains($styles, '.pickup-records-loading'), 'AJAX pagination should have a visible loading overlay.');
 $assert(is_string($styles) && str_contains($styles, '@keyframes pickup-records-spin'), 'The loading overlay should provide spinner animation.');
