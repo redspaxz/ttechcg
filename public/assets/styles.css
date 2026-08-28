@@ -1164,6 +1164,7 @@ button, a, input, select, textarea { -webkit-tap-highlight-color: transparent; }
     gap: 24px;
     align-items: start;
 }
+.records-users-layout-central { grid-template-columns: minmax(0, 1fr); }
 .records-role-guide {
     padding: 28px;
     border: 1px solid rgba(69, 50, 0, 0.32);

@@ -188,22 +188,28 @@ final class JumpCloudOidcProvider
         $email = strtolower(trim((string) ($claims['email'] ?? '')));
         $firstName = trim((string) ($claims['given_name'] ?? ''));
         $lastName = trim((string) ($claims['family_name'] ?? ''));
+        $displayName = trim((string) ($claims['name'] ?? ''));
+        if ($displayName === '') {
+            $displayName = trim($firstName . ' ' . $lastName);
+        }
         if ($role === null
             || filter_var($email, FILTER_VALIDATE_EMAIL) === false
             || strlen($email) > 100
             || ($claims['email_verified'] ?? null) !== true
             || !$this->validName($firstName)
-            || !$this->validName($lastName)) {
+            || !$this->validName($lastName)
+            || !$this->validDisplayName($displayName)) {
             throw new RuntimeException('The JumpCloud account is missing an approved role or required profile data.');
         }
 
         return new RecordsPrincipal(
             $email,
             $role,
-            hash('sha256', implode('|', [$this->issuer, $subject, $this->clientId, $role, $firstName, $lastName])),
+            hash('sha256', implode('|', [$this->issuer, $subject, $this->clientId, $role, $firstName, $lastName, $displayName])),
             $firstName,
             $lastName,
             'jumpcloud',
+            $displayName,
         );
     }
 
@@ -395,6 +401,11 @@ final class JumpCloudOidcProvider
     private function validName(string $name): bool
     {
         return preg_match("/^[\\p{L}\\p{M}][\\p{L}\\p{M} .'\\x{2019}-]{0,48}$/u", $name) === 1;
+    }
+
+    private function validDisplayName(string $name): bool
+    {
+        return preg_match("/^[\\p{L}\\p{M}][\\p{L}\\p{M} .'\\x{2019}-]{0,98}$/u", $name) === 1;
     }
 
     private static function base64UrlEncode(string $value): string

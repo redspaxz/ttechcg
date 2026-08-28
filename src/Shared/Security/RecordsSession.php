@@ -23,6 +23,7 @@ final class RecordsSession
             'role' => $principal->role,
             'first_name' => $principal->firstName,
             'last_name' => $principal->lastName,
+            'display_name' => $principal->displayName,
             'identity_provider' => $principal->identityProvider,
             'issued_at' => $now,
             'last_seen_at' => $now,
@@ -55,18 +56,20 @@ final class RecordsSession
             $role = is_string($identity['role'] ?? null) ? $identity['role'] : '';
             $firstName = is_string($identity['first_name'] ?? null) ? $identity['first_name'] : '';
             $lastName = is_string($identity['last_name'] ?? null) ? $identity['last_name'] : '';
+            $displayName = is_string($identity['display_name'] ?? null) ? $identity['display_name'] : '';
             if (!RecordsPrincipal::isValidRole($role)
                 || filter_var($username, FILTER_VALIDATE_EMAIL) === false
                 || strlen($username) > 100
                 || preg_match('/^[a-f0-9]{64}$/', $version) !== 1
                 || !$this->validName($firstName)
-                || !$this->validName($lastName)) {
+                || !$this->validName($lastName)
+                || !$this->validDisplayName($displayName)) {
                 $this->forget();
                 return null;
             }
 
             $_SESSION[self::SESSION_KEY]['last_seen_at'] = $now;
-            return new RecordsPrincipal($username, $role, $version, $firstName, $lastName, 'jumpcloud');
+            return new RecordsPrincipal($username, $role, $version, $firstName, $lastName, 'jumpcloud', $displayName);
         }
         if ($identityProvider !== 'local') {
             $this->forget();
@@ -99,5 +102,10 @@ final class RecordsSession
     private function validName(string $name): bool
     {
         return preg_match("/^[\\p{L}\\p{M}][\\p{L}\\p{M} .'\\x{2019}-]{0,48}$/u", $name) === 1;
+    }
+
+    private function validDisplayName(string $name): bool
+    {
+        return preg_match("/^[\\p{L}\\p{M}][\\p{L}\\p{M} .'\\x{2019}-]{0,98}$/u", $name) === 1;
     }
 }

@@ -20,6 +20,7 @@ final class RecordsPrincipal
         public readonly string $firstName = '',
         public readonly string $lastName = '',
         public readonly string $identityProvider = 'local',
+        public readonly string $displayName = '',
     ) {
     }
 
@@ -35,6 +36,11 @@ final class RecordsPrincipal
 
     public function fullName(): string
     {
+        $displayName = trim($this->displayName);
+        if ($displayName !== '') {
+            return $displayName;
+        }
+
         $name = trim($this->firstName . ' ' . $this->lastName);
         if ($name !== '') {
             return $name;

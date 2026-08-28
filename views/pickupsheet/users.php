@@ -6,9 +6,9 @@ $e = static fn (mixed $value): string => htmlspecialchars((string) $value, ENT_Q
 $accounts = is_array($accounts ?? null) ? $accounts : [];
 $errors = is_array($errors ?? null) ? $errors : [];
 $old = is_array($old ?? null) ? $old : [];
-$jumpCloudEnabled = (bool) ($config['jumpcloud_oidc_configured'] ?? false);
-$jumpCloudGroups = is_array($config['jumpcloud_role_groups'] ?? null) ? $config['jumpcloud_role_groups'] : [];
 $jumpCloudIdentity = ($recordsIdentityProvider ?? 'local') === 'jumpcloud';
+$jumpCloudEnabled = (bool) ($config['jumpcloud_oidc_configured'] ?? false) || $jumpCloudIdentity;
+$jumpCloudGroups = is_array($config['jumpcloud_role_groups'] ?? null) ? $config['jumpcloud_role_groups'] : [];
 ?>
 <section class="pickup-view-workspace">
     <div class="container pickup-workspace-header">
@@ -27,7 +27,7 @@ $jumpCloudIdentity = ($recordsIdentityProvider ?? 'local') === 'jumpcloud';
             <div>
                 <p class="eyebrow eyebrow-red">Administrator access</p>
                 <h1>Manage users</h1>
-                <p><?= $jumpCloudEnabled ? 'JumpCloud group membership controls SSO roles. Local accounts remain available below.' : 'Create users, reset account passwords, and control the Pickupsheet access hierarchy.' ?></p>
+                <p><?= $jumpCloudEnabled ? 'JumpCloud is the identity source. Names, account status, passwords, and Pickupsheet roles are read from the authenticated JumpCloud profile and group membership.' : 'Create users, reset account passwords, and control the Pickupsheet access hierarchy.' ?></p>
             </div>
         </header>
 
@@ -38,9 +38,9 @@ $jumpCloudIdentity = ($recordsIdentityProvider ?? 'local') === 'jumpcloud';
             <div class="notice notice-error" role="alert"><?php foreach ($errors as $error): ?><span><?= $e($error) ?></span><?php endforeach; ?></div>
         <?php endif; ?>
 
-        <?php if ($jumpCloudIdentity): ?>
+        <?php if ($jumpCloudEnabled): ?>
             <section class="pickup-form records-idp-managed">
-                <div><span>JumpCloud identity</span><h2>Password and access managed centrally</h2><p>Your password, MFA policy, account status, and Pickupsheet role are controlled in JumpCloud. Change them from the JumpCloud administrator portal.</p></div>
+                <div><span>JumpCloud identity</span><h2>Password and access managed centrally</h2><p>Your displayed account name comes directly from JumpCloud. Password, MFA policy, account status, and group-based Pickupsheet role changes must be made in the JumpCloud administrator portal.</p></div>
             </section>
         <?php else: ?>
             <form class="pickup-form records-admin-password" method="post" action="<?= $e($basePath) ?>/dhl/pickupsheet/submissions/users/admin-password">
@@ -53,7 +53,7 @@ $jumpCloudIdentity = ($recordsIdentityProvider ?? 'local') === 'jumpcloud';
             </form>
         <?php endif; ?>
 
-        <div class="records-users-layout">
+        <div class="records-users-layout<?= $jumpCloudEnabled ? ' records-users-layout-central' : '' ?>">
             <aside class="records-role-guide">
                 <span>Access hierarchy</span>
                 <ol>
@@ -63,6 +63,7 @@ $jumpCloudIdentity = ($recordsIdentityProvider ?? 'local') === 'jumpcloud';
                 </ol>
             </aside>
 
+            <?php if (!$jumpCloudEnabled): ?>
             <form class="pickup-form records-user-create" method="post" action="<?= $e($basePath) ?>/dhl/pickupsheet/submissions/users">
                 <input type="hidden" name="_token" value="<?= $e($csrfToken) ?>">
                 <fieldset>
@@ -77,8 +78,10 @@ $jumpCloudIdentity = ($recordsIdentityProvider ?? 'local') === 'jumpcloud';
                     <button class="button button-dark" type="submit">Create account</button>
                 </fieldset>
             </form>
+            <?php endif; ?>
         </div>
 
+        <?php if (!$jumpCloudEnabled): ?>
         <section class="records-user-list" aria-labelledby="managed-accounts-title">
             <div class="records-user-list-heading">
                 <div><span>Managed accounts</span><h2 id="managed-accounts-title">Local operators and viewers</h2></div>
@@ -108,5 +111,6 @@ $jumpCloudIdentity = ($recordsIdentityProvider ?? 'local') === 'jumpcloud';
                 </form>
             <?php endforeach; ?>
         </section>
+        <?php endif; ?>
     </div>
 </section>

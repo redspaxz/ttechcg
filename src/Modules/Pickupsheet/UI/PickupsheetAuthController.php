@@ -44,6 +44,10 @@ final class PickupsheetAuthController
         $username = $_SESSION['_pickup_login_username'] ?? '';
         unset($_SESSION['_pickup_login_error'], $_SESSION['_pickup_login_flash'], $_SESSION['_pickup_login_username']);
 
+        if ($this->jumpCloudConfigured() && !is_string($error) && !is_string($flash)) {
+            return $this->jumpCloudStart($request);
+        }
+
         $body = $this->view->render('pickupsheet/login', [
             'pageTitle' => 'Pickupsheet login',
             'pageDescription' => 'Sign in to the secure Pickupsheet workspace.',
@@ -64,6 +68,11 @@ final class PickupsheetAuthController
 
     public function authenticate(Request $request): Response
     {
+        if ($this->jumpCloudConfigured()) {
+            $this->securityLogger->event('pickupsheet.local_login', $request, 'disabled');
+            return Response::redirect($request->basePath . '/dhl/pickupsheet/auth/jumpcloud');
+        }
+
         if (!$this->csrf->validate($request->input('_token'))) {
             $this->securityLogger->event('pickupsheet.login_csrf', $request, 'denied');
             return Response::html('Invalid or expired form token.', 419, $this->privateHeaders());
