@@ -323,7 +323,7 @@ $assert($adminPrincipal?->role === 'admin' && $adminPrincipal->can('manage') && 
 $assert($adminPrincipal?->fullName() === 'Records Administrator', 'Authenticated principals should expose the account first and last name.');
 $assert($adminPrincipal?->can('edit') === true && $adminPrincipal->can('mark_paid') === true && $adminPrincipal->can('delete') === true, 'An administrator should edit, mark paid, and delete pickup records.');
 $assert($viewerPrincipal?->can('create') === true && $viewerPrincipal->can('list') === true && $viewerPrincipal->can('edit') === false && $viewerPrincipal->can('print') === false, 'A viewer should create and view records but cannot edit, print, or export them.');
-$assert($operatorPrincipal?->can('create') === true && $operatorPrincipal->can('list') === true && $operatorPrincipal->can('edit') === false && $operatorPrincipal->can('mark_paid') === false && $operatorPrincipal->can('delete') === false && $operatorPrincipal->can('print') === false && $operatorPrincipal->can('export') === false, 'An operator should only create and view records.');
+$assert($operatorPrincipal?->can('create') === true && $operatorPrincipal->can('list') === true && $operatorPrincipal->can('edit') === false && $operatorPrincipal->can('mark_paid') === false && $operatorPrincipal->can('delete') === false && $operatorPrincipal->can('print') === true && $operatorPrincipal->can('export') === true, 'An operator should create, view, print, and export records without edit, status, or delete access.');
 $assert($recordsAccess->authenticate(new Request('GET', '/protected', [], [], '', [
     'PHP_AUTH_USER' => $viewerUsername,
     'PHP_AUTH_PW' => 'incorrect-password',
@@ -808,11 +808,11 @@ $operatorPrint = $pickupController->print(new Request('GET', '/dhl/pickupsheet/s
 $operatorExport = $pickupController->export(new Request('GET', '/dhl/pickupsheet/submissions/export', ['reference' => $savedReference], [], '', $operatorServer));
 $operatorSubmissions = $pickupController->submissions(new Request('GET', '/dhl/pickupsheet/submissions', [], [], '', $operatorServer));
 $assert($operatorCreate->status() === 200 && $operatorSubmissions->status() === 200, 'An operator should be able to enter and view pickup records.');
-$assert($operatorPrint->status() === 403 && $operatorExport->status() === 403, 'An operator must not print or export pickup sheets.');
+$assert($operatorPrint->status() === 200 && $operatorExport->status() === 200, 'An operator should print pickup-sheet PDFs and export Excel files.');
 $assert(!str_contains($operatorSubmissions->body(), 'Manage access'), 'An operator should not be shown administrator account controls.');
 $assert(!str_contains($operatorSubmissions->body(), 'Edit record'), 'An operator should not receive record-edit actions.');
 $assert(!str_contains($operatorSubmissions->body(), 'Mark paid'), 'An operator should not receive the paid-status action.');
-$assert(!str_contains($operatorSubmissions->body(), 'Print / PDF') && !str_contains($operatorSubmissions->body(), 'Export Excel'), 'An operator should not be shown print or export actions.');
+$assert(str_contains($operatorSubmissions->body(), 'Print / PDF') && str_contains($operatorSubmissions->body(), 'Export Excel'), 'An operator should be shown print and export actions.');
 $assert(!str_contains($operatorSubmissions->body(), 'data-pickup-delete'), 'An operator should not receive the administrator delete action.');
 $operatorEdit = $pickupController->edit(new Request('GET', '/dhl/pickupsheet/submissions/edit', ['reference' => $savedReference]));
 $assert($operatorEdit->status() === 403, 'An operator must not open the audited record editor.');
@@ -929,7 +929,7 @@ $assert($managedPrincipal?->role === 'operator' && $managedPrincipal->fullName()
 $recordsSession->login($managedPrincipal);
 $managedSubmissions = $pickupController->submissions(new Request('GET', '/dhl/pickupsheet/submissions'));
 $managedExport = $pickupController->export(new Request('GET', '/dhl/pickupsheet/submissions/export', ['reference' => $savedReference]));
-$assert($managedSubmissions->status() === 200 && $managedExport->status() === 403, 'A newly created operator should authenticate and view records without export access.');
+$assert($managedSubmissions->status() === 200 && $managedExport->status() === 200, 'A newly created operator should authenticate, view records, and export Excel files.');
 
 $recordsSession->login($adminPrincipal);
 $promoteManagedAdmin = $pickupController->updateUser(new Request('POST', '/dhl/pickupsheet/submissions/users/update', [], [
@@ -1250,7 +1250,8 @@ $assert(str_contains($privacy, 'checker identity associated with the authenticat
 $assert(str_contains($privacy, 'first name, last name, email address or username'), 'The privacy notice should disclose stored account identity fields.');
 $assert(str_contains($privacy, 'records the collection time automatically'), 'The privacy notice should explain the server-generated collection time.');
 $assert(str_contains($privacy, 'Every Pickupsheet screen requires an authorised staff login'), 'The privacy notice should disclose portal authentication.');
-$assert(str_contains($privacy, 'Only administrators can edit records, change an open sheet to paid, print, export'), 'The privacy notice should disclose the administrator-only record actions.');
+$assert(str_contains($privacy, 'operators and administrators can print PDFs and export Excel files'), 'The privacy notice should disclose operator print and export access.');
+$assert(str_contains($privacy, 'Only administrators can edit records, change an open sheet to paid'), 'The privacy notice should disclose the administrator-only record actions.');
 $assert(str_contains($privacy, 'audited soft deletion'), 'The privacy notice should disclose administrator-only soft deletion.');
 $assert(str_contains($privacy, 'inquiry and pickup-sheet forms require an explicit, unchecked opt-in'), 'Both personal-data forms should require explicit consent.');
 $assert(str_contains($privacy, 'T&amp;Tech Consulting Group'), 'The privacy notice should identify the data controller.');
