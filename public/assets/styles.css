@@ -1918,7 +1918,11 @@ button, a, input, select, textarea { -webkit-tap-highlight-color: transparent; }
     background: var(--dhl-yellow);
     color: #241b00;
 }
-.pickup-submissions-shell { padding-top: 54px; }
+.pickup-submissions-shell {
+    width: min(1120px, calc(100% - 64px));
+    margin-inline: auto;
+    padding-top: 54px;
+}
 .pickup-submissions-heading h1 {
     margin: 0;
     color: #241b00;
@@ -1930,11 +1934,13 @@ button, a, input, select, textarea { -webkit-tap-highlight-color: transparent; }
 .pickup-submissions-heading {
     display: flex;
     align-items: end;
-    justify-content: space-between;
+    justify-content: center;
     gap: 40px;
     margin-bottom: 34px;
+    text-align: center;
 }
-.pickup-submissions-heading > div > p:last-child { max-width: 680px; margin: 20px 0 0; color: #655000; line-height: 1.65; }
+.pickup-submissions-heading > div { width: 100%; }
+.pickup-submissions-heading > div > p:last-child { max-width: 680px; margin: 20px auto 0; color: #655000; line-height: 1.65; }
 .pickup-view-summary {
     display: grid;
     grid-template-columns: repeat(2, minmax(0, 1fr));
@@ -1947,7 +1953,7 @@ button, a, input, select, textarea { -webkit-tap-highlight-color: transparent; }
 .pickup-view-summary span,
 .pickup-record-overview small { color: #655000; font-size: 0.62rem; font-weight: 800; letter-spacing: 0.07em; text-transform: uppercase; }
 .pickup-view-summary strong { font-size: clamp(1.25rem, 3vw, 2rem); }
-.pickup-record-list { display: grid; gap: 14px; }
+.pickup-record-list { display: grid; width: 100%; min-width: 0; gap: 14px; margin-inline: auto; }
 .pickup-empty-state { padding: 42px; border: 1px solid rgba(69, 50, 0, 0.3); background: #fff; text-align: center; }
 .pickup-empty-state h2 { margin: 0 0 8px; }
 .pickup-empty-state p { margin: 0; color: #655000; }
@@ -2016,7 +2022,8 @@ button, a, input, select, textarea { -webkit-tap-highlight-color: transparent; }
 .pickup-record-table tfoot th { background: #fffdf5; }
 .pickup-record-table tr > *:last-child { border-right: 0; }
 .pickup-record-table tfoot tr:last-child > * { border-bottom: 0; }
-.pickup-records-frame { position: relative; min-height: 180px; }
+.pickup-records-frame { position: relative; width: 100%; min-width: 0; min-height: 180px; margin-inline: auto; }
+.pickup-records-frame > [data-pickup-records-content] { min-width: 0; }
 .pickup-records-loading {
     position: absolute;
     inset: 0;
@@ -2079,7 +2086,7 @@ button, a, input, select, textarea { -webkit-tap-highlight-color: transparent; }
 
 @media (max-width: 700px) {
     .pickup-view-workspace { padding: 22px 0 64px; }
-    .pickup-submissions-shell { padding-top: 38px; }
+    .pickup-submissions-shell { width: min(1120px, calc(100% - 28px)); padding-top: 38px; }
     .pickup-submissions-heading { align-items: flex-start; flex-direction: column; gap: 20px; }
     .pickup-view-summary { grid-template-columns: 1fr; }
     .pickup-view-summary > div:first-child { border-right: 0; border-bottom: 1px solid rgba(69, 50, 0, 0.3); }

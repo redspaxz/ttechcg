@@ -1084,7 +1084,7 @@ $assert(is_string($dhlAsset) && !str_contains($dhlAsset, '<text'), 'The disquali
 $partnerSources = file_get_contents(dirname(__DIR__) . '/public/assets/partners/README.md');
 $assert(is_string($partnerSources) && str_contains($partnerSources, 'www.dhl.com/content/dam/dhl/global/core/images/logos/dhl-logo.svg'), 'The official DHL artwork source should be documented.');
 $assert(!str_contains($home, 'href="/dhl/pickupsheet"'), 'Pickupsheet should not be discoverable from the public site chrome or homepage.');
-$assert(str_contains($home, 'styles.css?v=20260827-jumpcloud-rbac'), 'The JumpCloud RBAC update should use a cache-safe stylesheet version.');
+$assert(str_contains($home, 'styles.css?v=20260828-submissions-centered'), 'The submitted-sheets centering update should use a cache-safe stylesheet version.');
 $assert(str_contains($home, 'app.js?v=20260827-jumpcloud-rbac'), 'The JumpCloud RBAC update should use a cache-safe application script version.');
 $assert(str_contains($home, 'analytics.js?v=20260825-security-hardening'), 'The current consent-aware Google Analytics loader should render on every page.');
 $assert(str_contains($home, 'data-analytics-accept'), 'The site should offer an explicit analytics acceptance control.');
@@ -1251,6 +1251,8 @@ $assert(is_string($styles) && str_contains($styles, '--navy: #0b0b0c;'), 'T&Tech
 $assert(is_string($styles) && str_contains($styles, '--copper: #d40511;'), 'T&Tech red should be the corporate accent.');
 $assert(is_string($styles) && str_contains($styles, '--paper: #ffffff;'), 'T&Tech white should be the corporate canvas.');
 $assert(is_string($styles) && str_contains($styles, '--dhl-yellow: #ffcc00;'), 'Pickupsheet should retain the DHL-yellow treatment.');
+$assert(is_string($styles) && str_contains($styles, 'width: min(1120px, calc(100% - 64px));'), 'Submitted sheets should use an explicitly centered desktop content frame.');
+$assert(is_string($styles) && str_contains($styles, 'margin: 20px auto 0;'), 'The Submitted sheets introduction should remain centered within its frame.');
 $assert(is_string($styles) && str_contains($styles, '--container: 1180px;'), 'The minimal layout should use the restrained content width.');
 $assert(is_string($styles) && str_contains($styles, '.signal-orbit { display: none; }'), 'Decorative hero orbits should remain removed.');
 $assert(is_string($styles) && str_contains($styles, '--paper: #0b0b0c;'), 'The corporate canvas should use the inverted black background.');
