@@ -409,13 +409,11 @@ final class PickupsheetController
         unset($_SESSION['_records_users_flash'], $_SESSION['_records_users_errors'], $_SESSION['_records_users_old']);
 
         $accounts = [];
-        if (!$this->jumpCloudConfigured()) {
-            try {
-                $accounts = $this->recordsUserService->accounts($authorization);
-            } catch (RuntimeException $exception) {
-                error_log($exception->__toString());
-                $errors = ['Account storage could not be initialized. Confirm that the MySQL user can create tables, or apply migration 005 in phpMyAdmin.'];
-            }
+        try {
+            $accounts = $this->recordsUserService->accounts($authorization);
+        } catch (RuntimeException $exception) {
+            error_log($exception->__toString());
+            $errors = ['Account storage could not be initialized. Confirm that the MySQL user can create tables, or apply migration 005 in phpMyAdmin.'];
         }
 
         $body = $this->view->render('pickupsheet/users', [
@@ -444,11 +442,6 @@ final class PickupsheetController
         $authorization = $this->authorizeRecords($request, 'manage');
         if ($authorization instanceof Response) {
             return $authorization;
-        }
-
-        $centralAccess = $this->jumpCloudAccountWriteGuard($request, 'pickupsheet.records_user_create');
-        if ($centralAccess !== null) {
-            return $centralAccess;
         }
 
         $writeDenied = $this->recordsUserWriteGuard($request);
@@ -499,11 +492,6 @@ final class PickupsheetController
             return $authorization;
         }
 
-        $centralAccess = $this->jumpCloudAccountWriteGuard($request, 'pickupsheet.records_user_update');
-        if ($centralAccess !== null) {
-            return $centralAccess;
-        }
-
         $writeDenied = $this->recordsUserWriteGuard($request);
         if ($writeDenied !== null) {
             return $writeDenied;
@@ -545,11 +533,6 @@ final class PickupsheetController
         $authorization = $this->authorizeRecords($request, 'manage');
         if ($authorization instanceof Response) {
             return $authorization;
-        }
-
-        $centralAccess = $this->jumpCloudAccountWriteGuard($request, 'pickupsheet.admin_password_reset');
-        if ($centralAccess !== null) {
-            return $centralAccess;
         }
 
         if ($authorization->identityProvider !== 'local') {
@@ -775,22 +758,6 @@ final class PickupsheetController
         }
 
         return null;
-    }
-
-    private function jumpCloudAccountWriteGuard(Request $request, string $event): ?Response
-    {
-        if (!$this->jumpCloudConfigured()) {
-            return null;
-        }
-
-        $_SESSION['_records_users_errors'] = ['User names, passwords, account status, and Pickupsheet roles are managed in JumpCloud.'];
-        $this->securityLogger->event($event, $request, 'disabled', ['identity_provider' => 'jumpcloud']);
-        return Response::redirect($request->basePath . '/dhl/pickupsheet/submissions/users');
-    }
-
-    private function jumpCloudConfigured(): bool
-    {
-        return (bool) ($this->config['jumpcloud_oidc_configured'] ?? false);
     }
 
     private function pickupLifecycleWriteGuard(Request $request, string $action): ?Response

@@ -27,7 +27,7 @@ $jumpCloudGroups = is_array($config['jumpcloud_role_groups'] ?? null) ? $config[
             <div>
                 <p class="eyebrow eyebrow-red">Administrator access</p>
                 <h1>Manage users</h1>
-                <p><?= $jumpCloudEnabled ? 'JumpCloud is the identity source. Names, account status, passwords, and Pickupsheet roles are read from the authenticated JumpCloud profile and group membership.' : 'Create users, reset account passwords, and control the Pickupsheet access hierarchy.' ?></p>
+                <p><?= $jumpCloudEnabled ? 'JumpCloud group membership controls SSO roles. Local accounts can also be created and managed below.' : 'Create users, reset account passwords, and control the Pickupsheet access hierarchy.' ?></p>
             </div>
         </header>
 
@@ -38,7 +38,7 @@ $jumpCloudGroups = is_array($config['jumpcloud_role_groups'] ?? null) ? $config[
             <div class="notice notice-error" role="alert"><?php foreach ($errors as $error): ?><span><?= $e($error) ?></span><?php endforeach; ?></div>
         <?php endif; ?>
 
-        <?php if ($jumpCloudEnabled): ?>
+        <?php if ($jumpCloudIdentity): ?>
             <section class="pickup-form records-idp-managed">
                 <div><span>JumpCloud identity</span><h2>Password and access managed centrally</h2><p>Your displayed account name comes directly from JumpCloud. Password, MFA policy, account status, and group-based Pickupsheet role changes must be made in the JumpCloud administrator portal.</p></div>
             </section>
@@ -53,7 +53,7 @@ $jumpCloudGroups = is_array($config['jumpcloud_role_groups'] ?? null) ? $config[
             </form>
         <?php endif; ?>
 
-        <div class="records-users-layout<?= $jumpCloudEnabled ? ' records-users-layout-central' : '' ?>">
+        <div class="records-users-layout">
             <aside class="records-role-guide">
                 <span>Access hierarchy</span>
                 <ol>
@@ -63,7 +63,6 @@ $jumpCloudGroups = is_array($config['jumpcloud_role_groups'] ?? null) ? $config[
                 </ol>
             </aside>
 
-            <?php if (!$jumpCloudEnabled): ?>
             <form class="pickup-form records-user-create" method="post" action="<?= $e($basePath) ?>/dhl/pickupsheet/submissions/users">
                 <input type="hidden" name="_token" value="<?= $e($csrfToken) ?>">
                 <fieldset>
@@ -78,10 +77,8 @@ $jumpCloudGroups = is_array($config['jumpcloud_role_groups'] ?? null) ? $config[
                     <button class="button button-dark" type="submit">Create account</button>
                 </fieldset>
             </form>
-            <?php endif; ?>
         </div>
 
-        <?php if (!$jumpCloudEnabled): ?>
         <section class="records-user-list" aria-labelledby="managed-accounts-title">
             <div class="records-user-list-heading">
                 <div><span>Managed accounts</span><h2 id="managed-accounts-title">Local operators and viewers</h2></div>
@@ -111,6 +108,5 @@ $jumpCloudGroups = is_array($config['jumpcloud_role_groups'] ?? null) ? $config[
                 </form>
             <?php endforeach; ?>
         </section>
-        <?php endif; ?>
     </div>
 </section>
