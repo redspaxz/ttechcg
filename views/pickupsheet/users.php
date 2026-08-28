@@ -6,7 +6,8 @@ $e = static fn (mixed $value): string => htmlspecialchars((string) $value, ENT_Q
 $accounts = is_array($accounts ?? null) ? $accounts : [];
 $errors = is_array($errors ?? null) ? $errors : [];
 $old = is_array($old ?? null) ? $old : [];
-$jumpCloudIdentity = ($recordsIdentityProvider ?? 'local') === 'jumpcloud';
+$cloudflareIdentity = ($recordsIdentityProvider ?? 'local') === 'cloudflare_access';
+$jumpCloudIdentity = ($recordsIdentityProvider ?? 'local') === 'jumpcloud' || $cloudflareIdentity;
 $jumpCloudEnabled = (bool) ($config['jumpcloud_oidc_configured'] ?? false) || $jumpCloudIdentity;
 $jumpCloudGroups = is_array($config['jumpcloud_role_groups'] ?? null) ? $config['jumpcloud_role_groups'] : [];
 ?>
@@ -40,7 +41,7 @@ $jumpCloudGroups = is_array($config['jumpcloud_role_groups'] ?? null) ? $config[
 
         <?php if ($jumpCloudIdentity): ?>
             <section class="pickup-form records-idp-managed">
-                <div><span>JumpCloud identity</span><h2>Password and access managed centrally</h2><p>Your displayed account name comes directly from JumpCloud. Password, MFA policy, account status, and group-based Pickupsheet role changes must be made in the JumpCloud administrator portal.</p></div>
+                <div><span><?= $cloudflareIdentity ? 'JumpCloud via Cloudflare Access' : 'JumpCloud identity' ?></span><h2>Password and access managed centrally</h2><p>Your displayed account name comes directly from JumpCloud. Password, MFA policy, account status, and group-based Pickupsheet role changes must be made in the JumpCloud administrator portal.</p></div>
             </section>
         <?php else: ?>
             <form class="pickup-form records-admin-password" method="post" action="<?= $e($basePath) ?>/dhl/pickupsheet/submissions/users/admin-password">

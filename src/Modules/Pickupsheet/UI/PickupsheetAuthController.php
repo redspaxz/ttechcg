@@ -6,6 +6,7 @@ namespace App\Modules\Pickupsheet\UI;
 
 use App\Shared\Http\Request;
 use App\Shared\Http\Response;
+use App\Shared\Security\CloudflareAccessProvider;
 use App\Shared\Security\Csrf;
 use App\Shared\Security\JumpCloudOidcProvider;
 use App\Shared\Security\RateLimiter;
@@ -29,6 +30,7 @@ final class PickupsheetAuthController
         private readonly SecurityLogger $securityLogger,
         private readonly array $config,
         private readonly ?JumpCloudOidcProvider $jumpCloud = null,
+        private readonly ?CloudflareAccessProvider $cloudflareAccess = null,
     ) {
     }
 
@@ -37,6 +39,40 @@ final class PickupsheetAuthController
         $principal = $this->recordsSession->principal($this->recordsAccess);
         if ($principal !== null) {
             return Response::redirect($this->destination($request, $principal));
+        }
+
+        $accessToken = $request->header('Cf-Access-Jwt-Assertion');
+        if ($request->queryString('local') !== '1' && $accessToken !== '' && $this->cloudflareAccessConfigured()) {
+            try {
+                $retryAfter = $this->rateLimiter->consume('pickup-cloudflare-access', $request->clientIdentifier(), 20, 900);
+            } catch (RuntimeException $exception) {
+                error_log($exception->__toString());
+                return Response::html('Login is temporarily unavailable. Please try again later.', 503, $this->privateHeaders());
+            }
+            if ($retryAfter > 0) {
+                $this->securityLogger->event('pickupsheet.cloudflare_access', $request, 'rate_limited', ['retry_after' => $retryAfter]);
+                return Response::html('Too many login attempts. Please try again later.', 429, array_merge($this->privateHeaders(), [
+                    'Retry-After' => (string) $retryAfter,
+                ]));
+            }
+
+            try {
+                $principal = $this->cloudflareAccess?->authenticate($accessToken);
+            } catch (Throwable $exception) {
+                error_log('Pickupsheet Cloudflare Access handoff failed: ' . $exception->getMessage());
+                $_SESSION['_pickup_login_error'] = 'Cloudflare Access could not verify this account or its Pickupsheet role.';
+                $this->securityLogger->event('pickupsheet.cloudflare_access', $request, 'denied');
+            }
+
+            if ($principal instanceof RecordsPrincipal) {
+                $this->recordsSession->login($principal);
+                $this->securityLogger->event('pickupsheet.cloudflare_access', $request, 'accepted', [
+                    'actor_id' => substr(hash('sha256', $principal->username), 0, 24),
+                    'role' => $principal->role,
+                    'identity_provider' => 'cloudflare_access',
+                ]);
+                return Response::redirect($this->destination($request, $principal));
+            }
         }
 
         $error = $_SESSION['_pickup_login_error'] ?? null;
@@ -190,6 +226,7 @@ final class PickupsheetAuthController
         }
 
         $principal = $this->recordsSession->principal($this->recordsAccess);
+        $cloudflareIdentity = $principal?->identityProvider === 'cloudflare_access';
         if ($principal !== null) {
             $this->securityLogger->event('pickupsheet.logout', $request, 'accepted', [
                 'actor_id' => substr(hash('sha256', $principal->username), 0, 24),
@@ -197,6 +234,9 @@ final class PickupsheetAuthController
             ]);
         }
         $this->recordsSession->logout();
+        if ($cloudflareIdentity) {
+            return Response::redirect('/cdn-cgi/access/logout', 302);
+        }
         return Response::redirect($request->basePath . '/dhl/pickupsheet/login');
     }
 
@@ -223,6 +263,11 @@ final class PickupsheetAuthController
     private function jumpCloudConfigured(): bool
     {
         return $this->jumpCloud?->isConfigured() === true;
+    }
+
+    private function cloudflareAccessConfigured(): bool
+    {
+        return $this->cloudflareAccess?->isConfigured() === true;
     }
 
 }

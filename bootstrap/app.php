@@ -26,6 +26,7 @@ use App\Shared\Infrastructure\MigrationRunner;
 use App\Shared\Infrastructure\MysqlRecordsUserRepository;
 use App\Shared\Infrastructure\UnavailableRecordsUserRepository;
 use App\Shared\Security\Captcha;
+use App\Shared\Security\CloudflareAccessProvider;
 use App\Shared\Security\Csrf;
 use App\Shared\Security\JumpCloudOidcProvider;
 use App\Shared\Security\RateLimiter;
@@ -101,8 +102,10 @@ $securityLogger = new SecurityLogger();
 $recordsAccess = RecordsAccess::fromEnvironment($recordsUserRepository);
 $recordsSession = new RecordsSession();
 $jumpCloud = JumpCloudOidcProvider::fromEnvironment();
+$cloudflareAccess = CloudflareAccessProvider::fromEnvironment();
 $config['jumpcloud_oidc_configured'] = $jumpCloud->isConfigured();
 $config['jumpcloud_role_groups'] = $jumpCloud->roleGroups();
+$config['cloudflare_access_configured'] = $cloudflareAccess->isConfigured();
 $recordsUserService = new RecordsUserService($recordsUserRepository, $recordsAccess->environmentUsernames());
 $contactCaptcha = new Captcha('contact');
 $pickupCaptcha = new Captcha('pickupsheet');
@@ -127,6 +130,7 @@ $pickupsheetAuthController = new PickupsheetAuthController(
     $securityLogger,
     $config,
     $jumpCloud,
+    $cloudflareAccess,
 );
 $pickupsheetController = new PickupsheetController(
     new PickupSheetService($pickupSheetRepository),

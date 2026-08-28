@@ -17,6 +17,7 @@ use App\Modules\Site\UI\SiteController;
 use App\Shared\Http\Request;
 use App\Shared\Infrastructure\DemoRecordsUserRepository;
 use App\Shared\Security\Captcha;
+use App\Shared\Security\CloudflareAccessProvider;
 use App\Shared\Security\Csrf;
 use App\Shared\Security\JumpCloudOidcProvider;
 use App\Shared\Security\OidcHttpClient;
@@ -492,6 +493,116 @@ try {
 $assert($oidcReplayRejected, 'A JumpCloud authorization transaction should be single-use.');
 $recordsSession->logout();
 
+$cloudflareHttpClient = new class implements OidcHttpClient {
+    /** @var array<string, mixed> */
+    public array $certificates = [];
+    /** @var array<string, mixed> */
+    public array $identity = [];
+
+    public function postForm(string $url, array $fields, array $headers = []): array
+    {
+        return [];
+    }
+
+    public function getJson(string $url, array $headers = []): array
+    {
+        return str_ends_with($url, '/cdn-cgi/access/certs') ? $this->certificates : $this->identity;
+    }
+};
+$cloudflareSettings = [
+    'enabled' => true,
+    'team_domain' => 'https://ttechcg.cloudflareaccess.com',
+    'audience' => 'pickupsheet-cloudflare-audience',
+    'groups_claim' => 'groups',
+    'admin_group' => 'Pickupsheet Admins',
+    'operator_group' => 'Pickupsheet Operators',
+    'viewer_group' => 'Pickupsheet Viewers',
+];
+$cloudflareProvider = new CloudflareAccessProvider($cloudflareSettings, $cloudflareHttpClient);
+$assert($cloudflareProvider->isConfigured(), 'A complete Cloudflare Access handoff configuration should be enabled.');
+$assert(!(new CloudflareAccessProvider(array_merge($cloudflareSettings, ['team_domain' => 'https://attacker.example']), $cloudflareHttpClient))->isConfigured(), 'Cloudflare Access should reject untrusted certificate and identity hosts.');
+$cloudflareHttpClient->certificates = ['public_certs' => [[
+    'kid' => 'cloudflare-access-test-key',
+    'cert' => (string) ($oidcKeyDetails['key'] ?? ''),
+]]];
+$cloudflareHttpClient->identity = [
+    'email' => 'administrator@example.com',
+    'name' => 'Ada N. Administrator',
+    'oidc_fields' => [
+        'given_name' => 'Ada',
+        'family_name' => 'Administrator',
+    ],
+    'groups' => [
+        ['id' => 'viewer-id', 'name' => 'Pickupsheet Viewers'],
+        ['id' => 'admin-id', 'name' => 'Pickupsheet Admins'],
+    ],
+    'service_token_status' => false,
+];
+$signCloudflareToken = static function (array $overrides = []) use ($oidcBase64Url, $oidcPrivateKey): string {
+    $header = $oidcBase64Url((string) json_encode(['alg' => 'RS256', 'kid' => 'cloudflare-access-test-key', 'typ' => 'JWT']));
+    $claims = $oidcBase64Url((string) json_encode(array_replace([
+        'iss' => 'https://ttechcg.cloudflareaccess.com',
+        'sub' => 'cloudflare-user-123',
+        'aud' => ['pickupsheet-cloudflare-audience'],
+        'iat' => time(),
+        'nbf' => time() - 1,
+        'exp' => time() + 600,
+        'type' => 'app',
+        'email' => 'administrator@example.com',
+    ], $overrides)));
+    $signingInput = $header . '.' . $claims;
+    $signature = '';
+    if ($oidcPrivateKey === false || !openssl_sign($signingInput, $signature, $oidcPrivateKey, OPENSSL_ALGO_SHA256)) {
+        throw new RuntimeException('Unable to sign the Cloudflare Access test token.');
+    }
+    return $signingInput . '.' . $oidcBase64Url($signature);
+};
+$validCloudflareToken = $signCloudflareToken();
+$cloudflarePrincipal = $cloudflareProvider->authenticate($validCloudflareToken);
+$assert($cloudflarePrincipal->role === 'admin' && $cloudflarePrincipal->identityProvider === 'cloudflare_access', 'Cloudflare Access should map the highest verified JumpCloud group to Pickupsheet RBAC.');
+$assert($cloudflarePrincipal->username === 'administrator@example.com' && $cloudflarePrincipal->fullName() === 'Ada N. Administrator', 'Cloudflare Access should retain the verified email and exact JumpCloud display name.');
+$recordsSession->login($cloudflarePrincipal);
+$resolvedCloudflarePrincipal = $recordsSession->principal(new RecordsAccess());
+$assert($resolvedCloudflarePrincipal?->identityProvider === 'cloudflare_access' && $resolvedCloudflarePrincipal->fullName() === 'Ada N. Administrator', 'A verified Cloudflare Access identity should remain valid in the protected first-party session.');
+$recordsSession->logout();
+$cloudflareWrongAudienceRejected = false;
+try {
+    $cloudflareProvider->authenticate($signCloudflareToken(['aud' => ['another-application']]));
+} catch (RuntimeException) {
+    $cloudflareWrongAudienceRejected = true;
+}
+$assert($cloudflareWrongAudienceRejected, 'Cloudflare Access must reject a token issued for another application audience.');
+$cloudflareTokenParts = explode('.', $validCloudflareToken);
+$cloudflareTokenParts[2] = (($cloudflareTokenParts[2][0] ?? '') === 'A' ? 'B' : 'A') . substr((string) ($cloudflareTokenParts[2] ?? ''), 1);
+$cloudflareBadSignatureRejected = false;
+try {
+    $cloudflareProvider->authenticate(implode('.', $cloudflareTokenParts));
+} catch (RuntimeException) {
+    $cloudflareBadSignatureRejected = true;
+}
+$assert($cloudflareBadSignatureRejected, 'Cloudflare Access must reject a token with a modified signature.');
+$cloudflareHttpClient->identity['email'] = 'different@example.com';
+$cloudflareMismatchedIdentityRejected = false;
+try {
+    $cloudflareProvider->authenticate($validCloudflareToken);
+} catch (RuntimeException) {
+    $cloudflareMismatchedIdentityRejected = true;
+}
+$assert($cloudflareMismatchedIdentityRejected, 'Cloudflare Access must reject an identity response that does not match the signed token email.');
+$cloudflareHttpClient->identity['email'] = 'administrator@example.com';
+$cloudflareHttpClient->identity['groups'] = [['name' => 'Unapproved Group']];
+$cloudflareUnmappedGroupRejected = false;
+try {
+    $cloudflareProvider->authenticate($validCloudflareToken);
+} catch (RuntimeException) {
+    $cloudflareUnmappedGroupRejected = true;
+}
+$assert($cloudflareUnmappedGroupRejected, 'Cloudflare Access must fail closed when the full identity has no approved Pickupsheet group.');
+$cloudflareHttpClient->identity['groups'] = [
+    ['id' => 'viewer-id', 'name' => 'Pickupsheet Viewers'],
+    ['id' => 'admin-id', 'name' => 'Pickupsheet Admins'],
+];
+
 $previousRbacUsers = getenv('PICKUPSHEET_RBAC_USERS');
 $previousLegacyUser = getenv('PICKUPSHEET_RECORDS_USER');
 $previousLegacyHash = getenv('PICKUPSHEET_RECORDS_PASSWORD_HASH');
@@ -605,6 +716,18 @@ $jumpCloudAuthController = new PickupsheetAuthController(
     $jumpCloudConfig,
     $oidcProvider,
 );
+$cloudflareConfig = array_merge($jumpCloudConfig, ['cloudflare_access_configured' => true]);
+$cloudflareAuthController = new PickupsheetAuthController(
+    $view,
+    $pickupCsrf,
+    $recordsAccess,
+    $recordsSession,
+    $disabledRateLimiter,
+    $disabledSecurityLogger,
+    $cloudflareConfig,
+    $oidcProvider,
+    $cloudflareProvider,
+);
 $jumpCloudPickupController = new PickupsheetController(
     new PickupSheetService(new DemoPickupSheetRepository()),
     $view,
@@ -658,6 +781,23 @@ $jumpCloudPasswordReset = $jumpCloudPickupController->resetAdminPassword(new Req
 ]));
 $assert($jumpCloudPasswordReset->status() === 303 && str_contains((string) ($_SESSION['_records_users_errors'][0] ?? ''), 'managed in JumpCloud'), 'Pickupsheet should reject local password rotation for a JumpCloud identity.');
 $recordsSession->logout();
+
+$cloudflareLogin = $cloudflareAuthController->login(new Request('GET', '/dhl/pickupsheet/login', [], [], '', [
+    'HTTP_CF_ACCESS_JWT_ASSERTION' => $validCloudflareToken,
+]));
+$assert($cloudflareLogin->status() === 303 && ($cloudflareLogin->headers()['Location'] ?? '') === '/dhl/pickupsheet/dashboard', 'An existing Cloudflare Access session should skip the Pickupsheet login page.');
+$cloudflareSessionPrincipal = $recordsSession->principal($recordsAccess);
+$assert($cloudflareSessionPrincipal?->identityProvider === 'cloudflare_access' && $cloudflareSessionPrincipal->fullName() === 'Ada N. Administrator', 'The automatic Cloudflare handoff should establish the exact JumpCloud-backed application identity.');
+$cloudflareUsersPage = $jumpCloudPickupController->users(new Request('GET', '/dhl/pickupsheet/submissions/users'));
+$assert($cloudflareUsersPage->status() === 200 && str_contains($cloudflareUsersPage->body(), 'JumpCloud via Cloudflare Access'), 'Cloudflare-authenticated administrators should see that their identity is managed through the central handoff.');
+$cloudflareLogout = $cloudflareAuthController->logout(new Request('POST', '/dhl/pickupsheet/logout', [], [
+    '_token' => $pickupCsrf->token(),
+]));
+$assert($cloudflareLogout->status() === 302 && ($cloudflareLogout->headers()['Location'] ?? '') === '/cdn-cgi/access/logout', 'Cloudflare-authenticated logout should clear the Access session instead of immediately signing back in.');
+$cloudflareLocalLoginPage = $cloudflareAuthController->login(new Request('GET', '/dhl/pickupsheet/login', ['local' => '1'], [], '', [
+    'HTTP_CF_ACCESS_JWT_ASSERTION' => $validCloudflareToken,
+]));
+$assert($cloudflareLocalLoginPage->status() === 200 && str_contains($cloudflareLocalLoginPage->body(), 'Or sign in with a local account'), 'The explicit break-glass URL should retain local login while Access SSO is enabled.');
 
 $lockedPickup = $pickupController->index(new Request('GET', '/dhl/pickupsheet', [], [], ''));
 $assert($lockedPickup->status() === 302 && ($lockedPickup->headers()['Location'] ?? '') === '/dhl/pickupsheet/login', 'Pickupsheet should redirect unauthenticated users to its login portal.');
@@ -1270,6 +1410,8 @@ $assert(str_contains($privacy, 'Cookie settings'), 'The privacy notice should ex
 $assert(str_contains($privacy, 'one-way password hash'), 'The privacy notice should disclose managed staff account data without implying plaintext password storage.');
 $assert(str_contains($privacy, 'JumpCloud single sign-on') && str_contains($privacy, 'group membership'), 'The privacy notice should disclose JumpCloud identity and role processing.');
 $assert(str_contains($privacy, 'Access and ID tokens are used only to complete sign-in and are not retained'), 'The privacy notice should state the OIDC token-retention boundary.');
+$assert(str_contains($privacy, 'Cloudflare Access handoff') && str_contains($privacy, 'full Access identity'), 'The privacy notice should disclose the Cloudflare identity handoff.');
+$assert(str_contains($privacy, 'Access token is used only to complete the handoff and is not retained'), 'The privacy notice should state the Cloudflare token-retention boundary.');
 
 $environmentExample = file_get_contents(dirname(__DIR__) . '/.env.example');
 $assert(is_string($environmentExample) && str_contains($environmentExample, 'APP_TIMEZONE=Africa/Douala'), 'The environment example should use Cameroon time.');
@@ -1283,6 +1425,8 @@ $assert(is_string($environmentExample) && str_contains($environmentExample, 'JUM
 $assert(is_string($environmentExample) && str_contains($environmentExample, 'JUMPCLOUD_OIDC_REDIRECT_URI=https://ttechcg.com/dhl/pickupsheet/auth/jumpcloud/callback'), 'The environment example should document the exact JumpCloud callback URI.');
 $assert(is_string($environmentExample) && str_contains($environmentExample, 'JUMPCLOUD_RBAC_ADMIN_GROUP=Pickupsheet Admins'), 'The environment example should map JumpCloud groups to Pickupsheet roles.');
 $assert(is_string($environmentExample) && !str_contains($environmentExample, 'JUMPCLOUD_OIDC_LOCAL_LOGIN'), 'Local and JumpCloud login should remain available together without a deployment switch.');
+$assert(is_string($environmentExample) && str_contains($environmentExample, 'CLOUDFLARE_ACCESS_ENABLED=false'), 'The environment example should keep the Cloudflare Access handoff disabled until its trust values are supplied.');
+$assert(is_string($environmentExample) && str_contains($environmentExample, 'CLOUDFLARE_ACCESS_AUDIENCE='), 'The environment example should document the application audience required for token validation.');
 
 $styles = file_get_contents(dirname(__DIR__) . '/public/assets/styles.css');
 $assert(is_string($styles) && str_contains($styles, '--navy: #0b0b0c;'), 'T&Tech near-black should be the minimal corporate foundation.');
@@ -1430,12 +1574,17 @@ $assert(str_contains($recordsUserMysqlRepository, 'saveAdminPasswordHash'), 'An 
 $findActiveMethod = substr($recordsUserMysqlRepository, 0, (int) strpos($recordsUserMysqlRepository, 'public function findById'));
 $assert(!str_contains($findActiveMethod, '$this->ensureSchema();'), 'Anonymous or managed-user authentication must not trigger schema creation.');
 $jumpCloudProviderSource = file_get_contents(dirname(__DIR__) . '/src/Shared/Security/JumpCloudOidcProvider.php');
+$cloudflareAccessProviderSource = file_get_contents(dirname(__DIR__) . '/src/Shared/Security/CloudflareAccessProvider.php');
 $oidcHttpSource = file_get_contents(dirname(__DIR__) . '/src/Shared/Security/NativeOidcHttpClient.php');
 $assert(is_string($jumpCloudProviderSource) && str_contains($jumpCloudProviderSource, "'code_challenge_method' => 'S256'"), 'JumpCloud authorization should use PKCE S256.');
 $assert(is_string($jumpCloudProviderSource) && str_contains($jumpCloudProviderSource, 'openssl_verify('), 'JumpCloud ID tokens should be cryptographically verified.');
 $assert(is_string($jumpCloudProviderSource) && str_contains($jumpCloudProviderSource, 'isset($claims[\'at_hash\'])'), 'JumpCloud access tokens should be bound to the ID token whenever an at_hash claim is issued.');
 $assert(is_string($jumpCloudProviderSource) && str_contains($jumpCloudProviderSource, 'ALLOWED_ISSUERS'), 'JumpCloud regional issuer hosts should be allowlisted against SSRF and token confusion.');
 $assert(is_string($jumpCloudProviderSource) && str_contains($jumpCloudProviderSource, "['admin', 'operator', 'viewer']"), 'JumpCloud group mapping should apply a fixed role hierarchy.');
+$assert(is_string($cloudflareAccessProviderSource) && str_contains($cloudflareAccessProviderSource, "'/cdn-cgi/access/certs'"), 'Cloudflare Access should retrieve rotating origin-verification certificates.');
+$assert(is_string($cloudflareAccessProviderSource) && str_contains($cloudflareAccessProviderSource, 'openssl_verify('), 'Cloudflare Access application tokens should be cryptographically verified.');
+$assert(is_string($cloudflareAccessProviderSource) && str_contains($cloudflareAccessProviderSource, "'/cdn-cgi/access/get-identity'"), 'Cloudflare Access should retrieve the full identity for complete group mapping.');
+$assert(is_string($cloudflareAccessProviderSource) && str_contains($cloudflareAccessProviderSource, '($claims[\'type\'] ?? null) !== \'app\''), 'Cloudflare Access should accept only application tokens.');
 $assert(is_string($oidcHttpSource) && str_contains($oidcHttpSource, 'CURLOPT_SSL_VERIFYPEER => true') && str_contains($oidcHttpSource, 'CURLOPT_FOLLOWLOCATION => false'), 'OIDC back-channel requests should verify TLS and reject redirects.');
 $bootstrap = file_get_contents(dirname(__DIR__) . '/bootstrap/app.php');
 $assert(is_string($bootstrap) && str_contains($bootstrap, "'httponly' => true"), 'The security session cookie should be inaccessible to client-side scripts.');
@@ -1445,6 +1594,7 @@ $assert(is_string($bootstrap) && str_contains($bootstrap, "'__Host-ttechcg_sessi
 $assert(is_string($bootstrap) && str_contains($bootstrap, '$connection !== null && $runMigrations'), 'Production migrations should require an explicit environment switch.');
 $assert(is_string($bootstrap) && str_contains($bootstrap, 'RecordsAccess::fromEnvironment($recordsUserRepository)'), 'Stored pickup-sheet records should combine fail-closed environment admins with managed lower-tier accounts.');
 $assert(is_string($bootstrap) && str_contains($bootstrap, 'JumpCloudOidcProvider::fromEnvironment()'), 'Pickupsheet should initialize the optional JumpCloud OIDC provider from server-managed configuration.');
+$assert(is_string($bootstrap) && str_contains($bootstrap, 'CloudflareAccessProvider::fromEnvironment()'), 'Pickupsheet should initialize the optional Cloudflare Access handoff from server-managed configuration.');
 $assert(is_string($bootstrap) && str_contains($bootstrap, "'/dhl/pickupsheet/auth/jumpcloud/callback'"), 'Pickupsheet should expose the exact JumpCloud OIDC callback route.');
 $assert(is_string($bootstrap) && str_contains($bootstrap, "'/dhl/pickupsheet'"), 'Pickupsheet should be routed under the DHL namespace.');
 $assert(is_string($bootstrap) && str_contains($bootstrap, "'/dhl/pickupsheet/submissions/page'"), 'Pickupsheet should expose a protected AJAX pagination endpoint.');

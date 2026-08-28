@@ -52,7 +52,7 @@ final class RecordsSession
             return null;
         }
 
-        if ($identityProvider === 'jumpcloud') {
+        if (in_array($identityProvider, ['jumpcloud', 'cloudflare_access'], true)) {
             $role = is_string($identity['role'] ?? null) ? $identity['role'] : '';
             $firstName = is_string($identity['first_name'] ?? null) ? $identity['first_name'] : '';
             $lastName = is_string($identity['last_name'] ?? null) ? $identity['last_name'] : '';
@@ -69,7 +69,7 @@ final class RecordsSession
             }
 
             $_SESSION[self::SESSION_KEY]['last_seen_at'] = $now;
-            return new RecordsPrincipal($username, $role, $version, $firstName, $lastName, 'jumpcloud', $displayName);
+            return new RecordsPrincipal($username, $role, $version, $firstName, $lastName, $identityProvider, $displayName);
         }
         if ($identityProvider !== 'local') {
             $this->forget();

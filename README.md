@@ -38,6 +38,19 @@ Copy the client ID and the one-time client secret into the server-managed `.env`
 
 OIDC maps identities at sign-in and does not copy JumpCloud users into MySQL. JumpCloud's exact display name is retained only in the protected application session. Group, profile, or account changes take effect on the next login or when the existing Pickupsheet session expires (one hour idle, eight hours absolute). Local accounts remain separately managed in Pickupsheet.
 
+### Cloudflare Access SSO handoff
+
+When `/dhl/pickupsheet/*` is protected by a Cloudflare Access self-hosted application that uses JumpCloud, Pickupsheet can consume that existing identity instead of displaying its own login page. In Cloudflare Zero Trust, require the JumpCloud login method for the Access application and ensure the full Access identity exposes the JumpCloud `groups` claim and profile name. Copy the application's **Application Audience (AUD) Tag** and the Zero Trust team domain into the server-managed `.env`, then configure:
+
+```dotenv
+CLOUDFLARE_ACCESS_ENABLED=true
+CLOUDFLARE_ACCESS_TEAM_DOMAIN=https://ttechconsultgroup.cloudflareaccess.com
+CLOUDFLARE_ACCESS_AUDIENCE=e7ab5db07a198e02d5289701a019a815c1988bb228a1009e04df5c411dc58267
+CLOUDFLARE_ACCESS_GROUPS_CLAIM=groups
+```
+
+The application validates the signed `Cf-Access-Jwt-Assertion` header against Cloudflare's rotating certificates, exact team-domain issuer, application audience, token type, validity times, and verified email. It then retrieves the full Access identity to map the same `JUMPCLOUD_RBAC_*` groups and preserve the JumpCloud display name. Missing, invalid, expired, mismatched, service-account, or unmapped identities fail closed to the normal local/JumpCloud login portal. The break-glass URL `/dhl/pickupsheet/login?local=1` deliberately displays the local and direct JumpCloud options without consuming the Access handoff. Signing out a Cloudflare-authenticated session redirects through `/cdn-cgi/access/logout` so the Access cookie is cleared rather than immediately signing the user back in.
+
 Google Analytics measurement ID `G-WVFXFB5H3M` is included exactly once immediately after `<head>` through both shared page layouts. Consent Mode starts with analytics and advertising storage denied; analytics storage is granted only after a visitor accepts, advertising consent remains denied, and visitors can reopen their choice from the footer. Before acceptance, Google may receive cookieless consent-state pings but cannot set Analytics cookies through this configuration. Pickup-sheet operational pages suppress Analytics page views and sanitize page location so record-reference query values are not sent to Google. The Content Security Policy permits only the Google Tag Manager script origin and Google Analytics collection origins required by the tag. Because Google's tag is dynamically updated and cannot use a stable Subresource Integrity hash, its narrowly scoped CSP exception is an explicit third-party resource decision.
 
 ## Local development

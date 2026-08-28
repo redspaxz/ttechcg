@@ -65,6 +65,14 @@ final class Request
         return is_string($value) ? trim($value) : $default;
     }
 
+    public function header(string $name): string
+    {
+        if (preg_match('/^[A-Za-z0-9-]{1,100}$/', $name) !== 1) {
+            return '';
+        }
+        return $this->serverString('HTTP_' . strtoupper(str_replace('-', '_', $name)));
+    }
+
     /** @return null|array{0: string, 1: string} */
     public function basicCredentials(): ?array
     {
