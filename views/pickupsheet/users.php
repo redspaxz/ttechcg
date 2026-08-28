@@ -58,7 +58,7 @@ $jumpCloudGroups = is_array($config['jumpcloud_role_groups'] ?? null) ? $config[
                 <span>Access hierarchy</span>
                 <ol>
                     <li><strong>Admin</strong><small><?= $jumpCloudEnabled ? $e($jumpCloudGroups['admin'] ?? '') . ' — ' : '' ?>Dashboard, KPIs, all records, editing, paid status, audited deletion, print/export, and user management.</small></li>
-                    <li><strong>Operator</strong><small><?= $jumpCloudEnabled ? $e($jumpCloudGroups['operator'] ?? '') . ' — ' : '' ?>Create, view, edit, print, export, and mark pickup sheets paid. Cannot delete records.</small></li>
+                    <li><strong>Operator</strong><small><?= $jumpCloudEnabled ? $e($jumpCloudGroups['operator'] ?? '') . ' — ' : '' ?>Create new pickup sheets and view submitted records. Cannot edit, change status, print, export, delete, or manage access.</small></li>
                     <li><strong>Viewer</strong><small><?= $jumpCloudEnabled ? $e($jumpCloudGroups['viewer'] ?? '') . ' — ' : '' ?>Create, view, and paginate pickup sheets. Cannot edit, print, or export records.</small></li>
                 </ol>
             </aside>

@@ -9,7 +9,7 @@ final class RecordsPrincipal
     /** @var array<string, list<string>> */
     private const ROLE_PERMISSIONS = [
         'viewer' => ['create', 'list', 'paginate'],
-        'operator' => ['create', 'edit', 'mark_paid', 'list', 'paginate', 'print', 'export'],
+        'operator' => ['create', 'list', 'paginate'],
         'admin' => ['dashboard', 'create', 'edit', 'mark_paid', 'delete', 'list', 'paginate', 'print', 'export', 'manage'],
     ];
 

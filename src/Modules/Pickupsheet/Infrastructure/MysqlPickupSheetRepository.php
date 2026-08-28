@@ -503,7 +503,7 @@ final class MysqlPickupSheetRepository implements PickupSheetRepository
             $this->connection->query('SELECT 1 FROM pickup_sheet_edit_audit LIMIT 1');
             return;
         } catch (\PDOException) {
-            // An authenticated operator may initialize the audit table on first edit.
+            // An authenticated administrator may initialize the audit table on first edit.
         }
 
         $this->connection->exec(
