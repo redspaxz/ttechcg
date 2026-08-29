@@ -32,6 +32,7 @@ use App\Shared\Security\Captcha;
 use App\Shared\Security\CloudflareAccessProvider;
 use App\Shared\Security\Csrf;
 use App\Shared\Security\JumpCloudOidcProvider;
+use App\Shared\Security\PickupsheetCountryPolicy;
 use App\Shared\Security\RateLimiter;
 use App\Shared\Security\RecordsAccess;
 use App\Shared\Security\RecordsSession;
@@ -199,4 +200,4 @@ $router->get('/privacy', fn (Request $request): Response => $siteController->pri
 $router->get('/health', fn (Request $request): Response => $siteController->health($request));
 $router->fallback(fn (Request $request): Response => $siteController->notFound($request));
 
-return new Application($router);
+return new Application($router, PickupsheetCountryPolicy::fromEnvironment($isProduction), $securityLogger);

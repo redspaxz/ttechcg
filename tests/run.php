@@ -14,7 +14,10 @@ use App\Modules\Pickupsheet\Infrastructure\UnavailablePickupSheetRepository;
 use App\Modules\Pickupsheet\UI\PickupsheetAuthController;
 use App\Modules\Pickupsheet\UI\PickupsheetController;
 use App\Modules\Site\UI\SiteController;
+use App\Shared\Http\Application;
 use App\Shared\Http\Request;
+use App\Shared\Http\Response;
+use App\Shared\Http\Router;
 use App\Shared\Infrastructure\DemoRecordsUserRepository;
 use App\Shared\Infrastructure\DemoRecordsSessionActivityRepository;
 use App\Shared\Security\Captcha;
@@ -22,6 +25,7 @@ use App\Shared\Security\CloudflareAccessProvider;
 use App\Shared\Security\Csrf;
 use App\Shared\Security\JumpCloudOidcProvider;
 use App\Shared\Security\OidcHttpClient;
+use App\Shared\Security\PickupsheetCountryPolicy;
 use App\Shared\Security\RateLimiter;
 use App\Shared\Security\RecordsAccess;
 use App\Shared\Security\RecordsSession;
@@ -283,6 +287,30 @@ $arrayRequest = new Request('POST', '/dhl/pickupsheet', [], ['shipments' => [['a
 $assert(($arrayRequest->arrayInput('shipments')[0]['awb_number'] ?? '') === '1234567890', 'Request should expose nested shipment arrays.');
 $rawPasswordRequest = new Request('POST', '/protected', [], ['password' => '  retain-spaces  '], '');
 $assert($rawPasswordRequest->rawInput('password') === '  retain-spaces  ', 'Password input should not be silently trimmed.');
+
+$geoRouter = new Router();
+$geoRouter->get('/', static fn (Request $request): Response => Response::html('Public site'));
+$geoRouter->get('/dhl/pickupsheet/login', static fn (Request $request): Response => Response::html('Pickupsheet login'));
+$geoApplication = new Application($geoRouter, new PickupsheetCountryPolicy(true, ['CM', 'NG']));
+$cameroonGeoResponse = $geoApplication->handle(new Request('GET', '/dhl/pickupsheet/login', [], [], '', ['HTTP_CF_IPCOUNTRY' => 'CM']));
+$nigeriaGeoResponse = $geoApplication->handle(new Request('GET', '/dhl/pickupsheet/login', [], [], '', ['HTTP_CF_IPCOUNTRY' => 'ng']));
+$outsideGeoResponse = $geoApplication->handle(new Request('GET', '/dhl/pickupsheet/login', [], [], '', ['HTTP_CF_IPCOUNTRY' => 'US']));
+$missingGeoResponse = $geoApplication->handle(new Request('GET', '/dhl/pickupsheet/login'));
+$publicGeoResponse = $geoApplication->handle(new Request('GET', '/', [], [], '', ['HTTP_CF_IPCOUNTRY' => 'US']));
+$assert($cameroonGeoResponse->status() === 200 && $nigeriaGeoResponse->status() === 200, 'Pickupsheet geolocation should allow Cameroon and Nigeria country codes.');
+$assert($outsideGeoResponse->status() === 403 && $missingGeoResponse->status() === 403, 'Pickupsheet geolocation should fail closed outside the allowlist or without a Cloudflare country header.');
+$assert(($outsideGeoResponse->headers()['Cache-Control'] ?? '') === 'private, no-store, max-age=0', 'A geolocation denial should never be cached.');
+$assert($publicGeoResponse->status() === 200, 'Pickupsheet geolocation must not restrict the public corporate site.');
+$disabledGeoApplication = new Application($geoRouter, new PickupsheetCountryPolicy(false, ['CM', 'NG']));
+$assert($disabledGeoApplication->handle(new Request('GET', '/dhl/pickupsheet/login'))->status() === 200, 'Local development should be able to disable the production geolocation boundary.');
+$previousGeoEnabled = getenv('PICKUPSHEET_GEO_RESTRICTION_ENABLED');
+$previousGeoCountries = getenv('PICKUPSHEET_ALLOWED_COUNTRIES');
+putenv('PICKUPSHEET_GEO_RESTRICTION_ENABLED=true');
+putenv('PICKUPSHEET_ALLOWED_COUNTRIES=CM,NG');
+$assert(PickupsheetCountryPolicy::fromEnvironment(false)->allows(new Request('GET', '/dhl/pickupsheet/login')), 'Non-production environments should ignore production country enforcement.');
+$assert(!PickupsheetCountryPolicy::fromEnvironment(true)->allows(new Request('GET', '/dhl/pickupsheet/login')), 'Production country enforcement should fail closed when Cloudflare supplies no country.');
+putenv($previousGeoEnabled === false ? 'PICKUPSHEET_GEO_RESTRICTION_ENABLED' : 'PICKUPSHEET_GEO_RESTRICTION_ENABLED=' . $previousGeoEnabled);
+putenv($previousGeoCountries === false ? 'PICKUPSHEET_ALLOWED_COUNTRIES' : 'PICKUPSHEET_ALLOWED_COUNTRIES=' . $previousGeoCountries);
 $basicRequest = new Request('GET', '/protected', [], [], '', [
     'HTTP_AUTHORIZATION' => 'Basic ' . base64_encode('records-admin:test-password'),
     'HTTP_CF_CONNECTING_IP' => '203.0.113.15',
@@ -1472,6 +1500,7 @@ $assert(str_contains($privacy, 'Access and ID tokens are used only to complete s
 $assert(str_contains($privacy, 'Cloudflare Access handoff') && str_contains($privacy, 'full Access identity'), 'The privacy notice should disclose the Cloudflare identity handoff.');
 $assert(str_contains($privacy, 'Access token is used only to complete the handoff and is not retained'), 'The privacy notice should state the Cloudflare token-retention boundary.');
 $assert(str_contains($privacy, 'successful staff login, last-activity, and logout times'), 'The privacy notice should disclose administrative login-frequency and session-duration monitoring.');
+$assert(str_contains($privacy, "visitor's country code from the source IP address") && str_contains($privacy, 'restrict portal access to Cameroon and Nigeria'), 'The privacy notice should disclose country-level Pickupsheet access enforcement.');
 
 $environmentExample = file_get_contents(dirname(__DIR__) . '/.env.example');
 $assert(is_string($environmentExample) && str_contains($environmentExample, 'APP_TIMEZONE=Africa/Douala'), 'The environment example should use Cameroon time.');
@@ -1486,6 +1515,8 @@ $assert(is_string($environmentExample) && str_contains($environmentExample, 'JUM
 $assert(is_string($environmentExample) && str_contains($environmentExample, 'JUMPCLOUD_RBAC_ADMIN_GROUP=Pickupsheet Admins'), 'The environment example should map JumpCloud groups to Pickupsheet roles.');
 $assert(is_string($environmentExample) && !str_contains($environmentExample, 'JUMPCLOUD_OIDC_LOCAL_LOGIN'), 'Local and JumpCloud login should remain available together without a deployment switch.');
 $assert(is_string($environmentExample) && str_contains($environmentExample, 'CLOUDFLARE_ACCESS_ENABLED=false'), 'The environment example should keep the Cloudflare Access handoff disabled until its trust values are supplied.');
+$assert(is_string($environmentExample) && str_contains($environmentExample, 'PICKUPSHEET_GEO_RESTRICTION_ENABLED=true'), 'The environment example should explicitly enable production country enforcement.');
+$assert(is_string($environmentExample) && str_contains($environmentExample, 'PICKUPSHEET_ALLOWED_COUNTRIES=CM,NG'), 'The Pickupsheet production country allowlist should contain only Cameroon and Nigeria.');
 $assert(is_string($environmentExample) && str_contains($environmentExample, 'CLOUDFLARE_ACCESS_AUDIENCE='), 'The environment example should document the application audience required for token validation.');
 
 $styles = file_get_contents(dirname(__DIR__) . '/public/assets/styles.css');
@@ -1664,6 +1695,7 @@ $assert(is_string($bootstrap) && str_contains($bootstrap, '$connection !== null 
 $assert(is_string($bootstrap) && str_contains($bootstrap, 'RecordsAccess::fromEnvironment($recordsUserRepository)'), 'Stored pickup-sheet records should combine fail-closed environment admins with managed lower-tier accounts.');
 $assert(is_string($bootstrap) && str_contains($bootstrap, 'JumpCloudOidcProvider::fromEnvironment()'), 'Pickupsheet should initialize the optional JumpCloud OIDC provider from server-managed configuration.');
 $assert(is_string($bootstrap) && str_contains($bootstrap, 'CloudflareAccessProvider::fromEnvironment()'), 'Pickupsheet should initialize the optional Cloudflare Access handoff from server-managed configuration.');
+$assert(is_string($bootstrap) && str_contains($bootstrap, 'PickupsheetCountryPolicy::fromEnvironment($isProduction)'), 'The HTTP boundary should initialize fail-closed production country enforcement.');
 $assert(is_string($bootstrap) && str_contains($bootstrap, "'/dhl/pickupsheet/auth/jumpcloud/callback'"), 'Pickupsheet should expose the exact JumpCloud OIDC callback route.');
 $assert(is_string($bootstrap) && str_contains($bootstrap, "'/dhl/pickupsheet'"), 'Pickupsheet should be routed under the DHL namespace.');
 $assert(is_string($bootstrap) && str_contains($bootstrap, "'/dhl/pickupsheet/submissions/page'"), 'Pickupsheet should expose a protected AJAX pagination endpoint.');
