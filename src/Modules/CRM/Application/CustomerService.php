@@ -66,6 +66,55 @@ final class CustomerService
         return $this->repository->recentShipments($customerKey, max(1, min($limit, 50)));
     }
 
+    /** @return list<array{pointsDelta: int, reason: string, actorId: string, createdAt: string}> */
+    public function rewardAdjustments(string $customerKey, int $limit = 20): array
+    {
+        if (preg_match('/^[a-f0-9]{64}$/', $customerKey) !== 1) {
+            return [];
+        }
+        return $this->repository->rewardAdjustments($customerKey, max(1, min($limit, 50)));
+    }
+
+    public function adjustRewards(
+        string $customerKey,
+        string $operation,
+        mixed $points,
+        mixed $reason,
+        string $actorId,
+    ): CustomerProfile
+    {
+        if (preg_match('/^[a-f0-9]{24}$/', $actorId) !== 1) {
+            throw new InvalidArgumentException('The reward actor is invalid.');
+        }
+        $customer = $this->find($customerKey);
+        if ($customer === null) {
+            throw new InvalidArgumentException('Customer profile not found.');
+        }
+        if (!in_array($operation, ['bonus', 'redeem'], true)) {
+            throw new InvalidArgumentException('Select a valid reward operation.');
+        }
+        $points = is_string($points) || is_int($points) ? trim((string) $points) : '';
+        if (preg_match('/^[0-9]{1,6}$/', $points) !== 1 || (int) $points < 1 || (int) $points > 100000) {
+            throw new InvalidArgumentException('Reward points must be between 1 and 100,000.');
+        }
+        $reason = $this->text($reason, 255);
+        if (strlen($reason) < 3) {
+            throw new InvalidArgumentException('Provide a reason for the reward adjustment.');
+        }
+
+        $pointsDelta = $operation === 'bonus' ? (int) $points : -(int) $points;
+        if ($customer->rewardBalance() + $pointsDelta < 0) {
+            throw new InvalidArgumentException('A redemption cannot exceed the available reward balance.');
+        }
+
+        return $this->repository->addRewardAdjustment(
+            $customer->customerKey,
+            $pointsDelta,
+            $reason,
+            $actorId,
+        );
+    }
+
     /** @param array<string, mixed> $input */
     public function save(?string $customerKey, array $input, string $actorId): CustomerProfile
     {
@@ -132,6 +181,7 @@ final class CustomerService
             $existing?->lastShipmentOn,
             $existing?->createdAt,
             $existing?->updatedAt,
+            $existing?->rewardAdjustmentPoints ?? 0,
         );
 
         return $this->repository->save($customer, $actorId);

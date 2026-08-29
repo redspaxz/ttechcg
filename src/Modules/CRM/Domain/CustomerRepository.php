@@ -29,4 +29,21 @@ interface CustomerRepository
     public function recentShipments(string $customerKey, int $limit): array;
 
     public function save(CustomerProfile $customer, string $actorId): CustomerProfile;
+
+    /**
+     * @return list<array{
+     *     pointsDelta: int,
+     *     reason: string,
+     *     actorId: string,
+     *     createdAt: string
+     * }>
+     */
+    public function rewardAdjustments(string $customerKey, int $limit): array;
+
+    public function addRewardAdjustment(
+        string $customerKey,
+        int $pointsDelta,
+        string $reason,
+        string $actorId,
+    ): CustomerProfile;
 }

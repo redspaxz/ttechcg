@@ -7,6 +7,7 @@ $customer = ($customer ?? null) instanceof \App\Modules\CRM\Domain\CustomerProfi
 $old = is_array($old ?? null) ? $old : [];
 $errors = is_array($errors ?? null) ? $errors : [];
 $shipments = is_array($shipments ?? null) ? $shipments : [];
+$rewardAdjustments = is_array($rewardAdjustments ?? null) ? $rewardAdjustments : [];
 $value = static fn (string $field, mixed $fallback = ''): mixed => array_key_exists($field, $old) ? $old[$field] : $fallback;
 $status = (string) $value('status', $customer?->status ?? 'lead');
 ?>
@@ -35,6 +36,35 @@ $status = (string) $value('status', $customer?->status ?? 'lead');
                 <article><span>Cash value</span><strong><?= $e(number_format($customer->totalCashXaf)) ?> XAF</strong></article>
                 <article><span>First shipment</span><strong><?= $e($customer->firstShipmentOn ?? '—') ?></strong></article>
                 <article><span>Last shipment</span><strong><?= $e($customer->lastShipmentOn ?? '—') ?></strong></article>
+            </section>
+
+            <section class="pickup-customer-rewards" aria-labelledby="customer-rewards-title">
+                <div class="pickup-card-heading"><div><span>Customer loyalty</span><h2 id="customer-rewards-title">Reward points</h2></div><small>1 point per active shipment</small></div>
+                <div class="pickup-reward-summary">
+                    <article><span>Available balance</span><strong><?= $e(number_format($customer->rewardBalance())) ?></strong><small>Reward points</small></article>
+                    <article><span>Shipment points</span><strong><?= $e(number_format($customer->shipmentRewardPoints())) ?></strong><small><?= $e(number_format($customer->shipmentCount)) ?> eligible shipments</small></article>
+                    <article><span>Adjustments</span><strong><?= $customer->rewardAdjustmentPoints > 0 ? '+' : '' ?><?= $e(number_format($customer->rewardAdjustmentPoints)) ?></strong><small>Bonuses less redemptions</small></article>
+                </div>
+                <div class="pickup-reward-layout">
+                    <form class="pickup-reward-form" method="post" action="<?= $e($basePath) ?>/dhl/pickupsheet/customers/rewards">
+                        <input type="hidden" name="_token" value="<?= $e($csrfToken) ?>">
+                        <input type="hidden" name="customer_key" value="<?= $e($customer->customerKey) ?>">
+                        <div><span>Adjust balance</span><h3>Bonus or redemption</h3><p>Every adjustment requires a reason and remains in the reward history. Redemptions cannot make the balance negative.</p></div>
+                        <label><span>Operation</span><select name="operation" required><option value="bonus">Add bonus points</option><option value="redeem">Redeem points</option></select></label>
+                        <label><span>Points</span><input type="number" name="points" min="1" max="100000" step="1" required inputmode="numeric"></label>
+                        <label class="pickup-reward-reason"><span>Reason</span><input name="reason" maxlength="255" minlength="3" required placeholder="Promotion, service recovery, or reward redeemed"></label>
+                        <button class="button" type="submit">Update points</button>
+                    </form>
+                    <div class="pickup-reward-history">
+                        <h3>Adjustment history</h3>
+                        <?php if ($rewardAdjustments === []): ?><p>No manual bonuses or redemptions have been recorded.</p><?php else: ?>
+                            <ol><?php foreach ($rewardAdjustments as $adjustment): ?>
+                                <?php $delta = (int) ($adjustment['pointsDelta'] ?? 0); ?>
+                                <li><span class="<?= $delta < 0 ? 'is-redemption' : 'is-bonus' ?>"><?= $delta > 0 ? '+' : '' ?><?= $e(number_format($delta)) ?></span><div><strong><?= $e($adjustment['reason'] ?? '') ?></strong><small><?= $e($adjustment['createdAt'] ?? '') ?> UTC &middot; Admin <?= $e(substr((string) ($adjustment['actorId'] ?? ''), 0, 10)) ?></small></div></li>
+                            <?php endforeach; ?></ol>
+                        <?php endif; ?>
+                    </div>
+                </div>
             </section>
         <?php endif; ?>
 

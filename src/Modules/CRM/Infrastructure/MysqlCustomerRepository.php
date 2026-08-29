@@ -6,7 +6,10 @@ namespace App\Modules\CRM\Infrastructure;
 
 use App\Modules\CRM\Domain\CustomerProfile;
 use App\Modules\CRM\Domain\CustomerRepository;
+use InvalidArgumentException;
 use PDO;
+use RuntimeException;
+use Throwable;
 
 final class MysqlCustomerRepository implements CustomerRepository
 {
@@ -158,6 +161,89 @@ final class MysqlCustomerRepository implements CustomerRepository
         return $this->find($customer->customerKey) ?? $customer;
     }
 
+    public function rewardAdjustments(string $customerKey, int $limit): array
+    {
+        $this->ensureSchema();
+        $statement = $this->connection->prepare(
+            'SELECT points_delta, reason, actor_id, created_at
+             FROM pickup_customer_reward_adjustments
+             WHERE customer_key = :customer_key
+             ORDER BY created_at DESC, id DESC
+             LIMIT :limit',
+        );
+        $statement->bindValue(':customer_key', $customerKey);
+        $statement->bindValue(':limit', max(1, min($limit, 50)), PDO::PARAM_INT);
+        $statement->execute();
+
+        return array_map(static fn (array $row): array => [
+            'pointsDelta' => (int) $row['points_delta'],
+            'reason' => (string) $row['reason'],
+            'actorId' => (string) $row['actor_id'],
+            'createdAt' => (string) $row['created_at'],
+        ], $statement->fetchAll());
+    }
+
+    public function addRewardAdjustment(
+        string $customerKey,
+        int $pointsDelta,
+        string $reason,
+        string $actorId,
+    ): CustomerProfile
+    {
+        $this->ensureSchema();
+        $this->connection->beginTransaction();
+        try {
+            $customerStatement = $this->connection->prepare(
+                'SELECT id FROM pickup_customers WHERE customer_key = :customer_key LIMIT 1 FOR UPDATE',
+            );
+            $customerStatement->execute(['customer_key' => $customerKey]);
+            if ($customerStatement->fetchColumn() === false) {
+                throw new RuntimeException('Customer profile not found for reward adjustment.');
+            }
+
+            $balanceStatement = $this->connection->prepare(
+                'SELECT
+                    (SELECT COUNT(*)
+                     FROM pickup_shipments ps
+                     INNER JOIN pickup_sheets p ON p.id = ps.pickup_sheet_id
+                     WHERE p.deleted_at IS NULL
+                       AND SHA2(LOWER(TRIM(ps.consignor)), 256) = :shipment_customer_key)
+                    +
+                    (SELECT COALESCE(SUM(points_delta), 0)
+                     FROM pickup_customer_reward_adjustments
+                     WHERE customer_key = :reward_customer_key) AS reward_balance',
+            );
+            $balanceStatement->execute([
+                'shipment_customer_key' => $customerKey,
+                'reward_customer_key' => $customerKey,
+            ]);
+            $balance = (int) $balanceStatement->fetchColumn();
+            if ($balance + $pointsDelta < 0) {
+                throw new InvalidArgumentException('A redemption cannot exceed the available reward balance.');
+            }
+
+            $statement = $this->connection->prepare(
+                'INSERT INTO pickup_customer_reward_adjustments
+                    (customer_key, points_delta, reason, actor_id, created_at)
+                 VALUES (:customer_key, :points_delta, :reason, :actor_id, UTC_TIMESTAMP())',
+            );
+            $statement->execute([
+                'customer_key' => $customerKey,
+                'points_delta' => $pointsDelta,
+                'reason' => $reason,
+                'actor_id' => $actorId,
+            ]);
+            $this->connection->commit();
+        } catch (Throwable $exception) {
+            if ($this->connection->inTransaction()) {
+                $this->connection->rollBack();
+            }
+            throw $exception;
+        }
+
+        return $this->find($customerKey) ?? throw new RuntimeException('Updated customer rewards could not be loaded.');
+    }
+
     /** @return array{0: string, 1: array<string, string>} */
     private function filters(string $search, string $status): array
     {
@@ -189,7 +275,8 @@ final class MysqlCustomerRepository implements CustomerRepository
                        c.source, c.created_at, c.updated_at,
                        COALESCE(metrics.shipment_count, 0) AS shipment_count,
                        COALESCE(metrics.total_cash_xaf, 0) AS total_cash_xaf,
-                       metrics.first_shipment_on, metrics.last_shipment_on
+                       metrics.first_shipment_on, metrics.last_shipment_on,
+                       COALESCE(rewards.adjustment_points, 0) AS reward_adjustment_points
                 FROM pickup_customers c
                 LEFT JOIN (
                     SELECT SHA2(LOWER(TRIM(ps.consignor)), 256) AS customer_key,
@@ -201,7 +288,12 @@ final class MysqlCustomerRepository implements CustomerRepository
                     INNER JOIN pickup_sheets p ON p.id = ps.pickup_sheet_id
                     WHERE p.deleted_at IS NULL
                     GROUP BY SHA2(LOWER(TRIM(ps.consignor)), 256)
-                ) metrics ON metrics.customer_key = c.customer_key";
+                ) metrics ON metrics.customer_key = c.customer_key
+                LEFT JOIN (
+                    SELECT customer_key, COALESCE(SUM(points_delta), 0) AS adjustment_points
+                    FROM pickup_customer_reward_adjustments
+                    GROUP BY customer_key
+                ) rewards ON rewards.customer_key = c.customer_key";
     }
 
     private function profile(array $row): CustomerProfile
@@ -226,6 +318,7 @@ final class MysqlCustomerRepository implements CustomerRepository
             isset($row['last_shipment_on']) ? (string) $row['last_shipment_on'] : null,
             isset($row['created_at']) ? (string) $row['created_at'] : null,
             isset($row['updated_at']) ? (string) $row['updated_at'] : null,
+            (int) ($row['reward_adjustment_points'] ?? 0),
         );
     }
 
@@ -258,6 +351,20 @@ final class MysqlCustomerRepository implements CustomerRepository
                 INDEX pickup_customers_status_follow_up_idx (status, next_follow_up_on),
                 INDEX pickup_customers_email_idx (email)
             ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci",
+        );
+        $this->connection->exec(
+            'CREATE TABLE IF NOT EXISTS pickup_customer_reward_adjustments (
+                id BIGINT UNSIGNED NOT NULL AUTO_INCREMENT PRIMARY KEY,
+                customer_key CHAR(64) NOT NULL,
+                points_delta INT NOT NULL,
+                reason VARCHAR(255) NOT NULL,
+                actor_id CHAR(24) NOT NULL,
+                created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+                INDEX pickup_customer_rewards_customer_time_idx (customer_key, created_at),
+                INDEX pickup_customer_rewards_actor_time_idx (actor_id, created_at),
+                CONSTRAINT pickup_customer_rewards_customer_fk
+                    FOREIGN KEY (customer_key) REFERENCES pickup_customers(customer_key) ON DELETE CASCADE
+            ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci',
         );
         $this->schemaReady = true;
     }

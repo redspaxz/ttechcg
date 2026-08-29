@@ -53,6 +53,7 @@ $auditEventLabel = static fn (string $event): string => match ($event) {
     'pickupsheet.records_user_update' => 'User updated',
     'pickupsheet.admin_password_reset' => 'Admin password reset',
     'pickupsheet.crm_customer_save' => 'CRM customer saved',
+    'pickupsheet.crm_reward_adjustment' => 'CRM rewards adjusted',
     'pickupsheet.country_access' => 'Country restriction',
     default => ucwords(str_replace(['pickupsheet.', '_', '.'], ['', ' ', ' '], $event)),
 };
@@ -96,6 +97,13 @@ $auditDetails = static function (array $log): string {
     }
     if (($context['source'] ?? '') !== '') {
         $details[] = 'Source: ' . str_replace('_', ' ', (string) $context['source']);
+    }
+    if (isset($context['reward_delta'])) {
+        $delta = (int) $context['reward_delta'];
+        $details[] = 'Reward change: ' . ($delta > 0 ? '+' : '') . $delta;
+    }
+    if (isset($context['reward_balance'])) {
+        $details[] = 'Reward balance: ' . (int) $context['reward_balance'];
     }
     return $details === [] ? 'No additional metadata' : implode(' · ', $details);
 };

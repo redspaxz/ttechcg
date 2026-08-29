@@ -8,10 +8,13 @@ use App\Modules\CRM\Domain\CustomerProfile;
 use App\Modules\CRM\Domain\CustomerRepository;
 use App\Modules\Pickupsheet\Domain\PickupSheet;
 use App\Modules\Pickupsheet\Domain\PickupSheetRepository;
+use InvalidArgumentException;
+use RuntimeException;
 
 final class DemoCustomerRepository implements CustomerRepository
 {
     private const SESSION_KEY = '_demo_pickup_customers';
+    private const REWARDS_SESSION_KEY = '_demo_pickup_customer_rewards';
 
     public function __construct(private readonly PickupSheetRepository $pickupSheets)
     {
@@ -146,6 +149,48 @@ final class DemoCustomerRepository implements CustomerRepository
         return $this->find($customer->customerKey) ?? $customer;
     }
 
+    public function rewardAdjustments(string $customerKey, int $limit): array
+    {
+        $adjustments = $_SESSION[self::REWARDS_SESSION_KEY] ?? [];
+        $adjustments = is_array($adjustments) ? $adjustments : [];
+        $customerAdjustments = array_values(array_filter(
+            $adjustments,
+            static fn (mixed $adjustment): bool => is_array($adjustment)
+                && ($adjustment['customerKey'] ?? '') === $customerKey,
+        ));
+
+        return array_slice(array_reverse($customerAdjustments), 0, max(1, min($limit, 50)));
+    }
+
+    public function addRewardAdjustment(
+        string $customerKey,
+        int $pointsDelta,
+        string $reason,
+        string $actorId,
+    ): CustomerProfile
+    {
+        $customer = $this->find($customerKey);
+        if ($customer === null) {
+            throw new RuntimeException('Customer profile not found for reward adjustment.');
+        }
+        if ($customer->rewardBalance() + $pointsDelta < 0) {
+            throw new InvalidArgumentException('A redemption cannot exceed the available reward balance.');
+        }
+
+        $adjustments = $_SESSION[self::REWARDS_SESSION_KEY] ?? [];
+        $adjustments = is_array($adjustments) ? $adjustments : [];
+        $adjustments[] = [
+            'customerKey' => $customerKey,
+            'pointsDelta' => $pointsDelta,
+            'reason' => $reason,
+            'actorId' => $actorId,
+            'createdAt' => gmdate('Y-m-d H:i:s'),
+        ];
+        $_SESSION[self::REWARDS_SESSION_KEY] = $adjustments;
+
+        return $this->find($customerKey) ?? throw new RuntimeException('Updated customer rewards could not be loaded.');
+    }
+
     /** @return array<string, array<string, mixed>> */
     private function profiles(): array
     {
@@ -206,7 +251,20 @@ final class DemoCustomerRepository implements CustomerRepository
             isset($metrics['lastShipmentOn']) ? (string) $metrics['lastShipmentOn'] : null,
             isset($profile['createdAt']) ? (string) $profile['createdAt'] : null,
             isset($profile['updatedAt']) ? (string) $profile['updatedAt'] : null,
+            $this->rewardAdjustmentPoints((string) $profile['customerKey']),
         );
+    }
+
+    private function rewardAdjustmentPoints(string $customerKey): int
+    {
+        $adjustments = $_SESSION[self::REWARDS_SESSION_KEY] ?? [];
+        return array_sum(array_map(
+            static fn (mixed $adjustment): int => is_array($adjustment)
+                && ($adjustment['customerKey'] ?? '') === $customerKey
+                    ? (int) ($adjustment['pointsDelta'] ?? 0)
+                    : 0,
+            is_array($adjustments) ? $adjustments : [],
+        ));
     }
 
     private function key(string $name): string

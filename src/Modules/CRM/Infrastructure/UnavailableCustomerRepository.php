@@ -39,4 +39,19 @@ final class UnavailableCustomerRepository implements CustomerRepository
     {
         throw new RuntimeException('Customer storage is unavailable.');
     }
+
+    public function rewardAdjustments(string $customerKey, int $limit): array
+    {
+        throw new RuntimeException('Customer storage is unavailable.');
+    }
+
+    public function addRewardAdjustment(
+        string $customerKey,
+        int $pointsDelta,
+        string $reason,
+        string $actorId,
+    ): CustomerProfile
+    {
+        throw new RuntimeException('Customer storage is unavailable.');
+    }
 }

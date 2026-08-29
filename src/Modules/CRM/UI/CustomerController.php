@@ -164,6 +164,74 @@ final class CustomerController
         return Response::redirect($location);
     }
 
+    public function adjustRewards(Request $request): Response
+    {
+        $principal = $this->authorize($request);
+        if ($principal instanceof Response) {
+            return $principal;
+        }
+
+        try {
+            $retryAfter = $this->rateLimiter->consume('pickup-crm-reward-write', $request->clientIdentifier(), 40, 3600);
+        } catch (RuntimeException $exception) {
+            error_log($exception->__toString());
+            $this->log($request, $principal, 'pickupsheet.crm_reward_adjustment', 'failed');
+            return Response::html('Reward updates are temporarily unavailable.', 503, $this->privateHeaders());
+        }
+        if ($retryAfter > 0) {
+            $this->log($request, $principal, 'pickupsheet.crm_reward_adjustment', 'rate_limited', ['retry_after' => $retryAfter]);
+            return Response::html('Too many reward updates. Please try again later.', 429, $this->privateHeaders() + ['Retry-After' => (string) $retryAfter]);
+        }
+        if (!$this->csrf->validate($request->input('_token'))) {
+            $this->log($request, $principal, 'pickupsheet.crm_reward_adjustment', 'denied', ['reason' => 'csrf']);
+            return Response::html('Invalid or expired form token.', 419, $this->privateHeaders());
+        }
+
+        $key = strtolower($request->input('customer_key'));
+        $operation = strtolower($request->input('operation'));
+        $points = $request->input('points');
+        try {
+            $updated = $this->service->adjustRewards(
+                $key,
+                $operation,
+                $points,
+                $request->input('reason'),
+                $this->actorId($principal),
+            );
+            $pointsDelta = $operation === 'bonus' ? (int) $points : -(int) $points;
+            $_SESSION['_crm_flash'] = sprintf(
+                'Reward balance updated by %s%d point%s. New balance: %d.',
+                $pointsDelta > 0 ? '+' : '',
+                $pointsDelta,
+                abs($pointsDelta) === 1 ? '' : 's',
+                $updated->rewardBalance(),
+            );
+            $this->log($request, $principal, 'pickupsheet.crm_reward_adjustment', 'accepted', [
+                'resource_id' => substr($updated->customerKey, 0, 24),
+                'reward_delta' => $pointsDelta,
+                'reward_balance' => $updated->rewardBalance(),
+            ]);
+        } catch (InvalidArgumentException $exception) {
+            $_SESSION['_crm_errors'] = [$exception->getMessage()];
+            $this->log($request, $principal, 'pickupsheet.crm_reward_adjustment', 'denied', [
+                'resource_id' => preg_match('/^[a-f0-9]{64}$/', $key) === 1 ? substr($key, 0, 24) : null,
+                'reason' => 'validation',
+            ]);
+        } catch (RuntimeException $exception) {
+            error_log($exception->__toString());
+            $_SESSION['_crm_errors'] = ['The reward balance could not be updated. Check MySQL and try again.'];
+            $this->log($request, $principal, 'pickupsheet.crm_reward_adjustment', 'failed', [
+                'resource_id' => preg_match('/^[a-f0-9]{64}$/', $key) === 1 ? substr($key, 0, 24) : null,
+            ]);
+        }
+
+        $location = $request->basePath . '/dhl/pickupsheet/customers';
+        if (preg_match('/^[a-f0-9]{64}$/', $key) === 1) {
+            $location = $request->basePath . '/dhl/pickupsheet/customers/edit?customer=' . rawurlencode($key);
+        }
+        return Response::redirect($location);
+    }
+
     private function form(Request $request, RecordsPrincipal $principal, ?CustomerProfile $customer): Response
     {
         $old = $_SESSION['_crm_old'] ?? [];
@@ -171,12 +239,14 @@ final class CustomerController
         $flash = $_SESSION['_crm_flash'] ?? null;
         unset($_SESSION['_crm_old'], $_SESSION['_crm_errors'], $_SESSION['_crm_flash']);
         $shipments = [];
+        $rewardAdjustments = [];
         if ($customer !== null) {
             try {
                 $shipments = $this->service->recentShipments($customer->customerKey, 20);
+                $rewardAdjustments = $this->service->rewardAdjustments($customer->customerKey, 20);
             } catch (RuntimeException $exception) {
                 error_log($exception->__toString());
-                $errors = [...(is_array($errors) ? $errors : []), 'Shipment history could not be loaded.'];
+                $errors = [...(is_array($errors) ? $errors : []), 'Shipment or reward history could not be loaded.'];
             }
         }
 
@@ -184,6 +254,7 @@ final class CustomerController
             'pageTitle' => $customer === null ? 'Add CRM customer' : 'Customer profile',
             'customer' => $customer,
             'shipments' => $shipments,
+            'rewardAdjustments' => $rewardAdjustments,
             'old' => is_array($old) ? $old : [],
             'errors' => is_array($errors) ? $errors : [],
             'flash' => is_string($flash) ? $flash : null,

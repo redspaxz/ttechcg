@@ -200,6 +200,7 @@ $router->get('/dhl/pickupsheet/customers', fn (Request $request): Response => $c
 $router->get('/dhl/pickupsheet/customers/new', fn (Request $request): Response => $customerController->create($request));
 $router->get('/dhl/pickupsheet/customers/edit', fn (Request $request): Response => $customerController->edit($request));
 $router->post('/dhl/pickupsheet/customers/save', fn (Request $request): Response => $customerController->save($request));
+$router->post('/dhl/pickupsheet/customers/rewards', fn (Request $request): Response => $customerController->adjustRewards($request));
 $router->get('/dhl/pickupsheet', fn (Request $request): Response => $pickupsheetController->index($request));
 $router->post('/dhl/pickupsheet', fn (Request $request): Response => $pickupsheetController->store($request));
 $router->get('/dhl/pickupsheet/submissions', fn (Request $request): Response => $pickupsheetController->submissions($request));

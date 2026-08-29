@@ -1148,6 +1148,7 @@ $customerProfile = $customerController->edit(new Request('GET', '/dhl/pickupshee
 $assert($customerDirectory->status() === 200 && str_contains($customerDirectory->body(), 'Customer CRM'), 'An administrator should open the customer CRM.');
 $assert(str_contains($customerDirectory->body(), 'Controller Client') && str_contains($customerDirectory->body(), '14,000 XAF'), 'CRM should synchronize shipment consignors and their operational value.');
 $assert($customerProfile->status() === 200 && str_contains($customerProfile->body(), 'Recent shipments') && str_contains($customerProfile->body(), $savedReference), 'A synchronized customer profile should show linked shipment history.');
+$assert(str_contains($customerDirectory->body(), '1 point') && str_contains($customerProfile->body(), '1 point per active shipment'), 'Each active shipment should automatically earn one customer reward point.');
 $invalidCustomerCsrf = $customerController->save(new Request('POST', '/dhl/pickupsheet/customers/save', [], [
     '_token' => 'invalid-token',
     'customer_key' => $customerKey,
@@ -1175,8 +1176,46 @@ $assert(str_contains($updatedCustomerProfile->body(), 'Camille Customer') && str
 $assert(str_contains($updatedCustomerProfile->body(), 'Needs attention') && str_contains($updatedCustomerProfile->body(), 'Confirm the next collection schedule.'), 'Saved CRM relationship status and notes should persist.');
 $newCustomerPage = $customerController->create(new Request('GET', '/dhl/pickupsheet/customers/new'));
 $assert($newCustomerPage->status() === 200 && str_contains($newCustomerPage->body(), 'Add customer') && str_contains($newCustomerPage->body(), 'New relationship'), 'Administrators should be able to open a prospective-customer form.');
+$invalidRewardCsrf = $customerController->adjustRewards(new Request('POST', '/dhl/pickupsheet/customers/rewards', [], [
+    '_token' => 'invalid-token',
+    'customer_key' => $customerKey,
+    'operation' => 'bonus',
+    'points' => '10',
+    'reason' => 'Test bonus',
+]));
+$assert($invalidRewardCsrf->status() === 419, 'Reward adjustments should require a valid CSRF token.');
+$bonusReward = $customerController->adjustRewards(new Request('POST', '/dhl/pickupsheet/customers/rewards', [], [
+    '_token' => $pickupCsrf->token(),
+    'customer_key' => $customerKey,
+    'operation' => 'bonus',
+    'points' => '24',
+    'reason' => 'Customer loyalty bonus',
+]));
+$assert($bonusReward->status() === 303, 'An administrator should add customer bonus points.');
+$bonusRewardProfile = $customerController->edit(new Request('GET', '/dhl/pickupsheet/customers/edit', ['customer' => $customerKey]));
+$assert(str_contains($bonusRewardProfile->body(), '25') && str_contains($bonusRewardProfile->body(), '+24') && str_contains($bonusRewardProfile->body(), 'Customer loyalty bonus'), 'The reward balance and append-only bonus history should include shipment points and manual bonuses.');
+$redeemReward = $customerController->adjustRewards(new Request('POST', '/dhl/pickupsheet/customers/rewards', [], [
+    '_token' => $pickupCsrf->token(),
+    'customer_key' => $customerKey,
+    'operation' => 'redeem',
+    'points' => '5',
+    'reason' => 'Redeemed service reward',
+]));
+$assert($redeemReward->status() === 303, 'An administrator should record a customer reward redemption.');
+$redeemedRewardProfile = $customerController->edit(new Request('GET', '/dhl/pickupsheet/customers/edit', ['customer' => $customerKey]));
+$assert(str_contains($redeemedRewardProfile->body(), '20') && str_contains($redeemedRewardProfile->body(), '-5') && str_contains($redeemedRewardProfile->body(), 'Redeemed service reward'), 'A redemption should reduce the reward balance and remain in adjustment history.');
+$overdrawReward = $customerController->adjustRewards(new Request('POST', '/dhl/pickupsheet/customers/rewards', [], [
+    '_token' => $pickupCsrf->token(),
+    'customer_key' => $customerKey,
+    'operation' => 'redeem',
+    'points' => '21',
+    'reason' => 'Invalid overdraw attempt',
+]));
+$overdrawRewardProfile = $customerController->edit(new Request('GET', '/dhl/pickupsheet/customers/edit', ['customer' => $customerKey]));
+$assert($overdrawReward->status() === 303 && str_contains($overdrawRewardProfile->body(), 'cannot exceed the available reward balance'), 'Reward redemptions must not make a customer balance negative.');
 $crmAuditDashboard = $pickupController->dashboard(new Request('GET', '/dhl/pickupsheet/dashboard'));
 $assert(str_contains($crmAuditDashboard->body(), 'pickupsheet.crm_customer_save') && str_contains($crmAuditDashboard->body(), 'Customer status: attention'), 'CRM customer changes should appear in the detailed administrator audit log.');
+$assert(str_contains($crmAuditDashboard->body(), 'pickupsheet.crm_reward_adjustment') && str_contains($crmAuditDashboard->body(), 'Reward balance: 20') && !str_contains($crmAuditDashboard->body(), 'Customer loyalty bonus'), 'Reward adjustments should appear in the detailed administrator audit log without storing the adjustment reason.');
 $recordsSession->login($viewerPrincipal);
 $viewerCustomerDirectory = $customerController->index(new Request('GET', '/dhl/pickupsheet/customers'));
 $assert($viewerCustomerDirectory->status() === 403, 'A viewer must not access administrator CRM data.');
@@ -1414,7 +1453,7 @@ $assert(is_string($dhlAsset) && !str_contains($dhlAsset, '<text'), 'The disquali
 $partnerSources = file_get_contents(dirname(__DIR__) . '/public/assets/partners/README.md');
 $assert(is_string($partnerSources) && str_contains($partnerSources, 'www.dhl.com/content/dam/dhl/global/core/images/logos/dhl-logo.svg'), 'The official DHL artwork source should be documented.');
 $assert(!str_contains($home, 'href="/dhl/pickupsheet"'), 'Pickupsheet should not be discoverable from the public site chrome or homepage.');
-$assert(str_contains($home, 'styles.css?v=20260830-customer-crm'), 'Customer CRM styles should use a cache-safe stylesheet version.');
+$assert(str_contains($home, 'styles.css?v=20260830-customer-rewards'), 'Customer reward styles should use a cache-safe stylesheet version.');
 $assert(str_contains($home, 'app.js?v=20260827-jumpcloud-rbac'), 'The JumpCloud RBAC update should use a cache-safe application script version.');
 $assert(str_contains($home, 'analytics.js?v=20260825-security-hardening'), 'The current consent-aware Google Analytics loader should render on every page.');
 $assert(str_contains($home, 'data-analytics-accept'), 'The site should offer an explicit analytics acceptance control.');
@@ -1568,7 +1607,8 @@ $assert(str_contains($privacy, 'Access token is used only to complete the handof
 $assert(str_contains($privacy, 'successful staff login, last-activity, and logout times'), 'The privacy notice should disclose administrative login-frequency and session-duration monitoring.');
 $assert(str_contains($privacy, 'event action, result, protected route, request identifier, and pseudonymous client identifier'), 'The privacy notice should disclose the detailed user audit fields.');
 $assert(str_contains($privacy, 'Shipment consignor names are synchronized into the administrator-only customer directory'), 'The privacy notice should disclose shipment-to-CRM synchronization.');
-$assert(str_contains($privacy, 'contact name, business email, phone, address, city') && str_contains($privacy, 'CRM access is limited to Pickupsheet administrators'), 'The privacy notice should disclose CRM fields and the administrator-only access boundary.');
+$assert(str_contains($privacy, 'contact name, business email, phone, address, city') && str_contains($privacy, 'CRM and reward access is limited to Pickupsheet administrators'), 'The privacy notice should disclose CRM fields and the administrator-only access boundary.');
+$assert(str_contains($privacy, 'Each active shipment contributes one customer reward point') && str_contains($privacy, 'required reason, UTC time, and pseudonymous administrator identifier'), 'The privacy notice should disclose automatic reward points and adjustment-ledger fields.');
 $assert(str_contains($privacy, "visitor's country code from the source IP address") && str_contains($privacy, 'restrict portal access to Cameroon and Nigeria'), 'The privacy notice should disclose country-level Pickupsheet access enforcement.');
 
 $environmentExample = file_get_contents(dirname(__DIR__) . '/.env.example');
@@ -1729,6 +1769,10 @@ $assert(is_string($customerMigration) && str_contains($customerMigration, 'next_
 $customerRepositorySource = file_get_contents(dirname(__DIR__) . '/src/Modules/CRM/Infrastructure/MysqlCustomerRepository.php');
 $assert(is_string($customerRepositorySource) && str_contains($customerRepositorySource, 'SHA2(LOWER(TRIM(ps.consignor)), 256)'), 'CRM should connect normalized shipment consignors to customer profiles.');
 $assert(is_string($customerRepositorySource) && str_contains($customerRepositorySource, 'COALESCE(SUM(ps.amount_xaf), 0)'), 'CRM should calculate customer shipment value from operational data.');
+$customerRewardsMigration = file_get_contents(dirname(__DIR__) . '/database/migrations/013_create_pickup_customer_rewards.sql');
+$assert(is_string($customerRewardsMigration) && str_contains($customerRewardsMigration, 'CREATE TABLE IF NOT EXISTS pickup_customer_reward_adjustments'), 'MySQL should create the customer reward adjustment ledger idempotently.');
+$assert(is_string($customerRewardsMigration) && str_contains($customerRewardsMigration, 'points_delta INT NOT NULL') && str_contains($customerRewardsMigration, 'actor_id CHAR(24) NOT NULL'), 'Reward adjustments should store signed changes with pseudonymous administrator attribution.');
+$assert(is_string($customerRepositorySource) && str_contains($customerRepositorySource, 'FOR UPDATE') && str_contains($customerRepositorySource, '$balance + $pointsDelta < 0'), 'MySQL reward redemptions should lock the customer and prevent a negative balance atomically.');
 $pickupEditMigration = file_get_contents(dirname(__DIR__) . '/database/migrations/006_create_pickup_sheet_edit_audit.sql');
 $assert(is_string($pickupEditMigration) && str_contains($pickupEditMigration, 'CREATE TABLE IF NOT EXISTS pickup_sheet_edit_audit'), 'MySQL should provide an idempotent pickup-sheet edit audit migration.');
 $assert(is_string($pickupEditMigration) && str_contains($pickupEditMigration, 'before_snapshot LONGTEXT'), 'The edit audit should retain the prior record snapshot.');
@@ -1783,6 +1827,7 @@ $assert(is_string($bootstrap) && str_contains($bootstrap, "'/dhl/pickupsheet/sub
 $assert(is_string($bootstrap) && str_contains($bootstrap, "'/dhl/pickupsheet/submissions/users'"), 'Pickupsheet should expose administrator-only account management.');
 $assert(is_string($bootstrap) && str_contains($bootstrap, "'/dhl/pickupsheet/dashboard'"), 'Pickupsheet should expose the administrator KPI control panel.');
 $assert(is_string($bootstrap) && str_contains($bootstrap, "'/dhl/pickupsheet/customers'"), 'Pickupsheet should expose the administrator-only customer CRM.');
+$assert(is_string($bootstrap) && str_contains($bootstrap, "'/dhl/pickupsheet/customers/rewards'"), 'Pickupsheet should expose the protected customer reward adjustment action.');
 $assert(is_string($bootstrap) && str_contains($bootstrap, "'/dhl/pickupsheet/submissions/edit'"), 'Pickupsheet should expose the administrator-only audited record editor.');
 $assert(is_string($bootstrap) && str_contains($bootstrap, "'/dhl/pickupsheet/submissions/paid'"), 'Pickupsheet should expose the protected open-to-paid action.');
 $assert(is_string($bootstrap) && str_contains($bootstrap, "'/dhl/pickupsheet/submissions/delete'"), 'Pickupsheet should expose the administrator-only delete action.');
