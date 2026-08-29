@@ -21,10 +21,13 @@ use App\Shared\Http\Response;
 use App\Shared\Http\Router;
 use App\Shared\Infrastructure\Database;
 use App\Shared\Infrastructure\DemoRecordsUserRepository;
+use App\Shared\Infrastructure\DemoRecordsSessionActivityRepository;
 use App\Shared\Infrastructure\Environment;
 use App\Shared\Infrastructure\MigrationRunner;
 use App\Shared\Infrastructure\MysqlRecordsUserRepository;
+use App\Shared\Infrastructure\MysqlRecordsSessionActivityRepository;
 use App\Shared\Infrastructure\UnavailableRecordsUserRepository;
+use App\Shared\Infrastructure\UnavailableRecordsSessionActivityRepository;
 use App\Shared\Security\Captcha;
 use App\Shared\Security\CloudflareAccessProvider;
 use App\Shared\Security\Csrf;
@@ -87,6 +90,11 @@ $recordsUserRepository = match (true) {
     $isProduction => new UnavailableRecordsUserRepository(),
     default => new DemoRecordsUserRepository(),
 };
+$recordsSessionActivityRepository = match (true) {
+    $connection !== null => new MysqlRecordsSessionActivityRepository($connection),
+    $isProduction => new UnavailableRecordsSessionActivityRepository(),
+    default => new DemoRecordsSessionActivityRepository(),
+};
 $storageMode = $connection === null ? 'Demo workspace' : 'MySQL connected';
 $contactEmail = (string) ($config['contact_email'] ?? '');
 $notifier = filter_var($contactEmail, FILTER_VALIDATE_EMAIL)
@@ -100,7 +108,7 @@ $csrf = new Csrf();
 $rateLimiter = new RateLimiter($root . '/storage/security');
 $securityLogger = new SecurityLogger();
 $recordsAccess = RecordsAccess::fromEnvironment($recordsUserRepository);
-$recordsSession = new RecordsSession();
+$recordsSession = new RecordsSession($recordsSessionActivityRepository);
 $jumpCloud = JumpCloudOidcProvider::fromEnvironment();
 $cloudflareAccess = CloudflareAccessProvider::fromEnvironment();
 $config['jumpcloud_oidc_configured'] = $jumpCloud->isConfigured();

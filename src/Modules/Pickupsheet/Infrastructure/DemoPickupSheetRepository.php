@@ -6,6 +6,7 @@ namespace App\Modules\Pickupsheet\Infrastructure;
 
 use App\Modules\Pickupsheet\Domain\PickupSheet;
 use App\Modules\Pickupsheet\Domain\PickupSheetRepository;
+use DateTimeImmutable;
 
 final class DemoPickupSheetRepository implements PickupSheetRepository
 {
@@ -145,6 +146,34 @@ final class DemoPickupSheetRepository implements PickupSheetRepository
         }
         usort($destinations, static fn (array $left, array $right): int => $right['shipmentCount'] <=> $left['shipmentCount']);
         return array_slice($destinations, 0, max(1, $limit));
+    }
+
+    public function topSenders(int $months, int $limit): array
+    {
+        $today = new DateTimeImmutable('today');
+        $minimumDate = $today->modify('-' . max(1, $months) . ' months')->format('Y-m-d');
+        $maximumDate = $today->format('Y-m-d');
+        $senders = [];
+
+        foreach ($this->recent(PHP_INT_MAX) as $sheet) {
+            if ($sheet->collectionDate < $minimumDate || $sheet->collectionDate > $maximumDate) {
+                continue;
+            }
+
+            foreach ($sheet->shipments as $shipment) {
+                $sender = trim($shipment->consignor);
+                $senderKey = strtolower($sender);
+                $senders[$senderKey] ??= ['sender' => $sender, 'shipmentCount' => 0];
+                $senders[$senderKey]['shipmentCount']++;
+            }
+        }
+
+        usort($senders, static function (array $left, array $right): int {
+            $countOrder = $right['shipmentCount'] <=> $left['shipmentCount'];
+            return $countOrder !== 0 ? $countOrder : strcasecmp($left['sender'], $right['sender']);
+        });
+
+        return array_slice($senders, 0, max(1, min($limit, 10)));
     }
 
     public function findByReference(string $referenceNumber): ?PickupSheet

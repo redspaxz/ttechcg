@@ -433,6 +433,35 @@ final class MysqlPickupSheetRepository implements PickupSheetRepository
         ], $statement->fetchAll());
     }
 
+    public function topSenders(int $months, int $limit): array
+    {
+        $this->ensureLifecycleSchema();
+        $today = new \DateTimeImmutable('today');
+        $minimumDate = $today->modify('-' . max(1, $months) . ' months')->format('Y-m-d');
+        $maximumDate = $today->format('Y-m-d');
+        $statement = $this->connection->prepare(
+            'SELECT MIN(TRIM(ps.consignor)) AS sender,
+                    COUNT(*) AS shipment_count
+             FROM pickup_shipments ps
+             INNER JOIN pickup_sheets p ON p.id = ps.pickup_sheet_id
+             WHERE p.deleted_at IS NULL
+               AND p.collection_date >= :minimum_date
+               AND p.collection_date <= :maximum_date
+             GROUP BY LOWER(TRIM(ps.consignor))
+             ORDER BY shipment_count DESC, sender ASC
+             LIMIT :limit',
+        );
+        $statement->bindValue(':minimum_date', $minimumDate);
+        $statement->bindValue(':maximum_date', $maximumDate);
+        $statement->bindValue(':limit', max(1, min($limit, 10)), PDO::PARAM_INT);
+        $statement->execute();
+
+        return array_map(static fn (array $row): array => [
+            'sender' => (string) $row['sender'],
+            'shipmentCount' => (int) $row['shipment_count'],
+        ], $statement->fetchAll());
+    }
+
     public function findByReference(string $referenceNumber): ?PickupSheet
     {
         $this->ensureLifecycleSchema();

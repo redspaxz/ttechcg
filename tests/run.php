@@ -16,6 +16,7 @@ use App\Modules\Pickupsheet\UI\PickupsheetController;
 use App\Modules\Site\UI\SiteController;
 use App\Shared\Http\Request;
 use App\Shared\Infrastructure\DemoRecordsUserRepository;
+use App\Shared\Infrastructure\DemoRecordsSessionActivityRepository;
 use App\Shared\Security\Captcha;
 use App\Shared\Security\CloudflareAccessProvider;
 use App\Shared\Security\Csrf;
@@ -193,6 +194,55 @@ $assert(count($secondPickupPage['items']) === 2, 'The second pickup-sheet page s
 $assert($secondPickupPage['page'] === 2, 'Pagination should retain the requested valid page.');
 $assert($pickupService->paginated(999, 10)['page'] === 2, 'Pagination should clamp out-of-range pages to the final page.');
 
+$existingDemoPickupSheets = $_SESSION['_demo_pickup_sheets'] ?? [];
+$_SESSION['_demo_pickup_sheets'] = [];
+$senderPerformanceService = new PickupSheetService(new DemoPickupSheetRepository());
+$senderNames = [
+    'Sender 01', 'sender 01', 'Sender 01', 'Sender 01',
+    'Sender 02', 'Sender 02', 'Sender 02',
+    'Sender 03', 'Sender 03',
+    'Sender 04', 'Sender 05', 'Sender 06', 'Sender 07', 'Sender 08', 'Sender 09',
+    'Sender 10', 'Sender 11', 'Sender 12',
+];
+$senderRows = [];
+foreach ($senderNames as $index => $senderName) {
+    $senderRows[] = [
+        'consignor' => $senderName,
+        'awb_number' => (string) (9100000000 + $index),
+        'destination' => 'DLA',
+        'amount' => '1000',
+        'pieces' => '1',
+        'weight_kg' => '0.5',
+        'checked_by' => 'Performance Checker',
+    ];
+}
+$senderPerformanceService->submit([
+    'agent_name' => 'Performance Agent',
+    'collection_date' => (new DateTimeImmutable('today'))->format('Y-m-d'),
+    'privacy_consent' => '1',
+    'shipments' => $senderRows,
+]);
+$senderPerformanceService->submit([
+    'agent_name' => 'Historical Agent',
+    'collection_date' => (new DateTimeImmutable('today'))->modify('-13 months')->format('Y-m-d'),
+    'privacy_consent' => '1',
+    'shipments' => [[
+        'consignor' => 'Legacy Leader',
+        'awb_number' => '8100000000',
+        'destination' => 'DLA',
+        'amount' => '1000',
+        'pieces' => '1',
+        'weight_kg' => '0.5',
+        'checked_by' => 'Performance Checker',
+    ]],
+]);
+$topSenders = $senderPerformanceService->topSenders(12, 10);
+$assert(count($topSenders) === 10, 'Sender performance should be limited to the top ten senders.');
+$assert(($topSenders[0]['sender'] ?? '') === 'Sender 01' && ($topSenders[0]['shipmentCount'] ?? 0) === 4, 'Sender performance should group name casing and rank the most frequent sender first.');
+$assert(($topSenders[1]['sender'] ?? '') === 'Sender 02' && ($topSenders[1]['shipmentCount'] ?? 0) === 3, 'Sender performance should sort shipment counts from most to least.');
+$assert(!in_array('Legacy Leader', array_column($topSenders, 'sender'), true), 'Sender performance should exclude shipments older than the rolling twelve-month window.');
+$_SESSION['_demo_pickup_sheets'] = $existingDemoPickupSheets;
+
 $pickupConsentFailed = false;
 try {
     $pickupService->submit([
@@ -300,7 +350,8 @@ $recordsAccess = new RecordsAccess([
         'role' => 'operator',
     ],
 ], $recordsUserRepository);
-$recordsSession = new RecordsSession();
+$recordsSessionActivity = new DemoRecordsSessionActivityRepository();
+$recordsSession = new RecordsSession($recordsSessionActivity);
 $recordsUserService = new RecordsUserService($recordsUserRepository, $recordsAccess->environmentUsernames());
 $recordsServer = [
     'PHP_AUTH_USER' => $recordsUsername,
@@ -492,6 +543,9 @@ try {
 }
 $assert($oidcReplayRejected, 'A JumpCloud authorization transaction should be single-use.');
 $recordsSession->logout();
+$jumpCloudActivity = $recordsSessionActivity->summary(30, 50);
+$assert(($jumpCloudActivity[0]['username'] ?? '') === 'operator@example.com' && ($jumpCloudActivity[0]['loginCount'] ?? 0) === 1, 'Successful JumpCloud login frequency should be retained for administrators.');
+$assert(($jumpCloudActivity[0]['identityProvider'] ?? '') === 'jumpcloud' && !($jumpCloudActivity[0]['activeNow'] ?? true), 'A completed JumpCloud session should retain its provider and signed-out state.');
 
 $cloudflareHttpClient = new class implements OidcHttpClient {
     /** @var array<string, mixed> */
@@ -1031,6 +1085,11 @@ $adminDashboard = $pickupController->dashboard(new Request('GET', '/dhl/pickupsh
 $assert($adminDashboard->status() === 200, 'An administrator should open the KPI dashboard.');
 $assert(str_contains($adminDashboard->body(), '14,000'), 'The KPI dashboard should reflect the administrator-corrected cash activity.');
 $assert(str_contains($adminDashboard->body(), 'pickup-activity-chart'), 'The dashboard should render its activity graph without client-side chart dependencies.');
+$assert(str_contains($adminDashboard->body(), 'pickup-sender-chart') && str_contains($adminDashboard->body(), 'Top 10 senders'), 'The administrator dashboard should render the rolling sender performance chart.');
+$assert(str_contains($adminDashboard->body(), 'Controller Client') && str_contains($adminDashboard->body(), '1 shipment'), 'The sender chart should display shipment frequency for the ranked consignor.');
+$assert(str_contains($adminDashboard->body(), 'User login frequency') && str_contains($adminDashboard->body(), 'Last 30 days'), 'The administrator dashboard should show per-user login frequency for the documented window.');
+$assert(str_contains($adminDashboard->body(), 'Records Administrator') && str_contains($adminDashboard->body(), 'Active now'), 'The administrator dashboard should identify active user sessions by account name.');
+$assert(str_contains($adminDashboard->body(), 'Total session') && str_contains($adminDashboard->body(), 'Average'), 'The administrator dashboard should show total and average session time.');
 $adminUsers = $pickupController->users(new Request('GET', '/dhl/pickupsheet/submissions/users', [], [], '', $recordsServer));
 $assert($adminUsers->status() === 200, 'An administrator should open records-user management.');
 $assert(str_contains($adminUsers->body(), 'Create local account'), 'The administrator should receive a local account-creation form.');
@@ -1261,7 +1320,7 @@ $assert(is_string($dhlAsset) && !str_contains($dhlAsset, '<text'), 'The disquali
 $partnerSources = file_get_contents(dirname(__DIR__) . '/public/assets/partners/README.md');
 $assert(is_string($partnerSources) && str_contains($partnerSources, 'www.dhl.com/content/dam/dhl/global/core/images/logos/dhl-logo.svg'), 'The official DHL artwork source should be documented.');
 $assert(!str_contains($home, 'href="/dhl/pickupsheet"'), 'Pickupsheet should not be discoverable from the public site chrome or homepage.');
-$assert(str_contains($home, 'styles.css?v=20260828-record-card-layout'), 'The submitted-sheet card update should use a cache-safe stylesheet version.');
+$assert(str_contains($home, 'styles.css?v=20260829-admin-performance'), 'The admin performance update should use a cache-safe stylesheet version.');
 $assert(str_contains($home, 'app.js?v=20260827-jumpcloud-rbac'), 'The JumpCloud RBAC update should use a cache-safe application script version.');
 $assert(str_contains($home, 'analytics.js?v=20260825-security-hardening'), 'The current consent-aware Google Analytics loader should render on every page.');
 $assert(str_contains($home, 'data-analytics-accept'), 'The site should offer an explicit analytics acceptance control.');
@@ -1412,6 +1471,7 @@ $assert(str_contains($privacy, 'JumpCloud single sign-on') && str_contains($priv
 $assert(str_contains($privacy, 'Access and ID tokens are used only to complete sign-in and are not retained'), 'The privacy notice should state the OIDC token-retention boundary.');
 $assert(str_contains($privacy, 'Cloudflare Access handoff') && str_contains($privacy, 'full Access identity'), 'The privacy notice should disclose the Cloudflare identity handoff.');
 $assert(str_contains($privacy, 'Access token is used only to complete the handoff and is not retained'), 'The privacy notice should state the Cloudflare token-retention boundary.');
+$assert(str_contains($privacy, 'successful staff login, last-activity, and logout times'), 'The privacy notice should disclose administrative login-frequency and session-duration monitoring.');
 
 $environmentExample = file_get_contents(dirname(__DIR__) . '/.env.example');
 $assert(is_string($environmentExample) && str_contains($environmentExample, 'APP_TIMEZONE=Africa/Douala'), 'The environment example should use Cameroon time.');
@@ -1548,6 +1608,15 @@ $assert(is_string($pickupMysqlRepository) && str_contains($pickupMysqlRepository
 $assert(str_contains($pickupMysqlRepository, "SET status = 'paid'"), 'MySQL should persist the open-to-paid lifecycle transition.');
 $assert(str_contains($pickupMysqlRepository, 'SET deleted_at = UTC_TIMESTAMP()'), 'Administrator deletion should retain pickup sheets through a soft-delete timestamp.');
 $assert(str_contains($pickupMysqlRepository, 'pickup_sheet_lifecycle_audit'), 'Paid and delete actions should persist lifecycle audit snapshots.');
+$assert(str_contains($pickupMysqlRepository, 'GROUP BY LOWER(TRIM(ps.consignor))'), 'MySQL sender performance should group sender name casing consistently.');
+$assert(str_contains($pickupMysqlRepository, 'p.collection_date >= :minimum_date') && str_contains($pickupMysqlRepository, 'p.collection_date <= :maximum_date'), 'MySQL sender performance should use a bounded rolling collection-date window.');
+$assert(str_contains($pickupMysqlRepository, 'ORDER BY shipment_count DESC, sender ASC'), 'MySQL sender performance should rank the most frequent senders first with deterministic ties.');
+$sessionActivityMigration = file_get_contents(dirname(__DIR__) . '/database/migrations/010_create_pickup_records_session_activity.sql');
+$assert(is_string($sessionActivityMigration) && str_contains($sessionActivityMigration, 'CREATE TABLE IF NOT EXISTS pickup_records_session_activity'), 'MySQL should persist successful staff session activity idempotently.');
+$assert(is_string($sessionActivityMigration) && str_contains($sessionActivityMigration, 'logged_in_at') && str_contains($sessionActivityMigration, 'last_seen_at') && str_contains($sessionActivityMigration, 'logged_out_at'), 'Session activity storage should retain login, activity, and logout timestamps.');
+$sessionActivityRepository = file_get_contents(dirname(__DIR__) . '/src/Shared/Infrastructure/MysqlRecordsSessionActivityRepository.php');
+$assert(is_string($sessionActivityRepository) && str_contains($sessionActivityRepository, 'COUNT(*) AS login_count'), 'MySQL session activity should aggregate login frequency per user.');
+$assert(is_string($sessionActivityRepository) && str_contains($sessionActivityRepository, 'TIMESTAMPDIFF(SECOND'), 'MySQL session activity should calculate session duration from server timestamps.');
 $pickupEditMigration = file_get_contents(dirname(__DIR__) . '/database/migrations/006_create_pickup_sheet_edit_audit.sql');
 $assert(is_string($pickupEditMigration) && str_contains($pickupEditMigration, 'CREATE TABLE IF NOT EXISTS pickup_sheet_edit_audit'), 'MySQL should provide an idempotent pickup-sheet edit audit migration.');
 $assert(is_string($pickupEditMigration) && str_contains($pickupEditMigration, 'before_snapshot LONGTEXT'), 'The edit audit should retain the prior record snapshot.');

@@ -6,6 +6,8 @@ $e = static fn (mixed $value): string => htmlspecialchars((string) $value, ENT_Q
 $summary = is_array($summary ?? null) ? $summary : [];
 $activity = is_array($activity ?? null) ? $activity : [];
 $destinations = is_array($destinations ?? null) ? $destinations : [];
+$senders = is_array($senders ?? null) ? $senders : [];
+$userActivity = is_array($userActivity ?? null) ? $userActivity : [];
 $recentSheets = is_array($recentSheets ?? null) ? $recentSheets : [];
 $accounts = is_array($accounts ?? null) ? $accounts : [];
 $errors = is_array($errors ?? null) ? $errors : [];
@@ -20,6 +22,21 @@ $plotBottom = $plotTop + $plotHeight;
 $barGap = 6;
 $barWidth = max(8, (int) floor(($chartWidth - 70) / max(1, count($activity))) - $barGap);
 $maximumCash = max([1, ...array_map(static fn (array $row): int => (int) ($row['totalCashXaf'] ?? 0), $activity)]);
+$maximumSenderShipments = max([1, ...array_map(static fn (array $row): int => (int) ($row['shipmentCount'] ?? 0), $senders)]);
+$activeSessions = count(array_filter($userActivity, static fn (array $row): bool => (bool) ($row['activeNow'] ?? false)));
+$formatDuration = static function (int $seconds): string {
+    if ($seconds < 60) {
+        return '<1m';
+    }
+    $hours = intdiv($seconds, 3600);
+    $minutes = intdiv($seconds % 3600, 60);
+    return $hours > 0 ? $hours . 'h ' . $minutes . 'm' : $minutes . 'm';
+};
+$identityProviderLabel = static fn (string $provider): string => match ($provider) {
+    'jumpcloud' => 'JumpCloud',
+    'cloudflare_access' => 'Cloudflare Access',
+    default => 'Local',
+};
 ?>
 <section class="pickup-admin-workspace">
     <div class="container pickup-workspace-header pickup-admin-header">
@@ -83,6 +100,55 @@ $maximumCash = max([1, ...array_map(static fn (array $row): int => (int) ($row['
                 </div>
             </section>
         </div>
+
+        <section class="pickup-sender-performance" aria-labelledby="sender-performance-title">
+            <div class="pickup-card-heading">
+                <div><span>Rolling 12-month performance</span><h2 id="sender-performance-title">Top 10 senders</h2></div>
+                <small>Most to least shipments</small>
+            </div>
+            <?php if ($senders === []): ?>
+                <p class="pickup-sender-empty">No sender activity has been recorded during the last 12 months.</p>
+            <?php else: ?>
+                <ol class="pickup-sender-chart" aria-label="Top senders ranked by shipment frequency">
+                    <?php foreach ($senders as $index => $sender): ?>
+                        <?php $shipmentCount = (int) ($sender['shipmentCount'] ?? 0); ?>
+                        <li>
+                            <span class="pickup-sender-rank" aria-label="Rank <?= $e($index + 1) ?>"><?= $e($index + 1) ?></span>
+                            <span class="pickup-sender-name" title="<?= $e($sender['sender'] ?? '') ?>"><?= $e($sender['sender'] ?? '') ?></span>
+                            <progress max="<?= $e($maximumSenderShipments) ?>" value="<?= $e($shipmentCount) ?>" aria-label="<?= $e($sender['sender'] ?? '') ?>: <?= $e($shipmentCount) ?> shipments"><?= $e($shipmentCount) ?></progress>
+                            <strong><?= $e(number_format($shipmentCount)) ?> <?= $shipmentCount === 1 ? 'shipment' : 'shipments' ?></strong>
+                        </li>
+                    <?php endforeach; ?>
+                </ol>
+            <?php endif; ?>
+        </section>
+
+        <section class="pickup-user-activity" aria-labelledby="user-activity-title">
+            <div class="pickup-card-heading">
+                <div><span>Account activity</span><h2 id="user-activity-title">User login frequency</h2></div>
+                <small>Last 30 days &middot; <?= $e($activeSessions) ?> active now</small>
+            </div>
+            <div class="pickup-user-activity-table">
+                <table>
+                    <thead><tr><th>User</th><th>Role</th><th>Sign-in</th><th>Logins</th><th>Total session</th><th>Average</th><th>Last login (UTC)</th><th>Session</th></tr></thead>
+                    <tbody>
+                    <?php if ($userActivity === []): ?><tr><td colspan="8">No successful login activity has been recorded during the last 30 days.</td></tr><?php endif; ?>
+                    <?php foreach ($userActivity as $user): ?>
+                        <tr>
+                            <td><strong><?= $e($user['fullName'] ?? $user['username'] ?? '') ?></strong><small><?= $e($user['username'] ?? '') ?></small></td>
+                            <td><?= $e(ucfirst((string) ($user['role'] ?? ''))) ?></td>
+                            <td><?= $e($identityProviderLabel((string) ($user['identityProvider'] ?? 'local'))) ?></td>
+                            <td><strong><?= $e(number_format((int) ($user['loginCount'] ?? 0))) ?></strong></td>
+                            <td><?= $e($formatDuration((int) ($user['totalSessionSeconds'] ?? 0))) ?></td>
+                            <td><?= $e($formatDuration((int) ($user['averageSessionSeconds'] ?? 0))) ?></td>
+                            <td><?= $e($user['lastLoginAt'] ?? '') ?></td>
+                            <td><span class="pickup-session-state <?= ($user['activeNow'] ?? false) ? 'is-active' : '' ?>"><i aria-hidden="true"></i><?= ($user['activeNow'] ?? false) ? 'Active now' : 'Signed out' ?></span></td>
+                        </tr>
+                    <?php endforeach; ?>
+                    </tbody>
+                </table>
+            </div>
+        </section>
 
         <section class="pickup-dashboard-recent">
             <div class="pickup-card-heading"><div><span>Recent activity</span><h2>Latest pickup sheets</h2></div><a href="<?= $e($basePath) ?>/dhl/pickupsheet/submissions">View all records</a></div>

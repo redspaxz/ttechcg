@@ -165,6 +165,8 @@ final class PickupsheetController
         $summary = ['sheetCount' => 0, 'shipmentCount' => 0, 'totalCashXaf' => 0, 'latestCreatedAt' => null];
         $activity = [];
         $destinations = [];
+        $senders = [];
+        $userActivity = [];
         $recentSheets = [];
         $accounts = [];
         $errors = [];
@@ -173,11 +175,19 @@ final class PickupsheetController
             $summary = $this->service->summary();
             $activity = $this->completeActivity($this->service->activityByDay(14), 14);
             $destinations = $this->service->topDestinations(5);
+            $senders = $this->service->topSenders(12, 10);
             $recentSheets = $this->service->recent(8);
             $accounts = $this->recordsUserService->accounts($authorization);
         } catch (RuntimeException $exception) {
             error_log($exception->__toString());
             $errors = ['Dashboard activity could not be loaded. Check the MySQL connection and account schema.'];
+        }
+
+        try {
+            $userActivity = $this->recordsSession->activitySummary(30, 50);
+        } catch (RuntimeException $exception) {
+            error_log($exception->__toString());
+            $errors[] = 'User login activity could not be loaded. Check the session-activity schema.';
         }
 
         $body = $this->view->render('pickupsheet/dashboard', [
@@ -192,6 +202,8 @@ final class PickupsheetController
             'summary' => $summary,
             'activity' => $activity,
             'destinations' => $destinations,
+            'senders' => $senders,
+            'userActivity' => $userActivity,
             'recentSheets' => $recentSheets,
             'accounts' => $accounts,
             'errors' => $errors,

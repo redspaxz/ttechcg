@@ -71,6 +71,15 @@ final class PickupSheetService
         return $this->repository->topDestinations(max(1, min($limit, 10)));
     }
 
+    /** @return list<array{sender: string, shipmentCount: int}> */
+    public function topSenders(int $months = 12, int $limit = 10): array
+    {
+        return $this->repository->topSenders(
+            max(1, min($months, 24)),
+            max(1, min($limit, 10)),
+        );
+    }
+
     /** @param array<string, mixed> $input */
     public function submit(array $input): PickupSheet
     {

@@ -1086,9 +1086,12 @@ button, a, input, select, textarea { -webkit-tap-highlight-color: transparent; }
 .pickup-dashboard-grid { display: grid; grid-template-columns: minmax(0, 1.55fr) minmax(300px, 0.75fr); gap: 28px; }
 .pickup-chart-card,
 .pickup-destination-card,
+.pickup-sender-performance,
+.pickup-user-activity,
 .pickup-dashboard-recent { border: 1px solid #333; background: #131315; }
 .pickup-chart-card,
-.pickup-destination-card { padding: 26px; }
+.pickup-destination-card,
+.pickup-sender-performance { padding: 26px; }
 .pickup-card-heading { display: flex; align-items: end; justify-content: space-between; gap: 24px; }
 .pickup-card-heading span { color: var(--copper); font-size: 0.64rem; font-weight: 850; letter-spacing: 0.09em; text-transform: uppercase; }
 .pickup-card-heading h2 { margin: 7px 0 0; color: #fff; font-size: clamp(1.45rem, 3vw, 2.2rem); letter-spacing: -0.045em; }
@@ -1108,6 +1111,31 @@ button, a, input, select, textarea { -webkit-tap-highlight-color: transparent; }
 .pickup-destination-list progress::-webkit-progress-bar { background: #333; }
 .pickup-destination-list progress::-webkit-progress-value { background: var(--copper); }
 .pickup-destination-list progress::-moz-progress-bar { background: var(--copper); }
+.pickup-sender-performance { margin-top: 28px; }
+.pickup-sender-chart { display: grid; gap: 18px; margin: 30px 0 0; padding: 0; list-style: none; }
+.pickup-sender-chart li { display: grid; grid-template-columns: 36px minmax(160px, 0.8fr) minmax(220px, 1.4fr) minmax(110px, auto); gap: 18px; align-items: center; }
+.pickup-sender-rank { display: grid; width: 30px; height: 30px; place-items: center; border: 1px solid #444; color: #aaa; font-size: 0.72rem; font-weight: 850; }
+.pickup-sender-name { overflow: hidden; color: #fff; font-weight: 800; text-overflow: ellipsis; white-space: nowrap; }
+.pickup-sender-chart progress { width: 100%; height: 12px; border: 0; background: #333; accent-color: var(--copper); }
+.pickup-sender-chart progress::-webkit-progress-bar { background: #333; }
+.pickup-sender-chart progress::-webkit-progress-value { background: var(--copper); }
+.pickup-sender-chart progress::-moz-progress-bar { background: var(--copper); }
+.pickup-sender-chart strong { color: #ddd; font-size: 0.75rem; text-align: right; white-space: nowrap; }
+.pickup-sender-empty { margin: 30px 0 0; color: #888; }
+.pickup-user-activity { margin-top: 28px; }
+.pickup-user-activity > .pickup-card-heading { padding: 24px 26px; border-bottom: 1px solid #333; }
+.pickup-user-activity-table { overflow-x: auto; }
+.pickup-user-activity-table table { width: 100%; min-width: 1040px; border-collapse: collapse; }
+.pickup-user-activity-table th,
+.pickup-user-activity-table td { padding: 16px 18px; border-bottom: 1px solid #2b2b2e; color: #ddd; text-align: left; vertical-align: middle; }
+.pickup-user-activity-table th { color: #888; font-size: 0.62rem; letter-spacing: 0.08em; text-transform: uppercase; }
+.pickup-user-activity-table tr:last-child td { border-bottom: 0; }
+.pickup-user-activity-table td > strong { color: #fff; }
+.pickup-user-activity-table td > small { display: block; max-width: 210px; margin-top: 4px; overflow: hidden; color: #888; text-overflow: ellipsis; white-space: nowrap; }
+.pickup-session-state { display: inline-flex; align-items: center; gap: 7px; color: #999; font-size: 0.7rem; font-weight: 800; white-space: nowrap; }
+.pickup-session-state i { width: 7px; height: 7px; border-radius: 50%; background: #666; }
+.pickup-session-state.is-active { color: #fff; }
+.pickup-session-state.is-active i { background: #55c878; box-shadow: 0 0 0 4px rgba(85, 200, 120, 0.12); }
 .pickup-dashboard-recent { margin-top: 28px; }
 .pickup-dashboard-recent > .pickup-card-heading { padding: 24px 26px; border-bottom: 1px solid #333; }
 .pickup-dashboard-table-wrap { overflow-x: auto; }
@@ -1143,6 +1171,8 @@ button, a, input, select, textarea { -webkit-tap-highlight-color: transparent; }
     .pickup-admin-actions a:last-child,
     .pickup-kpi-grid article:last-child { border-bottom: 0; }
     .pickup-card-heading { align-items: flex-start; flex-direction: column; gap: 10px; }
+    .pickup-sender-chart li { grid-template-columns: 36px minmax(0, 1fr) auto; gap: 10px 14px; }
+    .pickup-sender-chart progress { grid-column: 2 / -1; }
 }
 
 /* Pickup records user management */
