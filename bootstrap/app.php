@@ -22,12 +22,15 @@ use App\Shared\Http\Router;
 use App\Shared\Infrastructure\Database;
 use App\Shared\Infrastructure\DemoRecordsUserRepository;
 use App\Shared\Infrastructure\DemoRecordsSessionActivityRepository;
+use App\Shared\Infrastructure\DemoSecurityEventRepository;
 use App\Shared\Infrastructure\Environment;
 use App\Shared\Infrastructure\MigrationRunner;
 use App\Shared\Infrastructure\MysqlRecordsUserRepository;
 use App\Shared\Infrastructure\MysqlRecordsSessionActivityRepository;
+use App\Shared\Infrastructure\MysqlSecurityEventRepository;
 use App\Shared\Infrastructure\UnavailableRecordsUserRepository;
 use App\Shared\Infrastructure\UnavailableRecordsSessionActivityRepository;
+use App\Shared\Infrastructure\UnavailableSecurityEventRepository;
 use App\Shared\Security\Captcha;
 use App\Shared\Security\CloudflareAccessProvider;
 use App\Shared\Security\Csrf;
@@ -96,6 +99,11 @@ $recordsSessionActivityRepository = match (true) {
     $isProduction => new UnavailableRecordsSessionActivityRepository(),
     default => new DemoRecordsSessionActivityRepository(),
 };
+$securityEventRepository = match (true) {
+    $connection !== null => new MysqlSecurityEventRepository($connection),
+    $isProduction => new UnavailableSecurityEventRepository(),
+    default => new DemoSecurityEventRepository(),
+};
 $storageMode = $connection === null ? 'Demo workspace' : 'MySQL connected';
 $contactEmail = (string) ($config['contact_email'] ?? '');
 $notifier = filter_var($contactEmail, FILTER_VALIDATE_EMAIL)
@@ -107,7 +115,7 @@ $pickupOperational = !$isProduction || $connection !== null;
 $view = new View($root . '/views');
 $csrf = new Csrf();
 $rateLimiter = new RateLimiter($root . '/storage/security');
-$securityLogger = new SecurityLogger();
+$securityLogger = new SecurityLogger(true, $securityEventRepository);
 $recordsAccess = RecordsAccess::fromEnvironment($recordsUserRepository);
 $recordsSession = new RecordsSession($recordsSessionActivityRepository);
 $jumpCloud = JumpCloudOidcProvider::fromEnvironment();

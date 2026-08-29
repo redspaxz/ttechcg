@@ -6,6 +6,8 @@ namespace App\Shared\Http;
 
 final class Request
 {
+    private ?string $generatedRequestId = null;
+
     /**
      * @param array<string, mixed> $query
      * @param array<string, mixed> $body
@@ -115,7 +117,7 @@ final class Request
             return $cloudflareRay;
         }
 
-        return substr(hash('sha256', $this->method . '|' . $this->path . '|' . $this->clientIdentifier()), 0, 24);
+        return $this->generatedRequestId ??= bin2hex(random_bytes(12));
     }
 
     private function serverString(string $key): string

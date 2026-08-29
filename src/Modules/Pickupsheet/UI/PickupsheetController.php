@@ -167,6 +167,7 @@ final class PickupsheetController
         $destinations = [];
         $senders = [];
         $userActivity = [];
+        $auditLogs = [];
         $recentSheets = [];
         $accounts = [];
         $errors = [];
@@ -190,6 +191,14 @@ final class PickupsheetController
             $errors[] = 'User login activity could not be loaded. Check the session-activity schema.';
         }
 
+        try {
+            $auditLogs = $this->securityLogger->recentPickupsheet(50);
+            $auditLogs = $this->auditLogsWithIdentity($auditLogs, $authorization, $accounts, $userActivity);
+        } catch (RuntimeException $exception) {
+            error_log($exception->__toString());
+            $errors[] = 'Detailed user logs could not be loaded. Check the security-event schema.';
+        }
+
         $body = $this->view->render('pickupsheet/dashboard', [
             'pageTitle' => 'Pickupsheet control panel',
             'pageDescription' => 'Administrative KPIs, activity, and access controls for Pickupsheet.',
@@ -204,6 +213,7 @@ final class PickupsheetController
             'destinations' => $destinations,
             'senders' => $senders,
             'userActivity' => $userActivity,
+            'auditLogs' => $auditLogs,
             'recentSheets' => $recentSheets,
             'accounts' => $accounts,
             'errors' => $errors,
@@ -476,7 +486,8 @@ final class PickupsheetController
             $_SESSION['_records_users_flash'] = sprintf('Account %s created as %s.', $account->username, $account->role);
             $this->securityLogger->event('pickupsheet.records_user_create', $request, 'accepted', [
                 'target_id' => substr(hash('sha256', $account->username), 0, 24),
-                'role' => $account->role,
+                'target_role' => $account->role,
+                'active' => $account->active,
             ]);
         } catch (InvalidArgumentException $exception) {
             $_SESSION['_records_users_errors'] = [$exception->getMessage()];
@@ -525,7 +536,7 @@ final class PickupsheetController
             $_SESSION['_records_users_flash'] = sprintf('Account %s updated.', $account->username);
             $this->securityLogger->event('pickupsheet.records_user_update', $request, 'accepted', [
                 'target_id' => substr(hash('sha256', $account->username), 0, 24),
-                'role' => $account->role,
+                'target_role' => $account->role,
                 'active' => $account->active,
             ]);
         } catch (InvalidArgumentException $exception) {
@@ -755,6 +766,97 @@ final class PickupsheetController
             ];
         }
         return $complete;
+    }
+
+    /**
+     * @param list<array<string, mixed>> $logs
+     * @param list<object> $accounts
+     * @param list<array<string, mixed>> $userActivity
+     * @return list<array<string, mixed>>
+     */
+    private function auditLogsWithIdentity(
+        array $logs,
+        RecordsPrincipal $currentUser,
+        array $accounts,
+        array $userActivity,
+    ): array {
+        $knownUsers = [];
+        $register = static function (
+            string $username,
+            string $fullName,
+            string $role,
+            string $identityProvider,
+        ) use (&$knownUsers): void {
+            if ($username === '') {
+                return;
+            }
+            $knownUsers[substr(hash('sha256', $username), 0, 24)] = [
+                'username' => $username,
+                'fullName' => $fullName,
+                'role' => $role,
+                'identityProvider' => $identityProvider,
+            ];
+        };
+
+        $register(
+            $currentUser->username,
+            $currentUser->fullName(),
+            $currentUser->role,
+            $currentUser->identityProvider,
+        );
+        foreach ($accounts as $account) {
+            if (isset($account->username) && method_exists($account, 'fullName')) {
+                $register(
+                    (string) $account->username,
+                    (string) $account->fullName(),
+                    (string) ($account->role ?? ''),
+                    'local',
+                );
+            }
+        }
+        foreach ($userActivity as $user) {
+            $register(
+                (string) ($user['username'] ?? ''),
+                (string) ($user['fullName'] ?? ''),
+                (string) ($user['role'] ?? ''),
+                (string) ($user['identityProvider'] ?? ''),
+            );
+        }
+
+        $requestActors = [];
+        foreach ($logs as $log) {
+            $requestId = (string) ($log['requestId'] ?? '');
+            $actorId = (string) ($log['actorId'] ?? '');
+            if ($requestId !== '' && $actorId !== '') {
+                $requestActors[$requestId] = $actorId;
+            }
+        }
+
+        foreach ($logs as &$log) {
+            $requestId = (string) ($log['requestId'] ?? '');
+            $actorId = (string) ($log['actorId'] ?? '');
+            if ($actorId === '' && isset($requestActors[$requestId])) {
+                $actorId = $requestActors[$requestId];
+                $log['actorId'] = $actorId;
+            }
+
+            $identity = $knownUsers[$actorId] ?? null;
+            $log['actorName'] = is_array($identity)
+                ? $identity['fullName']
+                : ($actorId === '' ? 'Unauthenticated' : 'Unresolved account');
+            $log['actorUsername'] = is_array($identity)
+                ? $identity['username']
+                : ($actorId === '' ? '' : 'ID ' . substr($actorId, 0, 10));
+            $log['role'] = (string) ($log['role'] ?? '') ?: (is_array($identity) ? $identity['role'] : '');
+            $log['identityProvider'] = (string) ($log['identityProvider'] ?? '')
+                ?: (is_array($identity) ? $identity['identityProvider'] : '');
+
+            $targetId = (string) ($log['targetId'] ?? '');
+            $log['targetName'] = isset($knownUsers[$targetId]) ? $knownUsers[$targetId]['fullName'] : '';
+        }
+        unset($log);
+
+        return $logs;
     }
 
     private function recordsUserWriteGuard(Request $request): ?Response

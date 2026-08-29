@@ -20,6 +20,7 @@ use App\Shared\Http\Response;
 use App\Shared\Http\Router;
 use App\Shared\Infrastructure\DemoRecordsUserRepository;
 use App\Shared\Infrastructure\DemoRecordsSessionActivityRepository;
+use App\Shared\Infrastructure\DemoSecurityEventRepository;
 use App\Shared\Security\Captcha;
 use App\Shared\Security\CloudflareAccessProvider;
 use App\Shared\Security\Csrf;
@@ -317,6 +318,10 @@ $basicRequest = new Request('GET', '/protected', [], [], '', [
 ]);
 $assert($basicRequest->basicCredentials() === ['records-admin', 'test-password'], 'Request should safely parse a Basic authorization header.');
 $assert($basicRequest->clientIdentifier() === hash('sha256', '203.0.113.15'), 'Request should hash the validated Cloudflare client address.');
+$generatedRequestId = $basicRequest->requestId();
+$assert(preg_match('/^[a-f0-9]{24}$/', $generatedRequestId) === 1, 'Requests without a Cloudflare Ray should receive a pseudorandom correlation identifier.');
+$assert($basicRequest->requestId() === $generatedRequestId, 'A generated request identifier should remain stable for the lifetime of its request object.');
+$assert((new Request('GET', '/basic'))->requestId() !== $generatedRequestId, 'Separate requests should not share a generated correlation identifier.');
 
 $rateLimitDirectory = sys_get_temp_dir() . DIRECTORY_SEPARATOR . 'ttechcg-rate-limit-' . bin2hex(random_bytes(8));
 $rateLimiterTest = new RateLimiter($rateLimitDirectory);
@@ -347,7 +352,8 @@ $healthResponse = (new SiteController($view, $config, 'MySQL connected', true))-
 $assert($healthResponse->body() === '{"status":"ok"}', 'The public health endpoint should not expose backend component details.');
 $assert(($healthResponse->headers()['Cache-Control'] ?? '') === 'no-store', 'Health status should not be cached.');
 $disabledRateLimiter = new RateLimiter('', false);
-$disabledSecurityLogger = new SecurityLogger(false);
+$testSecurityEvents = new DemoSecurityEventRepository();
+$testSecurityLogger = new SecurityLogger(true, $testSecurityEvents, false);
 $recordsUsername = 'records-admin';
 $recordsPassword = 'test-records-password';
 $viewerUsername = 'records-viewer';
@@ -735,7 +741,7 @@ $controller = new ContactController(
     'Demo workspace',
     true,
     $disabledRateLimiter,
-    $disabledSecurityLogger,
+    $testSecurityLogger,
 );
 $controllerChallenge = $captchaService->issue();
 $controllerResponse = $controller->store(new Request('POST', '/contact', [], [
@@ -768,7 +774,7 @@ $pickupController = new PickupsheetController(
     $recordsSession,
     $recordsUserService,
     $disabledRateLimiter,
-    $disabledSecurityLogger,
+    $testSecurityLogger,
 );
 $pickupAuthController = new PickupsheetAuthController(
     $view,
@@ -776,7 +782,7 @@ $pickupAuthController = new PickupsheetAuthController(
     $recordsAccess,
     $recordsSession,
     $disabledRateLimiter,
-    $disabledSecurityLogger,
+    $testSecurityLogger,
     $config,
 );
 
@@ -794,7 +800,7 @@ $jumpCloudAuthController = new PickupsheetAuthController(
     $recordsAccess,
     $recordsSession,
     $disabledRateLimiter,
-    $disabledSecurityLogger,
+    $testSecurityLogger,
     $jumpCloudConfig,
     $oidcProvider,
 );
@@ -805,7 +811,7 @@ $cloudflareAuthController = new PickupsheetAuthController(
     $recordsAccess,
     $recordsSession,
     $disabledRateLimiter,
-    $disabledSecurityLogger,
+    $testSecurityLogger,
     $cloudflareConfig,
     $oidcProvider,
     $cloudflareProvider,
@@ -822,7 +828,7 @@ $jumpCloudPickupController = new PickupsheetController(
     $recordsSession,
     $recordsUserService,
     $disabledRateLimiter,
-    $disabledSecurityLogger,
+    $testSecurityLogger,
 );
 $jumpCloudLoginPage = $jumpCloudAuthController->login(new Request('GET', '/dhl/pickupsheet/login'));
 $assert($jumpCloudLoginPage->status() === 200 && str_contains($jumpCloudLoginPage->body(), 'Continue with JumpCloud'), 'Configured Pickupsheet login should offer JumpCloud SSO.');
@@ -1118,6 +1124,9 @@ $assert(str_contains($adminDashboard->body(), 'Controller Client') && str_contai
 $assert(str_contains($adminDashboard->body(), 'User login frequency') && str_contains($adminDashboard->body(), 'Last 30 days'), 'The administrator dashboard should show per-user login frequency for the documented window.');
 $assert(str_contains($adminDashboard->body(), 'Records Administrator') && str_contains($adminDashboard->body(), 'Active now'), 'The administrator dashboard should identify active user sessions by account name.');
 $assert(str_contains($adminDashboard->body(), 'Total session') && str_contains($adminDashboard->body(), 'Average'), 'The administrator dashboard should show total and average session time.');
+$assert(str_contains($adminDashboard->body(), 'Detailed user logs') && str_contains($adminDashboard->body(), 'Latest 50 events'), 'The administrator dashboard should provide a bounded detailed user audit trail.');
+$assert(str_contains($adminDashboard->body(), 'pickupsheet.records_access') && str_contains($adminDashboard->body(), 'Records Administrator'), 'Detailed logs should resolve a protected request to the known administrator account.');
+$assert(str_contains($adminDashboard->body(), 'Request') && str_contains($adminDashboard->body(), 'Client'), 'Detailed logs should expose pseudonymous request and client correlation identifiers.');
 $adminUsers = $pickupController->users(new Request('GET', '/dhl/pickupsheet/submissions/users', [], [], '', $recordsServer));
 $assert($adminUsers->status() === 200, 'An administrator should open records-user management.');
 $assert(str_contains($adminUsers->body(), 'Create local account'), 'The administrator should receive a local account-creation form.');
@@ -1348,7 +1357,7 @@ $assert(is_string($dhlAsset) && !str_contains($dhlAsset, '<text'), 'The disquali
 $partnerSources = file_get_contents(dirname(__DIR__) . '/public/assets/partners/README.md');
 $assert(is_string($partnerSources) && str_contains($partnerSources, 'www.dhl.com/content/dam/dhl/global/core/images/logos/dhl-logo.svg'), 'The official DHL artwork source should be documented.');
 $assert(!str_contains($home, 'href="/dhl/pickupsheet"'), 'Pickupsheet should not be discoverable from the public site chrome or homepage.');
-$assert(str_contains($home, 'styles.css?v=20260829-admin-performance'), 'The admin performance update should use a cache-safe stylesheet version.');
+$assert(str_contains($home, 'styles.css?v=20260829-detailed-user-logs'), 'Detailed user logs should use a cache-safe stylesheet version.');
 $assert(str_contains($home, 'app.js?v=20260827-jumpcloud-rbac'), 'The JumpCloud RBAC update should use a cache-safe application script version.');
 $assert(str_contains($home, 'analytics.js?v=20260825-security-hardening'), 'The current consent-aware Google Analytics loader should render on every page.');
 $assert(str_contains($home, 'data-analytics-accept'), 'The site should offer an explicit analytics acceptance control.');
@@ -1500,6 +1509,7 @@ $assert(str_contains($privacy, 'Access and ID tokens are used only to complete s
 $assert(str_contains($privacy, 'Cloudflare Access handoff') && str_contains($privacy, 'full Access identity'), 'The privacy notice should disclose the Cloudflare identity handoff.');
 $assert(str_contains($privacy, 'Access token is used only to complete the handoff and is not retained'), 'The privacy notice should state the Cloudflare token-retention boundary.');
 $assert(str_contains($privacy, 'successful staff login, last-activity, and logout times'), 'The privacy notice should disclose administrative login-frequency and session-duration monitoring.');
+$assert(str_contains($privacy, 'event action, result, protected route, request identifier, and pseudonymous client identifier'), 'The privacy notice should disclose the detailed user audit fields.');
 $assert(str_contains($privacy, "visitor's country code from the source IP address") && str_contains($privacy, 'restrict portal access to Cameroon and Nigeria'), 'The privacy notice should disclose country-level Pickupsheet access enforcement.');
 
 $environmentExample = file_get_contents(dirname(__DIR__) . '/.env.example');
@@ -1648,6 +1658,12 @@ $assert(is_string($sessionActivityMigration) && str_contains($sessionActivityMig
 $sessionActivityRepository = file_get_contents(dirname(__DIR__) . '/src/Shared/Infrastructure/MysqlRecordsSessionActivityRepository.php');
 $assert(is_string($sessionActivityRepository) && str_contains($sessionActivityRepository, 'COUNT(*) AS login_count'), 'MySQL session activity should aggregate login frequency per user.');
 $assert(is_string($sessionActivityRepository) && str_contains($sessionActivityRepository, 'TIMESTAMPDIFF(SECOND'), 'MySQL session activity should calculate session duration from server timestamps.');
+$securityEventMigration = file_get_contents(dirname(__DIR__) . '/database/migrations/011_create_pickup_security_events.sql');
+$assert(is_string($securityEventMigration) && str_contains($securityEventMigration, 'CREATE TABLE IF NOT EXISTS pickup_security_events'), 'MySQL should persist detailed user audit events idempotently.');
+$assert(is_string($securityEventMigration) && str_contains($securityEventMigration, 'actor_id CHAR(24)') && str_contains($securityEventMigration, 'client_id CHAR(64)'), 'Detailed logs should correlate actors and clients through pseudonymous identifiers.');
+$securityEventRepository = file_get_contents(dirname(__DIR__) . '/src/Shared/Infrastructure/MysqlSecurityEventRepository.php');
+$assert(is_string($securityEventRepository) && str_contains($securityEventRepository, "WHERE event_name LIKE 'pickupsheet.%'"), 'The administrator log should query only Pickupsheet events.');
+$assert(is_string($securityEventRepository) && str_contains($securityEventRepository, 'ORDER BY occurred_at DESC, id DESC'), 'Detailed logs should show the newest events first deterministically.');
 $pickupEditMigration = file_get_contents(dirname(__DIR__) . '/database/migrations/006_create_pickup_sheet_edit_audit.sql');
 $assert(is_string($pickupEditMigration) && str_contains($pickupEditMigration, 'CREATE TABLE IF NOT EXISTS pickup_sheet_edit_audit'), 'MySQL should provide an idempotent pickup-sheet edit audit migration.');
 $assert(is_string($pickupEditMigration) && str_contains($pickupEditMigration, 'before_snapshot LONGTEXT'), 'The edit audit should retain the prior record snapshot.');
