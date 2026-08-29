@@ -1070,7 +1070,7 @@ button, a, input, select, textarea { -webkit-tap-highlight-color: transparent; }
 .pickup-admin-heading h1 { margin: 8px 0 0; color: #fff; font-size: clamp(3.4rem, 7vw, 6.6rem); letter-spacing: -0.08em; line-height: 0.88; }
 .pickup-admin-heading > div > p:last-child { max-width: 700px; margin: 24px 0 0; color: #aaa; line-height: 1.7; }
 .pickup-admin-heading .pickup-storage-state { border-color: rgba(255, 255, 255, 0.22); color: #ddd; }
-.pickup-admin-actions { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); border: 1px solid #333; }
+.pickup-admin-actions { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); border: 1px solid #333; }
 .pickup-admin-actions a { display: grid; grid-template-columns: 1fr auto; gap: 12px; min-height: 150px; padding: 24px; border-right: 1px solid #333; background: #131315; color: #fff; text-decoration: none; }
 .pickup-admin-actions a:last-child { border-right: 0; }
 .pickup-admin-actions a:hover { background: #1b1b1e; }
@@ -2172,4 +2172,114 @@ button, a, input, select, textarea { -webkit-tap-highlight-color: transparent; }
     .shipment-row-action { grid-column: auto; }
     .pickup-summary > div { align-items: flex-start; flex-direction: column; gap: 8px; }
     .pickup-form .captcha-fieldset { grid-template-columns: 1fr; }
+}
+
+/* Pickupsheet customer CRM */
+.pickup-crm-workspace { min-height: 100vh; background: var(--dhl-yellow); color: #241b00; }
+.pickup-crm-shell,
+.pickup-customer-shell { width: min(1220px, calc(100% - 48px)); padding-top: 54px; }
+.pickup-crm-heading { display: flex; align-items: end; justify-content: space-between; gap: 32px; margin-bottom: 28px; }
+.pickup-crm-heading h1 { margin: 7px 0 0; color: #241b00; font-size: clamp(3rem, 7vw, 6.2rem); letter-spacing: -0.075em; line-height: 0.9; }
+.pickup-crm-heading p:last-child { max-width: 720px; margin: 20px 0 0; color: #655000; line-height: 1.65; }
+.pickup-crm-add,
+.pickup-customer-form .button { background: var(--dhl-red); color: #fff; }
+.pickup-crm-kpis,
+.pickup-customer-metrics { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); margin-bottom: 24px; border: 1px solid rgba(69, 50, 0, 0.32); background: #fff; }
+.pickup-crm-kpis article,
+.pickup-customer-metrics article { min-height: 142px; padding: 22px; border-right: 1px solid rgba(69, 50, 0, 0.22); }
+.pickup-crm-kpis article:last-child,
+.pickup-customer-metrics article:last-child { border-right: 0; }
+.pickup-crm-kpis span,
+.pickup-customer-metrics span { color: #655000; font-size: 0.64rem; font-weight: 850; letter-spacing: 0.08em; text-transform: uppercase; }
+.pickup-crm-kpis strong,
+.pickup-customer-metrics strong { display: block; margin: 22px 0 8px; color: #241b00; font-size: clamp(1.65rem, 4vw, 2.8rem); letter-spacing: -0.055em; }
+.pickup-crm-kpis small { color: #766522; }
+.pickup-crm-filter { display: grid; grid-template-columns: minmax(260px, 1.5fr) minmax(190px, 0.65fr) auto auto; gap: 14px; align-items: end; margin-bottom: 24px; padding: 20px; border: 1px solid rgba(69, 50, 0, 0.32); background: #fff7d1; }
+.pickup-crm-filter label,
+.pickup-customer-form label { display: grid; gap: 8px; }
+.pickup-crm-filter label > span,
+.pickup-customer-form label > span { color: #493800; font-size: 0.65rem; font-weight: 850; letter-spacing: 0.07em; text-transform: uppercase; }
+.pickup-crm-filter input,
+.pickup-crm-filter select,
+.pickup-customer-form input,
+.pickup-customer-form select,
+.pickup-customer-form textarea { width: 100%; min-height: 48px; padding: 11px 13px; border: 1px solid rgba(69, 50, 0, 0.38); border-radius: 0; background: #fff; color: #241b00; font: inherit; }
+.pickup-customer-form textarea { min-height: 146px; resize: vertical; }
+.pickup-crm-filter input:focus,
+.pickup-crm-filter select:focus,
+.pickup-customer-form input:focus,
+.pickup-customer-form select:focus,
+.pickup-customer-form textarea:focus { border-color: var(--dhl-red); outline: 3px solid rgba(212, 5, 17, 0.12); }
+.pickup-crm-filter > .button { min-height: 48px; background: #241b00; color: #fff; }
+.pickup-crm-filter > a { align-self: center; color: #493800; font-size: 0.72rem; font-weight: 850; }
+.pickup-crm-directory,
+.pickup-customer-history { border: 1px solid rgba(69, 50, 0, 0.32); background: #fff; }
+.pickup-crm-directory > .pickup-card-heading,
+.pickup-customer-history > .pickup-card-heading { padding: 23px 25px; border-bottom: 1px solid rgba(69, 50, 0, 0.22); }
+.pickup-crm-directory .pickup-card-heading h2,
+.pickup-customer-history .pickup-card-heading h2 { color: #241b00; }
+.pickup-crm-directory .pickup-card-heading small,
+.pickup-customer-history .pickup-card-heading small { color: #655000; }
+.pickup-crm-table-wrap { overflow-x: auto; }
+.pickup-crm-table-wrap table { width: 100%; min-width: 1020px; border-collapse: collapse; }
+.pickup-crm-table-wrap th,
+.pickup-crm-table-wrap td { padding: 16px 17px; border-bottom: 1px solid rgba(69, 50, 0, 0.16); color: #493800; text-align: left; vertical-align: top; }
+.pickup-crm-table-wrap th { background: #fffdf5; color: #766522; font-size: 0.62rem; letter-spacing: 0.08em; text-transform: uppercase; }
+.pickup-crm-table-wrap tr:last-child td { border-bottom: 0; }
+.pickup-crm-table-wrap td > strong { display: block; color: #241b00; }
+.pickup-crm-table-wrap td > small { display: block; max-width: 230px; margin-top: 5px; overflow: hidden; color: #806d24; text-overflow: ellipsis; white-space: nowrap; }
+.pickup-crm-table-wrap a { color: var(--dhl-red); font-weight: 850; }
+.pickup-customer-status { display: inline-flex; padding: 6px 9px; border: 1px solid #8b7626; color: #655000; font-size: 0.62rem; font-weight: 850; letter-spacing: 0.05em; text-transform: uppercase; white-space: nowrap; }
+.pickup-customer-status.is-active { border-color: #168a45; background: #e6f7ed; color: #0b633a; }
+.pickup-customer-status.is-attention { border-color: var(--dhl-red); background: #fff0f1; color: #a6000a; }
+.pickup-customer-status.is-inactive { border-color: #999; background: #f2f2f2; color: #666; }
+.pickup-follow-up-due { color: var(--dhl-red) !important; }
+.pickup-crm-directory .pickup-pagination { padding: 0 22px 24px; }
+.pickup-customer-layout { display: grid; grid-template-columns: minmax(0, 1.55fr) minmax(280px, 0.55fr); gap: 24px; align-items: start; }
+.pickup-customer-form { padding: 28px; border: 1px solid rgba(69, 50, 0, 0.32); background: #fff; }
+.pickup-customer-form fieldset { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 18px; margin: 0 0 28px; padding: 0 0 28px; border: 0; border-bottom: 1px solid rgba(69, 50, 0, 0.18); }
+.pickup-customer-form fieldset:last-of-type { margin-bottom: 20px; }
+.pickup-customer-form legend { grid-column: 1 / -1; margin-bottom: 4px; color: var(--dhl-red); font-size: 0.7rem; font-weight: 900; letter-spacing: 0.08em; text-transform: uppercase; }
+.pickup-customer-form .pickup-field-wide { grid-column: 1 / -1; }
+.pickup-customer-form label small { color: #806d24; font-size: 0.68rem; }
+.pickup-customer-form-actions { display: flex; align-items: center; justify-content: flex-end; gap: 18px; }
+.pickup-customer-form-actions > a { color: #493800; font-size: 0.74rem; font-weight: 850; }
+.pickup-customer-context { padding: 26px; border: 1px solid rgba(69, 50, 0, 0.32); background: #fff7d1; }
+.pickup-customer-context h2 { margin: 0 0 14px; font-size: 1.35rem; }
+.pickup-customer-context p { color: #655000; line-height: 1.65; }
+.pickup-customer-context dl { display: grid; gap: 16px; margin: 22px 0; }
+.pickup-customer-context dl > div { padding-bottom: 14px; border-bottom: 1px solid rgba(69, 50, 0, 0.16); }
+.pickup-customer-context dt { color: #806d24; font-size: 0.62rem; font-weight: 850; letter-spacing: 0.07em; text-transform: uppercase; }
+.pickup-customer-context dd { margin: 5px 0 0; color: #241b00; font-weight: 750; overflow-wrap: anywhere; }
+.pickup-customer-context > a { display: block; margin-top: 10px; color: var(--dhl-red); font-weight: 850; }
+.pickup-customer-history { margin-top: 24px; }
+
+@media (max-width: 960px) {
+    .pickup-crm-kpis,
+    .pickup-customer-metrics { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+    .pickup-crm-kpis article:nth-child(2),
+    .pickup-customer-metrics article:nth-child(2) { border-right: 0; }
+    .pickup-crm-kpis article:nth-child(-n + 2),
+    .pickup-customer-metrics article:nth-child(-n + 2) { border-bottom: 1px solid rgba(69, 50, 0, 0.22); }
+    .pickup-crm-filter { grid-template-columns: 1fr 1fr; }
+    .pickup-customer-layout { grid-template-columns: 1fr; }
+}
+
+@media (max-width: 650px) {
+    .pickup-crm-shell,
+    .pickup-customer-shell { width: min(100% - 28px, 1220px); padding-top: 38px; }
+    .pickup-crm-heading { align-items: flex-start; flex-direction: column; }
+    .pickup-crm-add { width: 100%; }
+    .pickup-crm-kpis,
+    .pickup-customer-metrics,
+    .pickup-crm-filter,
+    .pickup-customer-form fieldset { grid-template-columns: 1fr; }
+    .pickup-crm-kpis article,
+    .pickup-customer-metrics article { min-height: 120px; border-right: 0; border-bottom: 1px solid rgba(69, 50, 0, 0.22); }
+    .pickup-crm-kpis article:last-child,
+    .pickup-customer-metrics article:last-child { border-bottom: 0; }
+    .pickup-customer-form { padding: 22px 16px; }
+    .pickup-customer-form .pickup-field-wide { grid-column: auto; }
+    .pickup-customer-form-actions { align-items: stretch; flex-direction: column; }
+    .pickup-customer-form-actions .button { width: 100%; }
 }

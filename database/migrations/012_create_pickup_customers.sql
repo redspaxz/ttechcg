@@ -1,0 +1,23 @@
+CREATE TABLE IF NOT EXISTS pickup_customers (
+    id BIGINT UNSIGNED NOT NULL AUTO_INCREMENT PRIMARY KEY,
+    customer_key CHAR(64) NOT NULL,
+    display_name VARCHAR(160) NOT NULL,
+    contact_name VARCHAR(100) NULL,
+    email VARCHAR(254) NULL,
+    phone VARCHAR(32) NULL,
+    address VARCHAR(255) NULL,
+    city VARCHAR(100) NULL,
+    country_code CHAR(2) NULL,
+    status VARCHAR(20) NOT NULL DEFAULT 'active',
+    notes TEXT NULL,
+    next_follow_up_on DATE NULL,
+    source VARCHAR(20) NOT NULL DEFAULT 'manual',
+    created_by CHAR(24) NULL,
+    updated_by CHAR(24) NULL,
+    created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    updated_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+    UNIQUE INDEX pickup_customers_key_idx (customer_key),
+    INDEX pickup_customers_name_idx (display_name),
+    INDEX pickup_customers_status_follow_up_idx (status, next_follow_up_on),
+    INDEX pickup_customers_email_idx (email)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;

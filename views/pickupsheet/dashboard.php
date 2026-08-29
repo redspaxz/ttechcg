@@ -52,6 +52,7 @@ $auditEventLabel = static fn (string $event): string => match ($event) {
     'pickupsheet.records_user_create' => 'User created',
     'pickupsheet.records_user_update' => 'User updated',
     'pickupsheet.admin_password_reset' => 'Admin password reset',
+    'pickupsheet.crm_customer_save' => 'CRM customer saved',
     'pickupsheet.country_access' => 'Country restriction',
     default => ucwords(str_replace(['pickupsheet.', '_', '.'], ['', ' ', ' '], $event)),
 };
@@ -90,6 +91,12 @@ $auditDetails = static function (array $log): string {
     if (($context['country'] ?? '') !== '') {
         $details[] = 'Country: ' . $context['country'];
     }
+    if (($context['customer_status'] ?? '') !== '') {
+        $details[] = 'Customer status: ' . str_replace('_', ' ', (string) $context['customer_status']);
+    }
+    if (($context['source'] ?? '') !== '') {
+        $details[] = 'Source: ' . str_replace('_', ' ', (string) $context['source']);
+    }
     return $details === [] ? 'No additional metadata' : implode(' · ', $details);
 };
 ?>
@@ -114,6 +121,7 @@ $auditDetails = static function (array $log): string {
 
         <nav class="pickup-admin-actions" aria-label="Pickupsheet administration">
             <a href="<?= $e($basePath) ?>/dhl/pickupsheet/submissions"><span>Records</span><strong>View all pickup sheets</strong><i aria-hidden="true">&#8599;</i></a>
+            <a href="<?= $e($basePath) ?>/dhl/pickupsheet/customers"><span>CRM</span><strong>Manage customer relationships</strong><i aria-hidden="true">&#8599;</i></a>
             <a href="<?= $e($basePath) ?>/dhl/pickupsheet/submissions/users"><span>Access</span><strong>Manage users and RBAC</strong><i aria-hidden="true">&#8599;</i></a>
             <a href="<?= $e($basePath) ?>/dhl/pickupsheet/"><span>Operations</span><strong>Create pickup sheet</strong><i aria-hidden="true">&#8599;</i></a>
         </nav>

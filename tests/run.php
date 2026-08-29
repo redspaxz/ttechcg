@@ -8,6 +8,9 @@ use App\Modules\Contact\Domain\InquiryNotifier;
 use App\Modules\Contact\Infrastructure\DemoInquiryRepository;
 use App\Modules\Contact\Infrastructure\UnavailableInquiryRepository;
 use App\Modules\Contact\UI\ContactController;
+use App\Modules\CRM\Application\CustomerService;
+use App\Modules\CRM\Infrastructure\DemoCustomerRepository;
+use App\Modules\CRM\UI\CustomerController;
 use App\Modules\Pickupsheet\Application\PickupSheetService;
 use App\Modules\Pickupsheet\Infrastructure\DemoPickupSheetRepository;
 use App\Modules\Pickupsheet\Infrastructure\UnavailablePickupSheetRepository;
@@ -406,6 +409,7 @@ $adminPrincipal = $recordsAccess->authenticate(new Request('GET', '/protected', 
 $viewerPrincipal = $recordsAccess->authenticate(new Request('GET', '/protected', [], [], '', $viewerServer));
 $operatorPrincipal = $recordsAccess->authenticate(new Request('GET', '/protected', [], [], '', $operatorServer));
 $assert($adminPrincipal?->role === 'admin' && $adminPrincipal->can('manage') && $adminPrincipal->can('dashboard'), 'An admin should manage users and receive the activity dashboard.');
+$assert($adminPrincipal?->can('crm') === true && $viewerPrincipal?->can('crm') === false && $operatorPrincipal?->can('crm') === false, 'Only administrators should manage CRM customer data.');
 $assert($adminPrincipal?->fullName() === 'Records Administrator', 'Authenticated principals should expose the account first and last name.');
 $assert($adminPrincipal?->can('edit') === true && $adminPrincipal->can('mark_paid') === true && $adminPrincipal->can('delete') === true, 'An administrator should edit, mark paid, and delete pickup records.');
 $assert($viewerPrincipal?->can('create') === true && $viewerPrincipal->can('list') === true && $viewerPrincipal->can('edit') === false && $viewerPrincipal->can('print') === false, 'A viewer should create and view records but cannot edit, print, or export them.');
@@ -776,6 +780,15 @@ $pickupController = new PickupsheetController(
     $disabledRateLimiter,
     $testSecurityLogger,
 );
+$customerController = new CustomerController(
+    new CustomerService(new DemoCustomerRepository(new DemoPickupSheetRepository())),
+    $view,
+    $pickupCsrf,
+    $recordsAccess,
+    $recordsSession,
+    $disabledRateLimiter,
+    $testSecurityLogger,
+);
 $pickupAuthController = new PickupsheetAuthController(
     $view,
     $pickupCsrf,
@@ -1127,6 +1140,50 @@ $assert(str_contains($adminDashboard->body(), 'Total session') && str_contains($
 $assert(str_contains($adminDashboard->body(), 'Detailed user logs') && str_contains($adminDashboard->body(), 'Latest 50 events'), 'The administrator dashboard should provide a bounded detailed user audit trail.');
 $assert(str_contains($adminDashboard->body(), 'pickupsheet.records_access') && str_contains($adminDashboard->body(), 'Records Administrator'), 'Detailed logs should resolve a protected request to the known administrator account.');
 $assert(str_contains($adminDashboard->body(), 'Request') && str_contains($adminDashboard->body(), 'Client'), 'Detailed logs should expose pseudonymous request and client correlation identifiers.');
+$assert(str_contains($adminDashboard->body(), 'Manage customer relationships') && str_contains($adminDashboard->body(), '/dhl/pickupsheet/customers'), 'The administrator dashboard should link to the customer CRM.');
+
+$customerDirectory = $customerController->index(new Request('GET', '/dhl/pickupsheet/customers'));
+$customerKey = hash('sha256', strtolower('Controller Client'));
+$customerProfile = $customerController->edit(new Request('GET', '/dhl/pickupsheet/customers/edit', ['customer' => $customerKey]));
+$assert($customerDirectory->status() === 200 && str_contains($customerDirectory->body(), 'Customer CRM'), 'An administrator should open the customer CRM.');
+$assert(str_contains($customerDirectory->body(), 'Controller Client') && str_contains($customerDirectory->body(), '14,000 XAF'), 'CRM should synchronize shipment consignors and their operational value.');
+$assert($customerProfile->status() === 200 && str_contains($customerProfile->body(), 'Recent shipments') && str_contains($customerProfile->body(), $savedReference), 'A synchronized customer profile should show linked shipment history.');
+$invalidCustomerCsrf = $customerController->save(new Request('POST', '/dhl/pickupsheet/customers/save', [], [
+    '_token' => 'invalid-token',
+    'customer_key' => $customerKey,
+    'display_name' => 'Controller Client',
+    'status' => 'active',
+]));
+$assert($invalidCustomerCsrf->status() === 419, 'CRM customer updates should require a valid CSRF token.');
+$saveCustomer = $customerController->save(new Request('POST', '/dhl/pickupsheet/customers/save', [], [
+    '_token' => $pickupCsrf->token(),
+    'customer_key' => $customerKey,
+    'display_name' => 'Controller Client',
+    'contact_name' => 'Camille Customer',
+    'email' => 'camille@example.com',
+    'phone' => '+237 670 000 000',
+    'address' => 'Commercial Avenue',
+    'city' => 'Bamenda',
+    'country_code' => 'CM',
+    'status' => 'attention',
+    'notes' => 'Confirm the next collection schedule.',
+    'next_follow_up_on' => '2026-08-30',
+]));
+$assert($saveCustomer->status() === 303 && str_contains((string) ($saveCustomer->headers()['Location'] ?? ''), $customerKey), 'An administrator should save an enriched CRM customer profile.');
+$updatedCustomerProfile = $customerController->edit(new Request('GET', '/dhl/pickupsheet/customers/edit', ['customer' => $customerKey]));
+$assert(str_contains($updatedCustomerProfile->body(), 'Camille Customer') && str_contains($updatedCustomerProfile->body(), 'camille@example.com'), 'Saved CRM contact details should persist.');
+$assert(str_contains($updatedCustomerProfile->body(), 'Needs attention') && str_contains($updatedCustomerProfile->body(), 'Confirm the next collection schedule.'), 'Saved CRM relationship status and notes should persist.');
+$newCustomerPage = $customerController->create(new Request('GET', '/dhl/pickupsheet/customers/new'));
+$assert($newCustomerPage->status() === 200 && str_contains($newCustomerPage->body(), 'Add customer') && str_contains($newCustomerPage->body(), 'New relationship'), 'Administrators should be able to open a prospective-customer form.');
+$crmAuditDashboard = $pickupController->dashboard(new Request('GET', '/dhl/pickupsheet/dashboard'));
+$assert(str_contains($crmAuditDashboard->body(), 'pickupsheet.crm_customer_save') && str_contains($crmAuditDashboard->body(), 'Customer status: attention'), 'CRM customer changes should appear in the detailed administrator audit log.');
+$recordsSession->login($viewerPrincipal);
+$viewerCustomerDirectory = $customerController->index(new Request('GET', '/dhl/pickupsheet/customers'));
+$assert($viewerCustomerDirectory->status() === 403, 'A viewer must not access administrator CRM data.');
+$recordsSession->login($operatorPrincipal);
+$operatorCustomerDirectory = $customerController->index(new Request('GET', '/dhl/pickupsheet/customers'));
+$assert($operatorCustomerDirectory->status() === 403, 'An operator must not access administrator CRM data.');
+$recordsSession->login($adminPrincipal);
 $adminUsers = $pickupController->users(new Request('GET', '/dhl/pickupsheet/submissions/users', [], [], '', $recordsServer));
 $assert($adminUsers->status() === 200, 'An administrator should open records-user management.');
 $assert(str_contains($adminUsers->body(), 'Create local account'), 'The administrator should receive a local account-creation form.');
@@ -1357,7 +1414,7 @@ $assert(is_string($dhlAsset) && !str_contains($dhlAsset, '<text'), 'The disquali
 $partnerSources = file_get_contents(dirname(__DIR__) . '/public/assets/partners/README.md');
 $assert(is_string($partnerSources) && str_contains($partnerSources, 'www.dhl.com/content/dam/dhl/global/core/images/logos/dhl-logo.svg'), 'The official DHL artwork source should be documented.');
 $assert(!str_contains($home, 'href="/dhl/pickupsheet"'), 'Pickupsheet should not be discoverable from the public site chrome or homepage.');
-$assert(str_contains($home, 'styles.css?v=20260829-detailed-user-logs'), 'Detailed user logs should use a cache-safe stylesheet version.');
+$assert(str_contains($home, 'styles.css?v=20260830-customer-crm'), 'Customer CRM styles should use a cache-safe stylesheet version.');
 $assert(str_contains($home, 'app.js?v=20260827-jumpcloud-rbac'), 'The JumpCloud RBAC update should use a cache-safe application script version.');
 $assert(str_contains($home, 'analytics.js?v=20260825-security-hardening'), 'The current consent-aware Google Analytics loader should render on every page.');
 $assert(str_contains($home, 'data-analytics-accept'), 'The site should offer an explicit analytics acceptance control.');
@@ -1510,6 +1567,8 @@ $assert(str_contains($privacy, 'Cloudflare Access handoff') && str_contains($pri
 $assert(str_contains($privacy, 'Access token is used only to complete the handoff and is not retained'), 'The privacy notice should state the Cloudflare token-retention boundary.');
 $assert(str_contains($privacy, 'successful staff login, last-activity, and logout times'), 'The privacy notice should disclose administrative login-frequency and session-duration monitoring.');
 $assert(str_contains($privacy, 'event action, result, protected route, request identifier, and pseudonymous client identifier'), 'The privacy notice should disclose the detailed user audit fields.');
+$assert(str_contains($privacy, 'Shipment consignor names are synchronized into the administrator-only customer directory'), 'The privacy notice should disclose shipment-to-CRM synchronization.');
+$assert(str_contains($privacy, 'contact name, business email, phone, address, city') && str_contains($privacy, 'CRM access is limited to Pickupsheet administrators'), 'The privacy notice should disclose CRM fields and the administrator-only access boundary.');
 $assert(str_contains($privacy, "visitor's country code from the source IP address") && str_contains($privacy, 'restrict portal access to Cameroon and Nigeria'), 'The privacy notice should disclose country-level Pickupsheet access enforcement.');
 
 $environmentExample = file_get_contents(dirname(__DIR__) . '/.env.example');
@@ -1664,6 +1723,12 @@ $assert(is_string($securityEventMigration) && str_contains($securityEventMigrati
 $securityEventRepository = file_get_contents(dirname(__DIR__) . '/src/Shared/Infrastructure/MysqlSecurityEventRepository.php');
 $assert(is_string($securityEventRepository) && str_contains($securityEventRepository, "WHERE event_name LIKE 'pickupsheet.%'"), 'The administrator log should query only Pickupsheet events.');
 $assert(is_string($securityEventRepository) && str_contains($securityEventRepository, 'ORDER BY occurred_at DESC, id DESC'), 'Detailed logs should show the newest events first deterministically.');
+$customerMigration = file_get_contents(dirname(__DIR__) . '/database/migrations/012_create_pickup_customers.sql');
+$assert(is_string($customerMigration) && str_contains($customerMigration, 'CREATE TABLE IF NOT EXISTS pickup_customers'), 'MySQL should create CRM customer profiles idempotently.');
+$assert(is_string($customerMigration) && str_contains($customerMigration, 'next_follow_up_on DATE') && str_contains($customerMigration, 'updated_by CHAR(24)'), 'CRM storage should support follow-up scheduling and pseudonymous administrator attribution.');
+$customerRepositorySource = file_get_contents(dirname(__DIR__) . '/src/Modules/CRM/Infrastructure/MysqlCustomerRepository.php');
+$assert(is_string($customerRepositorySource) && str_contains($customerRepositorySource, 'SHA2(LOWER(TRIM(ps.consignor)), 256)'), 'CRM should connect normalized shipment consignors to customer profiles.');
+$assert(is_string($customerRepositorySource) && str_contains($customerRepositorySource, 'COALESCE(SUM(ps.amount_xaf), 0)'), 'CRM should calculate customer shipment value from operational data.');
 $pickupEditMigration = file_get_contents(dirname(__DIR__) . '/database/migrations/006_create_pickup_sheet_edit_audit.sql');
 $assert(is_string($pickupEditMigration) && str_contains($pickupEditMigration, 'CREATE TABLE IF NOT EXISTS pickup_sheet_edit_audit'), 'MySQL should provide an idempotent pickup-sheet edit audit migration.');
 $assert(is_string($pickupEditMigration) && str_contains($pickupEditMigration, 'before_snapshot LONGTEXT'), 'The edit audit should retain the prior record snapshot.');
@@ -1717,6 +1782,7 @@ $assert(is_string($bootstrap) && str_contains($bootstrap, "'/dhl/pickupsheet'"),
 $assert(is_string($bootstrap) && str_contains($bootstrap, "'/dhl/pickupsheet/submissions/page'"), 'Pickupsheet should expose a protected AJAX pagination endpoint.');
 $assert(is_string($bootstrap) && str_contains($bootstrap, "'/dhl/pickupsheet/submissions/users'"), 'Pickupsheet should expose administrator-only account management.');
 $assert(is_string($bootstrap) && str_contains($bootstrap, "'/dhl/pickupsheet/dashboard'"), 'Pickupsheet should expose the administrator KPI control panel.');
+$assert(is_string($bootstrap) && str_contains($bootstrap, "'/dhl/pickupsheet/customers'"), 'Pickupsheet should expose the administrator-only customer CRM.');
 $assert(is_string($bootstrap) && str_contains($bootstrap, "'/dhl/pickupsheet/submissions/edit'"), 'Pickupsheet should expose the administrator-only audited record editor.');
 $assert(is_string($bootstrap) && str_contains($bootstrap, "'/dhl/pickupsheet/submissions/paid'"), 'Pickupsheet should expose the protected open-to-paid action.');
 $assert(is_string($bootstrap) && str_contains($bootstrap, "'/dhl/pickupsheet/submissions/delete'"), 'Pickupsheet should expose the administrator-only delete action.');

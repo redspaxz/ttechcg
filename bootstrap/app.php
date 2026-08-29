@@ -8,6 +8,11 @@ use App\Modules\Contact\Infrastructure\MysqlInquiryRepository;
 use App\Modules\Contact\Infrastructure\NativeMailInquiryNotifier;
 use App\Modules\Contact\Infrastructure\UnavailableInquiryRepository;
 use App\Modules\Contact\UI\ContactController;
+use App\Modules\CRM\Application\CustomerService;
+use App\Modules\CRM\Infrastructure\DemoCustomerRepository;
+use App\Modules\CRM\Infrastructure\MysqlCustomerRepository;
+use App\Modules\CRM\Infrastructure\UnavailableCustomerRepository;
+use App\Modules\CRM\UI\CustomerController;
 use App\Modules\Pickupsheet\Application\PickupSheetService;
 use App\Modules\Pickupsheet\Infrastructure\DemoPickupSheetRepository;
 use App\Modules\Pickupsheet\Infrastructure\MysqlPickupSheetRepository;
@@ -89,6 +94,11 @@ $pickupSheetRepository = match (true) {
     $isProduction => new UnavailablePickupSheetRepository(),
     default => new DemoPickupSheetRepository(),
 };
+$customerRepository = match (true) {
+    $connection !== null => new MysqlCustomerRepository($connection),
+    $isProduction => new UnavailableCustomerRepository(),
+    default => new DemoCustomerRepository($pickupSheetRepository),
+};
 $recordsUserRepository = match (true) {
     $connection !== null => new MysqlRecordsUserRepository($connection),
     $isProduction => new UnavailableRecordsUserRepository(),
@@ -163,6 +173,15 @@ $pickupsheetController = new PickupsheetController(
     $rateLimiter,
     $securityLogger,
 );
+$customerController = new CustomerController(
+    new CustomerService($customerRepository),
+    $view,
+    $csrf,
+    $recordsAccess,
+    $recordsSession,
+    $rateLimiter,
+    $securityLogger,
+);
 
 $router = new Router();
 $router->get('/', fn (Request $request): Response => $siteController->home($request));
@@ -177,6 +196,10 @@ $router->get('/dhl/pickupsheet/auth/jumpcloud', fn (Request $request): Response 
 $router->get('/dhl/pickupsheet/auth/jumpcloud/callback', fn (Request $request): Response => $pickupsheetAuthController->jumpCloudCallback($request));
 $router->post('/dhl/pickupsheet/logout', fn (Request $request): Response => $pickupsheetAuthController->logout($request));
 $router->get('/dhl/pickupsheet/dashboard', fn (Request $request): Response => $pickupsheetController->dashboard($request));
+$router->get('/dhl/pickupsheet/customers', fn (Request $request): Response => $customerController->index($request));
+$router->get('/dhl/pickupsheet/customers/new', fn (Request $request): Response => $customerController->create($request));
+$router->get('/dhl/pickupsheet/customers/edit', fn (Request $request): Response => $customerController->edit($request));
+$router->post('/dhl/pickupsheet/customers/save', fn (Request $request): Response => $customerController->save($request));
 $router->get('/dhl/pickupsheet', fn (Request $request): Response => $pickupsheetController->index($request));
 $router->post('/dhl/pickupsheet', fn (Request $request): Response => $pickupsheetController->store($request));
 $router->get('/dhl/pickupsheet/submissions', fn (Request $request): Response => $pickupsheetController->submissions($request));
