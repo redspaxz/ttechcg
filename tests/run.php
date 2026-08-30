@@ -362,8 +362,8 @@ $paginationFixture = $view->renderPartial('pickupsheet/_submission-records', [
 ]);
 $assert(substr_count($paginationFixture, '<article class="pickup-record">') === 2, 'The second ten-record page should render only its two remaining sheets.');
 $assert(str_contains($paginationFixture, 'Page 2 of 2 · 12 records'), 'The pagination fragment should display accurate page and record totals.');
-$assert(str_contains($paginationFixture, 'data-pickup-page="1" rel="prev"'), 'The second page should provide a normal-link fallback to the previous page.');
-$assert(!str_contains($paginationFixture, 'data-pickup-page="3"'), 'The final page should not link beyond the available records.');
+$assert(str_contains($paginationFixture, 'data-ajax-page="1" rel="prev"'), 'The second page should provide a normal-link fallback to the previous page.');
+$assert(!str_contains($paginationFixture, 'data-ajax-page="3"'), 'The final page should not link beyond the available records.');
 $healthResponse = (new SiteController($view, $config, 'MySQL connected', true))->health(new Request('GET', '/health'));
 $assert($healthResponse->body() === '{"status":"ok"}', 'The public health endpoint should not expose backend component details.');
 $assert(($healthResponse->headers()['Cache-Control'] ?? '') === 'no-store', 'Health status should not be cached.');
@@ -1020,7 +1020,7 @@ $adminLogin = $pickupAuthController->authenticate(new Request('POST', '/dhl/pick
 $assert($adminLogin->status() === 303 && ($adminLogin->headers()['Location'] ?? '') === '/dhl/pickupsheet/dashboard', 'An administrator should enter the admin dashboard after login.');
 
 $emptyDashboard = $pickupController->dashboard(new Request('GET', '/dhl/pickupsheet/dashboard'));
-$assert($emptyDashboard->status() === 200 && str_contains($emptyDashboard->body(), 'Activity dashboard'), 'The administrator should receive the Pickupsheet control panel.');
+$assert($emptyDashboard->status() === 200 && str_contains($emptyDashboard->body(), 'Activity dashboard') && str_contains($emptyDashboard->body(), 'pickup-dashboard-shell'), 'The administrator should receive the compact Pickupsheet control panel.');
 $assert(str_contains($emptyDashboard->body(), 'Manage users and RBAC'), 'The dashboard should link its user and RBAC controls.');
 $assert(str_contains($emptyDashboard->body(), '/dhl/pickupsheet/admin/backup') && str_contains($emptyDashboard->body(), 'Backup and restore data'), 'The dashboard should link the administrator backup workspace.');
 
@@ -1201,6 +1201,10 @@ $operatorEdit = $pickupController->edit(new Request('GET', '/dhl/pickupsheet/sub
 $assert($operatorEdit->status() === 403, 'An operator must not open the audited record editor.');
 $operatorDashboard = $pickupController->dashboard(new Request('GET', '/dhl/pickupsheet/dashboard'));
 $assert($operatorDashboard->status() === 403, 'An operator should not enter the administrator dashboard.');
+$operatorDashboardActivity = $pickupController->dashboardUserActivityPage(new Request('GET', '/dhl/pickupsheet/dashboard/user-activity/page'));
+$operatorDashboardLogs = $pickupController->dashboardAuditLogPage(new Request('GET', '/dhl/pickupsheet/dashboard/audit-logs/page'));
+$operatorDashboardSheets = $pickupController->dashboardRecentSheetsPage(new Request('GET', '/dhl/pickupsheet/dashboard/recent-sheets/page'));
+$assert($operatorDashboardActivity->status() === 403 && $operatorDashboardLogs->status() === 403 && $operatorDashboardSheets->status() === 403, 'Dashboard table fragments should retain administrator-only RBAC enforcement.');
 $operatorBackup = $backupController->index(new Request('GET', '/dhl/pickupsheet/admin/backup'));
 $assert($operatorBackup->status() === 403, 'An operator must not access backup or restore controls.');
 $operatorDelete = $pickupController->deletePickupSheet(new Request('POST', '/dhl/pickupsheet/submissions/delete', [], [
@@ -1281,17 +1285,32 @@ $assert(str_contains($adminDashboard->body(), 'Controller Client') && str_contai
 $assert(str_contains($adminDashboard->body(), 'User login frequency') && str_contains($adminDashboard->body(), 'Last 30 days'), 'The administrator dashboard should show per-user login frequency for the documented window.');
 $assert(str_contains($adminDashboard->body(), 'Records Administrator') && str_contains($adminDashboard->body(), 'Active now'), 'The administrator dashboard should identify active user sessions by account name.');
 $assert(str_contains($adminDashboard->body(), 'Total session') && str_contains($adminDashboard->body(), 'Average'), 'The administrator dashboard should show total and average session time.');
-$assert(str_contains($adminDashboard->body(), 'Detailed user logs') && str_contains($adminDashboard->body(), 'Latest 50 events'), 'The administrator dashboard should provide a bounded detailed user audit trail.');
+$assert(str_contains($adminDashboard->body(), 'Detailed user logs') && str_contains($adminDashboard->body(), '10 per page'), 'The administrator dashboard should provide a paginated detailed user audit trail.');
 $assert(str_contains($adminDashboard->body(), 'pickupsheet.records_access') && str_contains($adminDashboard->body(), 'Records Administrator'), 'Detailed logs should resolve a protected request to the known administrator account.');
 $assert(str_contains($adminDashboard->body(), 'Request') && str_contains($adminDashboard->body(), 'Client'), 'Detailed logs should expose pseudonymous request and client correlation identifiers.');
 $assert(str_contains($adminDashboard->body(), 'Manage customer relationships') && str_contains($adminDashboard->body(), '/dhl/pickupsheet/customers'), 'The administrator dashboard should link to the customer CRM.');
+$assert(substr_count($adminDashboard->body(), 'data-ajax-pager') >= 3 && str_contains($adminDashboard->body(), 'data-page-param="login_page"') && str_contains($adminDashboard->body(), 'data-page-param="log_page"') && str_contains($adminDashboard->body(), 'data-page-param="recent_page"'), 'Every qualified dashboard table should expose an independent AJAX pagination region.');
+$adminDashboardActivity = $pickupController->dashboardUserActivityPage(new Request('GET', '/dhl/pickupsheet/dashboard/user-activity/page', ['login_page' => '1']));
+$adminDashboardLogs = $pickupController->dashboardAuditLogPage(new Request('GET', '/dhl/pickupsheet/dashboard/audit-logs/page', ['log_page' => '1']));
+$adminDashboardSheets = $pickupController->dashboardRecentSheetsPage(new Request('GET', '/dhl/pickupsheet/dashboard/recent-sheets/page', ['recent_page' => '1']));
+$assert($adminDashboardActivity->status() === 200 && str_contains($adminDashboardActivity->body(), 'User login frequency') && str_contains($adminDashboardActivity->body(), 'data-ajax-current-page="1"'), 'The dashboard user-activity endpoint should return its paginated table fragment.');
+$assert($adminDashboardLogs->status() === 200 && str_contains($adminDashboardLogs->body(), 'Detailed user logs') && str_contains($adminDashboardLogs->body(), 'data-ajax-current-page="1"'), 'The dashboard audit endpoint should return its paginated table fragment.');
+$assert($adminDashboardSheets->status() === 200 && str_contains($adminDashboardSheets->body(), 'Latest pickup sheets') && str_contains($adminDashboardSheets->body(), 'data-ajax-current-page="1"'), 'The recent-sheet endpoint should return its paginated table fragment.');
 
 $customerDirectory = $customerController->index(new Request('GET', '/dhl/pickupsheet/customers'));
 $customerKey = hash('sha256', strtolower('Controller Client'));
 $customerProfile = $customerController->edit(new Request('GET', '/dhl/pickupsheet/customers/edit', ['customer' => $customerKey]));
 $assert($customerDirectory->status() === 200 && str_contains($customerDirectory->body(), 'Customer CRM'), 'An administrator should open the customer CRM.');
 $assert(str_contains($customerDirectory->body(), 'Controller Client') && str_contains($customerDirectory->body(), '14,000 XAF'), 'CRM should synchronize shipment consignors and their operational value.');
+$assert(str_contains($customerDirectory->body(), 'data-ajax-pager-id="customer-directory"') && str_contains($customerDirectory->body(), 'data-ajax-pager-form="customer-directory"'), 'The customer directory and its filters should use progressive AJAX pagination.');
+$customerDirectoryFragment = $customerController->page(new Request('GET', '/dhl/pickupsheet/customers/page', ['page' => '1']));
+$assert($customerDirectoryFragment->status() === 200 && str_contains($customerDirectoryFragment->body(), 'Customer directory') && str_contains($customerDirectoryFragment->body(), 'data-ajax-current-page="1"'), 'The customer directory endpoint should return a normal-link-compatible page fragment.');
 $assert($customerProfile->status() === 200 && str_contains($customerProfile->body(), 'Recent shipments') && str_contains($customerProfile->body(), $savedReference), 'A synchronized customer profile should show linked shipment history.');
+$assert(str_contains($customerProfile->body(), 'data-ajax-pager-id="customer-shipments"') && str_contains($customerProfile->body(), 'data-ajax-pager-id="customer-redemptions"'), 'Qualified customer history tables should paginate independently without a full page refresh.');
+$customerShipmentFragment = $customerController->shipmentPage(new Request('GET', '/dhl/pickupsheet/customers/shipments/page', ['customer' => $customerKey, 'shipment_page' => '1']));
+$customerRedemptionFragment = $customerController->redemptionPage(new Request('GET', '/dhl/pickupsheet/customers/redemptions/page', ['customer' => $customerKey, 'redemption_page' => '1']));
+$assert($customerShipmentFragment->status() === 200 && str_contains($customerShipmentFragment->body(), 'Recent shipments') && str_contains($customerShipmentFragment->body(), 'data-ajax-current-page="1"'), 'The CRM shipment endpoint should return a paginated history fragment.');
+$assert($customerRedemptionFragment->status() === 200 && str_contains($customerRedemptionFragment->body(), 'Redemption log') && str_contains($customerRedemptionFragment->body(), 'data-ajax-current-page="1"'), 'The CRM redemption endpoint should return a paginated history fragment.');
 $assert(str_contains($customerProfile->body(), 'href="' . $trackingHref . '" target="_blank" rel="noopener noreferrer"'), 'CRM shipment history should link each AWB to DHL tracking.');
 $assert(str_contains($customerProfile->body(), 'Total Points Balance') && str_contains($customerProfile->body(), 'Lifetime Earned Points') && str_contains($customerProfile->body(), 'Loyalty Tier'), 'Customer loyalty should present the three requested reward metrics.');
 $assert(str_contains($customerProfile->body(), '<span>Loyalty Tier</span><strong>Bronze</strong>'), 'A new shipment customer should begin in the Bronze loyalty tier.');
@@ -1365,11 +1384,17 @@ $overdrawReward = $customerController->adjustRewards(new Request('POST', '/dhl/p
 $overdrawRewardProfile = $customerController->edit(new Request('GET', '/dhl/pickupsheet/customers/edit', ['customer' => $customerKey]));
 $assert($overdrawReward->status() === 303 && str_contains($overdrawRewardProfile->body(), 'cannot exceed the available reward balance'), 'Reward redemptions must not make a customer balance negative.');
 $crmAuditDashboard = $pickupController->dashboard(new Request('GET', '/dhl/pickupsheet/dashboard'));
-$assert(str_contains($crmAuditDashboard->body(), 'pickupsheet.crm_customer_save') && str_contains($crmAuditDashboard->body(), 'Customer status: attention'), 'CRM customer changes should appear in the detailed administrator audit log.');
-$assert(str_contains($crmAuditDashboard->body(), 'pickupsheet.crm_reward_adjustment') && str_contains($crmAuditDashboard->body(), 'Reward balance: 31') && !str_contains($crmAuditDashboard->body(), 'Customer loyalty bonus'), 'Reward adjustments should appear in the detailed administrator audit log without storing the adjustment reason.');
+$crmAuditMarkup = $crmAuditDashboard->body();
+for ($auditPage = 2; $auditPage <= 10 && (!str_contains($crmAuditMarkup, 'pickupsheet.crm_customer_save') || !str_contains($crmAuditMarkup, 'Reward balance: 31')); $auditPage++) {
+    $crmAuditMarkup .= $pickupController->dashboardAuditLogPage(new Request('GET', '/dhl/pickupsheet/dashboard/audit-logs/page', ['log_page' => (string) $auditPage]))->body();
+}
+$assert(str_contains($crmAuditMarkup, 'pickupsheet.crm_customer_save') && str_contains($crmAuditMarkup, 'Customer status: attention'), 'CRM customer changes should appear in the paginated detailed administrator audit log.');
+$assert(str_contains($crmAuditMarkup, 'pickupsheet.crm_reward_adjustment') && str_contains($crmAuditMarkup, 'Reward balance: 31') && !str_contains($crmAuditMarkup, 'Customer loyalty bonus'), 'Reward adjustments should appear in the detailed administrator audit log without storing the adjustment reason.');
 $recordsSession->login($viewerPrincipal);
 $viewerCustomerDirectory = $customerController->index(new Request('GET', '/dhl/pickupsheet/customers'));
-$assert($viewerCustomerDirectory->status() === 403, 'A viewer must not access administrator CRM data.');
+$viewerCustomerPage = $customerController->page(new Request('GET', '/dhl/pickupsheet/customers/page'));
+$viewerCustomerShipments = $customerController->shipmentPage(new Request('GET', '/dhl/pickupsheet/customers/shipments/page', ['customer' => $customerKey]));
+$assert($viewerCustomerDirectory->status() === 403 && $viewerCustomerPage->status() === 403 && $viewerCustomerShipments->status() === 403, 'A viewer must not access administrator CRM pages or AJAX fragments.');
 $recordsSession->login($operatorPrincipal);
 $operatorCustomerDirectory = $customerController->index(new Request('GET', '/dhl/pickupsheet/customers'));
 $assert($operatorCustomerDirectory->status() === 403, 'An operator must not access administrator CRM data.');
@@ -1605,8 +1630,8 @@ $assert(is_string($dhlAsset) && !str_contains($dhlAsset, '<text'), 'The disquali
 $partnerSources = file_get_contents(dirname(__DIR__) . '/public/assets/partners/README.md');
 $assert(is_string($partnerSources) && str_contains($partnerSources, 'www.dhl.com/content/dam/dhl/global/core/images/logos/dhl-logo.svg'), 'The official DHL artwork source should be documented.');
 $assert(!str_contains($home, 'href="/dhl/pickupsheet"'), 'Pickupsheet should not be discoverable from the public site chrome or homepage.');
-$assert(str_contains($home, 'styles.css?v=20260830-backup-restore'), 'Backup and restore styles should use a cache-safe stylesheet version.');
-$assert(str_contains($home, 'app.js?v=20260827-jumpcloud-rbac'), 'The JumpCloud RBAC update should use a cache-safe application script version.');
+$assert(str_contains($home, 'styles.css?v=20260830-app-pagination'), 'Application pagination styles should use a cache-safe stylesheet version.');
+$assert(str_contains($home, 'app.js?v=20260830-app-pagination'), 'Application pagination behavior should use a cache-safe script version.');
 $assert(str_contains($home, 'analytics.js?v=20260825-security-hardening'), 'The current consent-aware Google Analytics loader should render on every page.');
 $assert(str_contains($home, 'data-analytics-accept'), 'The site should offer an explicit analytics acceptance control.');
 $assert(str_contains($home, 'data-analytics-decline'), 'The site should offer an explicit analytics decline control.');
@@ -1818,9 +1843,9 @@ $assert(is_string($styles) && str_contains($styles, 'grid-template-columns: repe
 $assert(is_string($styles) && str_contains($styles, 'grid-column: 1 / -1;'), 'Submitted-sheet actions should occupy their own full-width card row.');
 $assert(is_string($styles) && str_contains($styles, 'grid-template-columns: repeat(2, minmax(0, 1fr));'), 'Submitted-sheet actions should retain proportional two-column sizing on mobile screens.');
 $assert(is_string($styles) && str_contains($styles, 'height: 42px;'), 'Submitted-sheet actions should share one consistent height.');
-$assert(is_string($styles) && str_contains($styles, '.pickup-records-loading'), 'AJAX pagination should have a visible loading overlay.');
+$assert(is_string($styles) && str_contains($styles, '.ajax-pager-loading'), 'Application-wide AJAX pagination should have a visible loading overlay.');
 $assert(is_string($styles) && str_contains($styles, '@keyframes pickup-records-spin'), 'The loading overlay should provide spinner animation.');
-$assert(is_string($styles) && str_contains($styles, '.pickup-pagination'), 'Submitted sheets should provide responsive pagination controls.');
+$assert(is_string($styles) && str_contains($styles, '.pickup-pagination'), 'Qualified tables should provide responsive pagination controls.');
 $assert(is_string($styles) && str_contains($styles, '.records-users-layout'), 'Administrator account management should have a dedicated responsive layout.');
 $assert(is_string($styles) && str_contains($styles, '.records-user-card'), 'Managed accounts should render as editable account cards.');
 $assert(is_string($styles) && str_contains($styles, '/* Pickupsheet login portal */'), 'Pickupsheet should have a dedicated responsive login portal.');
@@ -1838,8 +1863,9 @@ $assert(is_string($script) && str_contains($script, "document.querySelector('[da
 $assert(is_string($script) && str_contains($script, 'maximumRows = 50'), 'The browser should enforce the server shipment-row limit.');
 $assert(is_string($script) && str_contains($script, 'numberFormatter.format(total)'), 'The browser should calculate and format cash totals.');
 $assert(is_string($script) && str_contains($script, "[data-field]:not([data-identity-field])"), 'Account-populated checker fields should not make an otherwise blank shipment count as complete.');
-$assert(is_string($script) && str_contains($script, "document.querySelector('[data-pickup-records]')"), 'The browser should initialize submitted-sheet pagination.');
-$assert(is_string($script) && str_contains($script, 'await fetch(pageEndpoint'), 'Pagination should load records asynchronously.');
+$assert(is_string($script) && str_contains($script, "document.querySelectorAll('[data-ajax-pager]')"), 'The browser should initialize every qualified AJAX-paginated table.');
+$assert(is_string($script) && str_contains($script, "document.querySelectorAll('[data-ajax-pager-form]')"), 'The browser should submit qualified table filters without a full refresh.');
+$assert(is_string($script) && str_contains($script, 'await fetch(pageEndpoint'), 'Pagination should load table fragments asynchronously.');
 $assert(is_string($script) && str_contains($script, "spinner.hidden = !loading"), 'AJAX pagination should toggle its loading spinner.');
 $assert(is_string($script) && str_contains($script, "window.history.pushState"), 'AJAX pagination should preserve browser history.');
 
@@ -1910,12 +1936,14 @@ $assert(is_string($sessionActivityMigration) && str_contains($sessionActivityMig
 $sessionActivityRepository = file_get_contents(dirname(__DIR__) . '/src/Shared/Infrastructure/MysqlRecordsSessionActivityRepository.php');
 $assert(is_string($sessionActivityRepository) && str_contains($sessionActivityRepository, 'COUNT(*) AS login_count'), 'MySQL session activity should aggregate login frequency per user.');
 $assert(is_string($sessionActivityRepository) && str_contains($sessionActivityRepository, 'TIMESTAMPDIFF(SECOND'), 'MySQL session activity should calculate session duration from server timestamps.');
+$assert(is_string($sessionActivityRepository) && str_contains($sessionActivityRepository, 'LIMIT :limit OFFSET :offset') && str_contains($sessionActivityRepository, 'total_records'), 'User activity pagination should count and page grouped accounts in MySQL.');
 $securityEventMigration = file_get_contents(dirname(__DIR__) . '/database/migrations/011_create_pickup_security_events.sql');
 $assert(is_string($securityEventMigration) && str_contains($securityEventMigration, 'CREATE TABLE IF NOT EXISTS pickup_security_events'), 'MySQL should persist detailed user audit events idempotently.');
 $assert(is_string($securityEventMigration) && str_contains($securityEventMigration, 'actor_id CHAR(24)') && str_contains($securityEventMigration, 'client_id CHAR(64)'), 'Detailed logs should correlate actors and clients through pseudonymous identifiers.');
 $securityEventRepository = file_get_contents(dirname(__DIR__) . '/src/Shared/Infrastructure/MysqlSecurityEventRepository.php');
 $assert(is_string($securityEventRepository) && str_contains($securityEventRepository, "WHERE event_name LIKE 'pickupsheet.%'"), 'The administrator log should query only Pickupsheet events.');
 $assert(is_string($securityEventRepository) && str_contains($securityEventRepository, 'ORDER BY occurred_at DESC, id DESC'), 'Detailed logs should show the newest events first deterministically.');
+$assert(is_string($securityEventRepository) && str_contains($securityEventRepository, 'LIMIT :limit OFFSET :offset') && str_contains($securityEventRepository, 'SELECT COUNT(*)'), 'Detailed logs should use bounded database pagination with an accurate total.');
 $customerMigration = file_get_contents(dirname(__DIR__) . '/database/migrations/012_create_pickup_customers.sql');
 $assert(is_string($customerMigration) && str_contains($customerMigration, 'CREATE TABLE IF NOT EXISTS pickup_customers'), 'MySQL should create CRM customer profiles idempotently.');
 $assert(is_string($customerMigration) && str_contains($customerMigration, 'next_follow_up_on DATE') && str_contains($customerMigration, 'updated_by CHAR(24)'), 'CRM storage should support follow-up scheduling and pseudonymous administrator attribution.');
@@ -1924,6 +1952,7 @@ $assert(is_string($customerRepositorySource) && str_contains($customerRepository
 $assert(is_string($customerRepositorySource) && str_contains($customerRepositorySource, 'COALESCE(SUM(ps.amount_xaf), 0)'), 'CRM should calculate customer shipment value from operational data.');
 $assert(is_string($customerRepositorySource) && str_contains($customerRepositorySource, 'FLOOR(COALESCE(SUM(ps.weight_kg), 0) * 10)'), 'CRM should award 10 whole reward points per aggregate kilogram of active cargo.');
 $assert(is_string($customerRepositorySource) && str_contains($customerRepositorySource, 'points_delta < 0'), 'CRM redemption logs should query only negative point adjustments.');
+$assert(is_string($customerRepositorySource) && substr_count($customerRepositorySource, 'LIMIT :limit OFFSET :offset') >= 3, 'Customer directory, shipment history, and redemption history should paginate at query time.');
 $customerRewardsMigration = file_get_contents(dirname(__DIR__) . '/database/migrations/013_create_pickup_customer_rewards.sql');
 $assert(is_string($customerRewardsMigration) && str_contains($customerRewardsMigration, 'CREATE TABLE IF NOT EXISTS pickup_customer_reward_adjustments'), 'MySQL should create the customer reward adjustment ledger idempotently.');
 $assert(is_string($customerRewardsMigration) && str_contains($customerRewardsMigration, 'points_delta INT NOT NULL') && str_contains($customerRewardsMigration, 'actor_id CHAR(24) NOT NULL'), 'Reward adjustments should store signed changes with pseudonymous administrator attribution.');
@@ -1988,10 +2017,12 @@ $assert(is_string($bootstrap) && str_contains($bootstrap, 'PickupsheetCountryPol
 $assert(is_string($bootstrap) && str_contains($bootstrap, "'/dhl/pickupsheet/auth/jumpcloud/callback'"), 'Pickupsheet should expose the exact JumpCloud OIDC callback route.');
 $assert(is_string($bootstrap) && str_contains($bootstrap, "'/dhl/pickupsheet'"), 'Pickupsheet should be routed under the DHL namespace.');
 $assert(is_string($bootstrap) && str_contains($bootstrap, "'/dhl/pickupsheet/submissions/page'"), 'Pickupsheet should expose a protected AJAX pagination endpoint.');
+$assert(is_string($bootstrap) && str_contains($bootstrap, "'/dhl/pickupsheet/dashboard/user-activity/page'") && str_contains($bootstrap, "'/dhl/pickupsheet/dashboard/audit-logs/page'") && str_contains($bootstrap, "'/dhl/pickupsheet/dashboard/recent-sheets/page'"), 'Each qualified dashboard table should expose a protected AJAX fragment route.');
 $assert(is_string($bootstrap) && str_contains($bootstrap, "'/dhl/pickupsheet/submissions/users'"), 'Pickupsheet should expose administrator-only account management.');
 $assert(is_string($bootstrap) && str_contains($bootstrap, "'/dhl/pickupsheet/dashboard'"), 'Pickupsheet should expose the administrator KPI control panel.');
 $assert(is_string($bootstrap) && str_contains($bootstrap, "'/dhl/pickupsheet/admin/backup'") && str_contains($bootstrap, "'/dhl/pickupsheet/admin/backup/restore'"), 'Pickupsheet should expose administrator-only backup and restore routes.');
 $assert(is_string($bootstrap) && str_contains($bootstrap, "'/dhl/pickupsheet/customers'"), 'Pickupsheet should expose the administrator-only customer CRM.');
+$assert(is_string($bootstrap) && str_contains($bootstrap, "'/dhl/pickupsheet/customers/page'") && str_contains($bootstrap, "'/dhl/pickupsheet/customers/shipments/page'") && str_contains($bootstrap, "'/dhl/pickupsheet/customers/redemptions/page'"), 'Qualified CRM tables should expose protected AJAX fragment routes.');
 $assert(is_string($bootstrap) && str_contains($bootstrap, "'/dhl/pickupsheet/customers/rewards'"), 'Pickupsheet should expose the protected customer reward adjustment action.');
 $assert(is_string($bootstrap) && str_contains($bootstrap, "'/dhl/pickupsheet/submissions/edit'"), 'Pickupsheet should expose the administrator-only audited record editor.');
 $assert(is_string($bootstrap) && str_contains($bootstrap, "'/dhl/pickupsheet/submissions/paid'"), 'Pickupsheet should expose the protected open-to-paid action.');

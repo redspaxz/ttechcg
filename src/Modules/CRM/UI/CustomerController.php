@@ -38,16 +38,16 @@ final class CustomerController
             return $principal;
         }
 
-        $search = $request->queryString('q');
-        $status = $request->queryString('status');
-        $pageValue = $request->queryString('page', '1');
-        $page = ctype_digit($pageValue) ? max(1, (int) $pageValue) : 1;
         $summary = ['customerCount' => 0, 'activeCount' => 0, 'attentionCount' => 0, 'followUpsDue' => 0];
-        $customers = ['items' => [], 'page' => 1, 'perPage' => 20, 'totalRecords' => 0, 'totalPages' => 1];
+        $directory = [
+            'customers' => $this->emptyPage(),
+            'search' => $request->queryString('q'),
+            'statusFilter' => $request->queryString('status'),
+        ];
         $error = null;
         try {
             $summary = $this->service->summary();
-            $customers = $this->service->paginated($search, $status, $page);
+            $directory = $this->customerDirectory($request);
         } catch (RuntimeException $exception) {
             error_log($exception->__toString());
             $error = 'Customer data is unavailable. Apply the CRM migration and check the MySQL connection.';
@@ -58,13 +58,32 @@ final class CustomerController
         $body = $this->view->render('pickupsheet/customers', $this->common($request, $principal) + [
             'pageTitle' => 'Customer CRM',
             'summary' => $summary,
-            'customers' => $customers,
-            'search' => $search,
-            'statusFilter' => $status,
+            'customers' => $directory['customers'],
+            'search' => $directory['search'],
+            'statusFilter' => $directory['statusFilter'],
             'flash' => is_string($flash) ? $flash : null,
             'error' => $error,
         ]);
         return Response::html($body, 200, $this->privateHeaders());
+    }
+
+    public function page(Request $request): Response
+    {
+        $principal = $this->authorize($request, false);
+        if ($principal instanceof Response) {
+            return $principal;
+        }
+
+        try {
+            return Response::html(
+                $this->view->renderPartial('pickupsheet/_customer-directory', $this->common($request, $principal) + $this->customerDirectory($request)),
+                200,
+                $this->privateHeaders(),
+            );
+        } catch (RuntimeException $exception) {
+            error_log($exception->__toString());
+            return Response::html('Customer profiles could not be loaded.', 503, $this->privateHeaders());
+        }
     }
 
     public function create(Request $request): Response
@@ -93,6 +112,16 @@ final class CustomerController
             error_log($exception->__toString());
             return Response::html('Customer data is temporarily unavailable.', 503, $this->privateHeaders());
         }
+    }
+
+    public function shipmentPage(Request $request): Response
+    {
+        return $this->customerTablePage($request, 'shipments');
+    }
+
+    public function redemptionPage(Request $request): Response
+    {
+        return $this->customerTablePage($request, 'redemptions');
     }
 
     public function save(Request $request): Response
@@ -238,14 +267,22 @@ final class CustomerController
         $errors = $_SESSION['_crm_errors'] ?? [];
         $flash = $_SESSION['_crm_flash'] ?? null;
         unset($_SESSION['_crm_old'], $_SESSION['_crm_errors'], $_SESSION['_crm_flash']);
-        $shipments = [];
+        $shipments = $this->emptyPage();
         $rewardAdjustments = [];
-        $rewardRedemptions = [];
+        $rewardRedemptions = $this->emptyPage();
         if ($customer !== null) {
             try {
-                $shipments = $this->service->recentShipments($customer->customerKey, 20);
+                $shipments = $this->service->paginatedShipments(
+                    $customer->customerKey,
+                    $this->pageNumber($request, 'shipment_page'),
+                    10,
+                );
                 $rewardAdjustments = $this->service->rewardAdjustments($customer->customerKey, 20);
-                $rewardRedemptions = $this->service->rewardRedemptions($customer->customerKey, 20);
+                $rewardRedemptions = $this->service->paginatedRewardRedemptions(
+                    $customer->customerKey,
+                    $this->pageNumber($request, 'redemption_page'),
+                    10,
+                );
             } catch (RuntimeException $exception) {
                 error_log($exception->__toString());
                 $errors = [...(is_array($errors) ? $errors : []), 'Shipment or reward history could not be loaded.'];
@@ -265,7 +302,7 @@ final class CustomerController
         return Response::html($body, 200, $this->privateHeaders());
     }
 
-    private function authorize(Request $request): RecordsPrincipal|Response
+    private function authorize(Request $request, bool $logGranted = true): RecordsPrincipal|Response
     {
         $principal = $this->recordsSession->principal($this->recordsAccess);
         $context = ['action' => 'crm'];
@@ -276,7 +313,9 @@ final class CustomerController
                 'identity_provider' => $principal->identityProvider,
             ];
             if ($principal->can('crm')) {
-                $this->securityLogger->event('pickupsheet.records_access', $request, 'granted', $context);
+                if ($logGranted) {
+                    $this->securityLogger->event('pickupsheet.records_access', $request, 'granted', $context);
+                }
                 return $principal;
             }
             $this->securityLogger->event('pickupsheet.records_access', $request, 'forbidden', $context);
@@ -322,5 +361,66 @@ final class CustomerController
     private function actorId(RecordsPrincipal $principal): string
     {
         return substr(hash('sha256', $principal->username), 0, 24);
+    }
+
+    /** @return array{customers: array<string, mixed>, search: string, statusFilter: string} */
+    private function customerDirectory(Request $request): array
+    {
+        $search = $request->queryString('q');
+        $status = $request->queryString('status');
+        return [
+            'customers' => $this->service->paginated($search, $status, $this->pageNumber($request), 10),
+            'search' => $search,
+            'statusFilter' => $status,
+        ];
+    }
+
+    private function customerTablePage(Request $request, string $table): Response
+    {
+        $principal = $this->authorize($request, false);
+        if ($principal instanceof Response) {
+            return $principal;
+        }
+        $customerKey = strtolower($request->queryString('customer'));
+        try {
+            if ($this->service->find($customerKey) === null) {
+                return Response::html('Customer profile not found.', 404, $this->privateHeaders());
+            }
+            if ($table === 'shipments') {
+                $data = [
+                    'shipments' => $this->service->paginatedShipments($customerKey, $this->pageNumber($request, 'shipment_page'), 10),
+                    'customerKey' => $customerKey,
+                    'currentRedemptionPage' => $this->pageNumber($request, 'redemption_page'),
+                ];
+                $template = 'pickupsheet/_customer-shipments';
+            } else {
+                $data = [
+                    'rewardRedemptions' => $this->service->paginatedRewardRedemptions($customerKey, $this->pageNumber($request, 'redemption_page'), 10),
+                    'customerKey' => $customerKey,
+                    'currentShipmentPage' => $this->pageNumber($request, 'shipment_page'),
+                ];
+                $template = 'pickupsheet/_customer-redemptions';
+            }
+            return Response::html(
+                $this->view->renderPartial($template, $this->common($request, $principal) + $data),
+                200,
+                $this->privateHeaders(),
+            );
+        } catch (RuntimeException $exception) {
+            error_log($exception->__toString());
+            return Response::html('Customer history could not be loaded.', 503, $this->privateHeaders());
+        }
+    }
+
+    private function pageNumber(Request $request, string $parameter = 'page'): int
+    {
+        $page = $request->queryString($parameter, '1');
+        return preg_match('/^[1-9][0-9]{0,8}$/', $page) === 1 ? (int) $page : 1;
+    }
+
+    /** @return array{items: array<never>, page: int, perPage: int, totalRecords: int, totalPages: int} */
+    private function emptyPage(): array
+    {
+        return ['items' => [], 'page' => 1, 'perPage' => 10, 'totalRecords' => 0, 'totalPages' => 1];
     }
 }

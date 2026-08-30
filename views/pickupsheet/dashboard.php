@@ -24,7 +24,7 @@ $barGap = 6;
 $barWidth = max(8, (int) floor(($chartWidth - 70) / max(1, count($activity))) - $barGap);
 $maximumCash = max([1, ...array_map(static fn (array $row): int => (int) ($row['totalCashXaf'] ?? 0), $activity)]);
 $maximumSenderShipments = max([1, ...array_map(static fn (array $row): int => (int) ($row['shipmentCount'] ?? 0), $senders)]);
-$activeSessions = count(array_filter($userActivity, static fn (array $row): bool => (bool) ($row['activeNow'] ?? false)));
+$activeSessions = max(0, (int) ($userActivity['activeRecords'] ?? 0));
 $formatDuration = static function (int $seconds): string {
     if ($seconds < 60) {
         return '<1m';
@@ -125,7 +125,7 @@ $auditDetails = static function (array $log): string {
         </div>
     </div>
 
-    <div class="container pickup-admin-shell">
+    <div class="container pickup-admin-shell pickup-dashboard-shell">
         <header class="pickup-admin-heading">
             <div><p class="eyebrow eyebrow-red">Administration</p><h1>Activity dashboard</h1><p>Monitor cash-shipment performance, control staff access, and review every generated pickup sheet.</p></div>
             <span class="pickup-storage-state"><i aria-hidden="true"></i>Live control panel</span>
@@ -203,72 +203,19 @@ $auditDetails = static function (array $log): string {
             <?php endif; ?>
         </section>
 
-        <section class="pickup-user-activity" aria-labelledby="user-activity-title">
-            <div class="pickup-card-heading">
-                <div><span>Account activity</span><h2 id="user-activity-title">User login frequency</h2></div>
-                <small>Last 30 days &middot; <?= $e($activeSessions) ?> active now</small>
-            </div>
-            <div class="pickup-user-activity-table">
-                <table>
-                    <thead><tr><th>User</th><th>Role</th><th>Sign-in</th><th>Logins</th><th>Total session</th><th>Average</th><th>Last login (UTC)</th><th>Session</th></tr></thead>
-                    <tbody>
-                    <?php if ($userActivity === []): ?><tr><td colspan="8">No successful login activity has been recorded during the last 30 days.</td></tr><?php endif; ?>
-                    <?php foreach ($userActivity as $user): ?>
-                        <tr>
-                            <td><strong><?= $e($user['fullName'] ?? $user['username'] ?? '') ?></strong><small><?= $e($user['username'] ?? '') ?></small></td>
-                            <td><?= $e(ucfirst((string) ($user['role'] ?? ''))) ?></td>
-                            <td><?= $e($identityProviderLabel((string) ($user['identityProvider'] ?? 'local'))) ?></td>
-                            <td><strong><?= $e(number_format((int) ($user['loginCount'] ?? 0))) ?></strong></td>
-                            <td><?= $e($formatDuration((int) ($user['totalSessionSeconds'] ?? 0))) ?></td>
-                            <td><?= $e($formatDuration((int) ($user['averageSessionSeconds'] ?? 0))) ?></td>
-                            <td><?= $e($user['lastLoginAt'] ?? '') ?></td>
-                            <td><span class="pickup-session-state <?= ($user['activeNow'] ?? false) ? 'is-active' : '' ?>"><i aria-hidden="true"></i><?= ($user['activeNow'] ?? false) ? 'Active now' : 'Signed out' ?></span></td>
-                        </tr>
-                    <?php endforeach; ?>
-                    </tbody>
-                </table>
-            </div>
+        <section class="pickup-user-activity ajax-pager" aria-labelledby="user-activity-title" data-ajax-pager data-ajax-pager-id="dashboard-user-activity" data-page-endpoint="<?= $e($basePath) ?>/dhl/pickupsheet/dashboard/user-activity/page" data-page-param="login_page" data-current-page="<?= $e($userActivity['page'] ?? 1) ?>" data-error-message="User login activity could not be loaded. Please try again.">
+            <div class="ajax-pager-loading" data-ajax-pager-spinner role="status" hidden><span class="pickup-loading-spinner" aria-hidden="true"></span><span>Loading user activity...</span></div>
+            <div data-ajax-pager-content aria-live="polite" aria-busy="false"><?php require __DIR__ . '/_dashboard-user-activity.php'; ?></div>
         </section>
 
-        <section class="pickup-audit-log" aria-labelledby="audit-log-title">
-            <div class="pickup-card-heading">
-                <div><span>Security and operations</span><h2 id="audit-log-title">Detailed user logs</h2></div>
-                <small>Latest 50 events &middot; UTC</small>
-            </div>
-            <div class="pickup-audit-log-table">
-                <table>
-                    <thead><tr><th>Time</th><th>User</th><th>Event</th><th>Result</th><th>Details</th><th>Request</th></tr></thead>
-                    <tbody>
-                    <?php if ($auditLogs === []): ?><tr><td colspan="6">No detailed user events have been recorded yet.</td></tr><?php endif; ?>
-                    <?php foreach ($auditLogs as $log): ?>
-                        <?php
-                        $outcome = (string) ($log['outcome'] ?? 'unknown');
-                        $provider = (string) ($log['identityProvider'] ?? '');
-                        ?>
-                        <tr>
-                            <td><time datetime="<?= $e($log['occurredAt'] ?? '') ?>"><?= $e($log['occurredAt'] ?? '') ?></time></td>
-                            <td><strong><?= $e($log['actorName'] ?? 'Unauthenticated') ?></strong><?php if (($log['actorUsername'] ?? '') !== ''): ?><small><?= $e($log['actorUsername']) ?></small><?php endif; ?><small><?= $e(ucfirst((string) ($log['role'] ?? ''))) ?><?= $provider !== '' ? ' · ' . $e($identityProviderLabel($provider)) : '' ?></small></td>
-                            <td><strong><?= $e($auditEventLabel((string) ($log['eventName'] ?? ''))) ?></strong><small><?= $e($log['eventName'] ?? '') ?></small></td>
-                            <td><span class="pickup-audit-outcome <?= $e($auditOutcomeClass($outcome)) ?>"><?= $e(str_replace('_', ' ', ucfirst($outcome))) ?></span></td>
-                            <td><?= $e($auditDetails($log)) ?></td>
-                            <td><strong><?= $e($log['method'] ?? '') ?> <?= $e($log['path'] ?? '') ?></strong><small>Request <?= $e(substr((string) ($log['requestId'] ?? ''), 0, 16)) ?></small><small>Client <?= $e(substr((string) ($log['clientId'] ?? ''), 0, 12)) ?></small></td>
-                        </tr>
-                    <?php endforeach; ?>
-                    </tbody>
-                </table>
-            </div>
+        <section class="pickup-audit-log ajax-pager" aria-labelledby="audit-log-title" data-ajax-pager data-ajax-pager-id="dashboard-audit-logs" data-page-endpoint="<?= $e($basePath) ?>/dhl/pickupsheet/dashboard/audit-logs/page" data-page-param="log_page" data-current-page="<?= $e($auditLogs['page'] ?? 1) ?>" data-error-message="Detailed user logs could not be loaded. Please try again.">
+            <div class="ajax-pager-loading" data-ajax-pager-spinner role="status" hidden><span class="pickup-loading-spinner" aria-hidden="true"></span><span>Loading detailed logs...</span></div>
+            <div data-ajax-pager-content aria-live="polite" aria-busy="false"><?php require __DIR__ . '/_dashboard-audit-logs.php'; ?></div>
         </section>
 
-        <section class="pickup-dashboard-recent">
-            <div class="pickup-card-heading"><div><span>Recent activity</span><h2>Latest pickup sheets</h2></div><a href="<?= $e($basePath) ?>/dhl/pickupsheet/submissions">View all records</a></div>
-            <div class="pickup-dashboard-table-wrap">
-                <table><thead><tr><th>Reference</th><th>Status</th><th>Date</th><th>Agent</th><th>Shipments</th><th>Total</th><th>View</th></tr></thead><tbody>
-                <?php if ($recentSheets === []): ?><tr><td colspan="7">No pickup sheets have been generated.</td></tr><?php endif; ?>
-                <?php foreach ($recentSheets as $sheet): ?>
-                    <tr><td><?= $e($sheet->referenceNumber) ?></td><td><?= $sheet->isPaid() ? 'Paid' : 'Open' ?></td><td><?= $e($sheet->collectionDate) ?></td><td><?= $e($sheet->agentName) ?></td><td><?= $e($sheet->shipmentCount()) ?></td><td><?= $e(number_format($sheet->totalCashReceivedXaf)) ?> XAF</td><td><a href="<?= $e($basePath) ?>/dhl/pickupsheet/submissions?reference=<?= $e(rawurlencode($sheet->referenceNumber)) ?>">Records</a></td></tr>
-                <?php endforeach; ?>
-                </tbody></table>
-            </div>
+        <section class="pickup-dashboard-recent ajax-pager" aria-labelledby="recent-sheets-title" data-ajax-pager data-ajax-pager-id="dashboard-recent-sheets" data-page-endpoint="<?= $e($basePath) ?>/dhl/pickupsheet/dashboard/recent-sheets/page" data-page-param="recent_page" data-current-page="<?= $e($recentSheets['page'] ?? 1) ?>" data-error-message="Recent pickup sheets could not be loaded. Please try again.">
+            <div class="ajax-pager-loading" data-ajax-pager-spinner role="status" hidden><span class="pickup-loading-spinner" aria-hidden="true"></span><span>Loading recent sheets...</span></div>
+            <div data-ajax-pager-content aria-live="polite" aria-busy="false"><?php require __DIR__ . '/_dashboard-recent-sheets.php'; ?></div>
         </section>
     </div>
 </section>

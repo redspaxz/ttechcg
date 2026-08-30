@@ -31,13 +31,18 @@ $e = static fn (mixed $value): string => htmlspecialchars((string) $value, ENT_Q
         <div
             class="pickup-records-frame"
             data-pickup-records
+            data-ajax-pager
+            data-ajax-pager-id="submitted-sheets"
             data-page-endpoint="<?= $e($basePath) ?>/dhl/pickupsheet/submissions/page"
+            data-page-param="page"
+            data-current-page="<?= $e($pagination['page'] ?? 1) ?>"
+            data-error-message="Pickup records could not be loaded. Please try again."
         >
-            <div class="pickup-records-loading" data-pickup-records-spinner role="status" hidden>
+            <div class="pickup-records-loading ajax-pager-loading" data-pickup-records-spinner data-ajax-pager-spinner role="status" hidden>
                 <span class="pickup-loading-spinner" aria-hidden="true"></span>
                 <span>Loading pickup records...</span>
             </div>
-            <div data-pickup-records-content aria-live="polite" aria-busy="false">
+            <div data-pickup-records-content data-ajax-pager-content aria-live="polite" aria-busy="false">
                 <?php require __DIR__ . '/_submission-records.php'; ?>
             </div>
         </div>

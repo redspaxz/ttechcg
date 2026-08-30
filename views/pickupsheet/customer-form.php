@@ -6,12 +6,11 @@ $e = static fn (mixed $value): string => htmlspecialchars((string) $value, ENT_Q
 $customer = ($customer ?? null) instanceof \App\Modules\CRM\Domain\CustomerProfile ? $customer : null;
 $old = is_array($old ?? null) ? $old : [];
 $errors = is_array($errors ?? null) ? $errors : [];
-$shipments = is_array($shipments ?? null) ? $shipments : [];
+$shipments = is_array($shipments ?? null) ? $shipments : ['items' => [], 'page' => 1, 'totalRecords' => 0, 'totalPages' => 1];
 $rewardAdjustments = is_array($rewardAdjustments ?? null) ? $rewardAdjustments : [];
-$rewardRedemptions = is_array($rewardRedemptions ?? null) ? $rewardRedemptions : [];
+$rewardRedemptions = is_array($rewardRedemptions ?? null) ? $rewardRedemptions : ['items' => [], 'page' => 1, 'totalRecords' => 0, 'totalPages' => 1];
 $value = static fn (string $field, mixed $fallback = ''): mixed => array_key_exists($field, $old) ? $old[$field] : $fallback;
 $status = (string) $value('status', $customer?->status ?? 'lead');
-$trackingUrl = static fn (mixed $awbNumber): string => \App\Modules\Pickupsheet\Domain\DhlTrackingUrl::forAwb((string) $awbNumber);
 ?>
 <section class="pickup-view-workspace pickup-crm-workspace">
     <div class="container pickup-workspace-header">
@@ -67,15 +66,11 @@ $trackingUrl = static fn (mixed $awbNumber): string => \App\Modules\Pickupsheet\
                         <?php endif; ?>
                     </div>
                 </div>
-                <div class="pickup-redemption-log">
-                    <div><span>Audit trail</span><h3>Redemption log</h3><p>Latest 20 point redemptions for this customer.</p></div>
-                    <?php if ($rewardRedemptions === []): ?>
-                        <p class="pickup-redemption-empty">No points have been redeemed.</p>
-                    <?php else: ?>
-                        <div class="pickup-redemption-table-wrap"><table><thead><tr><th>Points redeemed</th><th>Reason</th><th>Redeemed at</th><th>Administrator</th></tr></thead><tbody>
-                            <?php foreach ($rewardRedemptions as $redemption): ?><tr><td><strong><?= $e(number_format(abs((int) ($redemption['pointsDelta'] ?? 0)))) ?> points</strong></td><td><?= $e($redemption['reason'] ?? '') ?></td><td><?= $e($redemption['createdAt'] ?? '') ?> UTC</td><td><?= $e(substr((string) ($redemption['actorId'] ?? ''), 0, 10)) ?></td></tr><?php endforeach; ?>
-                        </tbody></table></div>
-                    <?php endif; ?>
+                <div class="pickup-redemption-log ajax-pager" data-ajax-pager data-ajax-pager-id="customer-redemptions" data-page-endpoint="<?= $e($basePath) ?>/dhl/pickupsheet/customers/redemptions/page" data-page-param="redemption_page" data-current-page="<?= $e($rewardRedemptions['page'] ?? 1) ?>" data-error-message="Redemption history could not be loaded. Please try again.">
+                    <div class="ajax-pager-loading" data-ajax-pager-spinner role="status" hidden><span class="pickup-loading-spinner" aria-hidden="true"></span><span>Loading redemptions...</span></div>
+                    <div class="pickup-redemption-log-content" data-ajax-pager-content aria-live="polite" aria-busy="false">
+                        <?php require __DIR__ . '/_customer-redemptions.php'; ?>
+                    </div>
                 </div>
             </section>
         <?php endif; ?>
@@ -112,12 +107,11 @@ $trackingUrl = static fn (mixed $awbNumber): string => \App\Modules\Pickupsheet\
         </div>
 
         <?php if ($customer !== null): ?>
-            <section class="pickup-customer-history" aria-labelledby="customer-history-title">
-                <div class="pickup-card-heading"><div><span>Operational history</span><h2 id="customer-history-title">Recent shipments</h2></div><small>Latest 20</small></div>
-                <div class="pickup-crm-table-wrap"><table><thead><tr><th>Date</th><th>Reference</th><th>AWB</th><th>Destination</th><th>Amount</th><th>Status</th></tr></thead><tbody>
-                    <?php if ($shipments === []): ?><tr><td colspan="6">No shipment history is linked to this customer.</td></tr><?php endif; ?>
-                    <?php foreach ($shipments as $shipment): ?><tr><td><?= $e($shipment['collectionDate'] ?? '') ?></td><td><a href="<?= $e($basePath) ?>/dhl/pickupsheet/submissions?reference=<?= $e(rawurlencode((string) ($shipment['referenceNumber'] ?? ''))) ?>"><?= $e($shipment['referenceNumber'] ?? '') ?></a></td><td><a class="pickup-awb-link" href="<?= $e($trackingUrl($shipment['awbNumber'] ?? '')) ?>" target="_blank" rel="noopener noreferrer" aria-label="Track AWB <?= $e($shipment['awbNumber'] ?? '') ?> with DHL"><?= $e($shipment['awbNumber'] ?? '') ?></a></td><td><?= $e($shipment['destination'] ?? '') ?></td><td><?= $e(number_format((int) ($shipment['amountXaf'] ?? 0))) ?> XAF</td><td><?= $e(ucfirst((string) ($shipment['status'] ?? 'open'))) ?></td></tr><?php endforeach; ?>
-                </tbody></table></div>
+            <section class="pickup-customer-history ajax-pager" aria-labelledby="customer-history-title" data-ajax-pager data-ajax-pager-id="customer-shipments" data-page-endpoint="<?= $e($basePath) ?>/dhl/pickupsheet/customers/shipments/page" data-page-param="shipment_page" data-current-page="<?= $e($shipments['page'] ?? 1) ?>" data-error-message="Shipment history could not be loaded. Please try again.">
+                <div class="ajax-pager-loading" data-ajax-pager-spinner role="status" hidden><span class="pickup-loading-spinner" aria-hidden="true"></span><span>Loading shipments...</span></div>
+                <div data-ajax-pager-content aria-live="polite" aria-busy="false">
+                    <?php require __DIR__ . '/_customer-shipments.php'; ?>
+                </div>
             </section>
         <?php endif; ?>
     </div>

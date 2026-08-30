@@ -99,16 +99,10 @@ $trackingUrl = static fn (mixed $awbNumber): string => \App\Modules\Pickupsheet\
     <?php endforeach; ?>
 </div>
 
-<nav class="pickup-pagination" aria-label="Submitted pickup-sheet pages">
-    <?php if ($page > 1): ?>
-        <a href="<?= $e($pageUrl($page - 1)) ?>" data-pickup-page="<?= $e($page - 1) ?>" rel="prev">Previous</a>
-    <?php else: ?>
-        <span class="pickup-pagination-disabled" aria-disabled="true">Previous</span>
-    <?php endif; ?>
-    <span class="pickup-pagination-status">Page <?= $e($page) ?> of <?= $e($totalPages) ?> · <?= $e($totalRecords) ?> record<?= $totalRecords === 1 ? '' : 's' ?></span>
-    <?php if ($page < $totalPages): ?>
-        <a href="<?= $e($pageUrl($page + 1)) ?>" data-pickup-page="<?= $e($page + 1) ?>" rel="next">Next</a>
-    <?php else: ?>
-        <span class="pickup-pagination-disabled" aria-disabled="true">Next</span>
-    <?php endif; ?>
-</nav>
+<?php
+$pagerData = $pagination;
+$pagerRecordLabel = $totalRecords === 1 ? 'record' : 'records';
+$pagerAriaLabel = 'Submitted pickup-sheet pages';
+$pagerUrl = $pageUrl;
+require __DIR__ . '/_pagination.php';
+?>

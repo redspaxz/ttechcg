@@ -25,4 +25,9 @@ final class UnavailableRecordsSessionActivityRepository implements RecordsSessio
     {
         return [];
     }
+
+    public function paginatedSummary(int $days, int $limit, int $offset): array
+    {
+        return ['items' => [], 'totalRecords' => 0, 'activeRecords' => 0];
+    }
 }

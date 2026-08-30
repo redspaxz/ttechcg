@@ -166,9 +166,9 @@ final class PickupsheetController
         $activity = [];
         $destinations = [];
         $senders = [];
-        $userActivity = [];
-        $auditLogs = [];
-        $recentSheets = [];
+        $userActivity = $this->emptyPagination() + ['activeRecords' => 0];
+        $auditLogs = $this->emptyPagination();
+        $recentSheets = $this->emptyPagination();
         $accounts = [];
         $errors = [];
 
@@ -177,7 +177,6 @@ final class PickupsheetController
             $activity = $this->completeActivity($this->service->activityByDay(14), 14);
             $destinations = $this->service->topDestinations(5);
             $senders = $this->service->topSenders(12, 10);
-            $recentSheets = $this->service->recent(8);
             $accounts = $this->recordsUserService->accounts($authorization);
         } catch (RuntimeException $exception) {
             error_log($exception->__toString());
@@ -185,18 +184,37 @@ final class PickupsheetController
         }
 
         try {
-            $userActivity = $this->recordsSession->activitySummary(30, 50);
+            $userActivity = $this->recordsSession->paginatedActivitySummary(
+                30,
+                $this->pageNumber($request, 'login_page'),
+                10,
+            );
         } catch (RuntimeException $exception) {
             error_log($exception->__toString());
             $errors[] = 'User login activity could not be loaded. Check the session-activity schema.';
         }
 
         try {
-            $auditLogs = $this->securityLogger->recentPickupsheet(50);
-            $auditLogs = $this->auditLogsWithIdentity($auditLogs, $authorization, $accounts, $userActivity);
+            $auditLogs = $this->securityLogger->paginatedPickupsheet(
+                $this->pageNumber($request, 'log_page'),
+                10,
+            );
+            $auditLogs['items'] = $this->auditLogsWithIdentity(
+                $auditLogs['items'],
+                $authorization,
+                $accounts,
+                $this->recordsSession->activitySummary(30, 100),
+            );
         } catch (RuntimeException $exception) {
             error_log($exception->__toString());
             $errors[] = 'Detailed user logs could not be loaded. Check the security-event schema.';
+        }
+
+        try {
+            $recentSheets = $this->service->paginated($this->pageNumber($request, 'recent_page'), 10);
+        } catch (RuntimeException $exception) {
+            error_log($exception->__toString());
+            $errors[] = 'Recent pickup sheets could not be loaded.';
         }
 
         $body = $this->view->render('pickupsheet/dashboard', [
@@ -223,6 +241,86 @@ final class PickupsheetController
         ]);
 
         return Response::html($body, 200, $this->privateHeaders());
+    }
+
+    public function dashboardUserActivityPage(Request $request): Response
+    {
+        $authorization = $this->authorizeRecords($request, 'dashboard', false);
+        if ($authorization instanceof Response) {
+            return $authorization;
+        }
+
+        try {
+            return Response::html(
+                $this->view->renderPartial('pickupsheet/_dashboard-user-activity', [
+                    'basePath' => $request->basePath,
+                    'userActivity' => $this->recordsSession->paginatedActivitySummary(30, $this->pageNumber($request, 'login_page'), 10),
+                    'currentLogPage' => $this->pageNumber($request, 'log_page'),
+                    'currentRecentPage' => $this->pageNumber($request, 'recent_page'),
+                ]),
+                200,
+                $this->privateHeaders(),
+            );
+        } catch (RuntimeException $exception) {
+            error_log($exception->__toString());
+            return Response::html('User activity could not be loaded.', 503, $this->privateHeaders());
+        }
+    }
+
+    public function dashboardAuditLogPage(Request $request): Response
+    {
+        $authorization = $this->authorizeRecords($request, 'dashboard', false);
+        if ($authorization instanceof Response) {
+            return $authorization;
+        }
+
+        try {
+            $accounts = $this->recordsUserService->accounts($authorization);
+            $auditLogs = $this->securityLogger->paginatedPickupsheet($this->pageNumber($request, 'log_page'), 10);
+            $auditLogs['items'] = $this->auditLogsWithIdentity(
+                $auditLogs['items'],
+                $authorization,
+                $accounts,
+                $this->recordsSession->activitySummary(30, 100),
+            );
+            return Response::html(
+                $this->view->renderPartial('pickupsheet/_dashboard-audit-logs', [
+                    'basePath' => $request->basePath,
+                    'auditLogs' => $auditLogs,
+                    'currentLoginPage' => $this->pageNumber($request, 'login_page'),
+                    'currentRecentPage' => $this->pageNumber($request, 'recent_page'),
+                ]),
+                200,
+                $this->privateHeaders(),
+            );
+        } catch (RuntimeException $exception) {
+            error_log($exception->__toString());
+            return Response::html('Detailed user logs could not be loaded.', 503, $this->privateHeaders());
+        }
+    }
+
+    public function dashboardRecentSheetsPage(Request $request): Response
+    {
+        $authorization = $this->authorizeRecords($request, 'dashboard', false);
+        if ($authorization instanceof Response) {
+            return $authorization;
+        }
+
+        try {
+            return Response::html(
+                $this->view->renderPartial('pickupsheet/_dashboard-recent-sheets', [
+                    'basePath' => $request->basePath,
+                    'recentSheets' => $this->service->paginated($this->pageNumber($request, 'recent_page'), 10),
+                    'currentLoginPage' => $this->pageNumber($request, 'login_page'),
+                    'currentLogPage' => $this->pageNumber($request, 'log_page'),
+                ]),
+                200,
+                $this->privateHeaders(),
+            );
+        } catch (RuntimeException $exception) {
+            error_log($exception->__toString());
+            return Response::html('Recent pickup sheets could not be loaded.', 503, $this->privateHeaders());
+        }
     }
 
     public function submissions(Request $request): Response
@@ -675,7 +773,7 @@ final class PickupsheetController
         ];
     }
 
-    private function authorizeRecords(Request $request, string $action): RecordsPrincipal|Response
+    private function authorizeRecords(Request $request, string $action, bool $logGranted = true): RecordsPrincipal|Response
     {
         $resource = $request->queryString('reference');
         $context = ['action' => $action];
@@ -689,7 +787,9 @@ final class PickupsheetController
             $context['role'] = $principal->role;
 
             if ($principal->can($action)) {
-                $this->securityLogger->event('pickupsheet.records_access', $request, 'granted', $context);
+                if ($logGranted) {
+                    $this->securityLogger->event('pickupsheet.records_access', $request, 'granted', $context);
+                }
                 return $principal;
             }
 
@@ -905,10 +1005,16 @@ final class PickupsheetController
         }, $shipments);
     }
 
-    private function pageNumber(Request $request): int
+    private function pageNumber(Request $request, string $parameter = 'page'): int
     {
-        $page = $request->queryString('page', '1');
+        $page = $request->queryString($parameter, '1');
         return preg_match('/^[1-9][0-9]{0,8}$/', $page) ? (int) $page : 1;
+    }
+
+    /** @return array{items: array<never>, page: int, perPage: int, totalRecords: int, totalPages: int} */
+    private function emptyPagination(): array
+    {
+        return ['items' => [], 'page' => 1, 'perPage' => 10, 'totalRecords' => 0, 'totalPages' => 1];
     }
 
     private function rateLimit(

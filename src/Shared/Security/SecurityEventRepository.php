@@ -36,4 +36,7 @@ interface SecurityEventRepository
      * }>
      */
     public function recentPickupsheet(int $limit): array;
+
+    /** @return array{items: list<array<string, mixed>>, totalRecords: int} */
+    public function paginatedPickupsheet(int $limit, int $offset): array;
 }

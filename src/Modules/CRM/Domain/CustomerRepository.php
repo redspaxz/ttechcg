@@ -26,7 +26,9 @@ interface CustomerRepository
      *     status: string
      * }>
      */
-    public function recentShipments(string $customerKey, int $limit): array;
+    public function recentShipments(string $customerKey, int $limit, int $offset = 0): array;
+
+    public function shipmentCount(string $customerKey): int;
 
     public function save(CustomerProfile $customer, string $actorId): CustomerProfile;
 
@@ -48,7 +50,9 @@ interface CustomerRepository
      *     createdAt: string
      * }>
      */
-    public function rewardRedemptions(string $customerKey, int $limit): array;
+    public function rewardRedemptions(string $customerKey, int $limit, int $offset = 0): array;
+
+    public function rewardRedemptionCount(string $customerKey): int;
 
     public function addRewardAdjustment(
         string $customerKey,

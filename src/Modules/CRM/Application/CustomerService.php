@@ -18,7 +18,7 @@ final class CustomerService
     }
 
     /** @return array{items: list<CustomerProfile>, page: int, perPage: int, totalRecords: int, totalPages: int} */
-    public function paginated(string $search = '', string $status = '', int $page = 1, int $perPage = 20): array
+    public function paginated(string $search = '', string $status = '', int $page = 1, int $perPage = 10): array
     {
         $this->repository->synchronizeFromShipments();
         $search = substr(trim($search), 0, 100);
@@ -66,6 +66,25 @@ final class CustomerService
         return $this->repository->recentShipments($customerKey, max(1, min($limit, 50)));
     }
 
+    /** @return array{items: list<array<string, int|string>>, page: int, perPage: int, totalRecords: int, totalPages: int} */
+    public function paginatedShipments(string $customerKey, int $page = 1, int $perPage = 10): array
+    {
+        if (preg_match('/^[a-f0-9]{64}$/', $customerKey) !== 1) {
+            return $this->emptyPage($perPage);
+        }
+        $perPage = max(1, min($perPage, 50));
+        $totalRecords = $this->repository->shipmentCount($customerKey);
+        $totalPages = max(1, (int) ceil($totalRecords / $perPage));
+        $page = max(1, min($page, $totalPages));
+        return [
+            'items' => $this->repository->recentShipments($customerKey, $perPage, ($page - 1) * $perPage),
+            'page' => $page,
+            'perPage' => $perPage,
+            'totalRecords' => $totalRecords,
+            'totalPages' => $totalPages,
+        ];
+    }
+
     /** @return list<array{pointsDelta: int, reason: string, actorId: string, createdAt: string}> */
     public function rewardAdjustments(string $customerKey, int $limit = 20): array
     {
@@ -82,6 +101,25 @@ final class CustomerService
             return [];
         }
         return $this->repository->rewardRedemptions($customerKey, max(1, min($limit, 50)));
+    }
+
+    /** @return array{items: list<array{pointsDelta: int, reason: string, actorId: string, createdAt: string}>, page: int, perPage: int, totalRecords: int, totalPages: int} */
+    public function paginatedRewardRedemptions(string $customerKey, int $page = 1, int $perPage = 10): array
+    {
+        if (preg_match('/^[a-f0-9]{64}$/', $customerKey) !== 1) {
+            return $this->emptyPage($perPage);
+        }
+        $perPage = max(1, min($perPage, 50));
+        $totalRecords = $this->repository->rewardRedemptionCount($customerKey);
+        $totalPages = max(1, (int) ceil($totalRecords / $perPage));
+        $page = max(1, min($page, $totalPages));
+        return [
+            'items' => $this->repository->rewardRedemptions($customerKey, $perPage, ($page - 1) * $perPage),
+            'page' => $page,
+            'perPage' => $perPage,
+            'totalRecords' => $totalRecords,
+            'totalPages' => $totalPages,
+        ];
     }
 
     public function adjustRewards(
@@ -232,5 +270,17 @@ final class CustomerService
     private function containsControlCharacters(string $value): bool
     {
         return preg_match('/[\x00-\x1F\x7F]/', $value) === 1;
+    }
+
+    /** @return array{items: array<never>, page: int, perPage: int, totalRecords: int, totalPages: int} */
+    private function emptyPage(int $perPage): array
+    {
+        return [
+            'items' => [],
+            'page' => 1,
+            'perPage' => max(1, min($perPage, 50)),
+            'totalRecords' => 0,
+            'totalPages' => 1,
+        ];
     }
 }

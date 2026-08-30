@@ -65,33 +65,45 @@ final class MysqlSecurityEventRepository implements SecurityEventRepository
 
     public function recentPickupsheet(int $limit): array
     {
+        return $this->paginatedPickupsheet($limit, 0)['items'];
+    }
+
+    public function paginatedPickupsheet(int $limit, int $offset): array
+    {
         $this->ensureSchema();
+        $countStatement = $this->connection->query(
+            "SELECT COUNT(*) FROM pickup_security_events WHERE event_name LIKE 'pickupsheet.%'",
+        );
         $statement = $this->connection->prepare(
             "SELECT event_name, outcome, actor_id, target_id, resource_id, role, identity_provider,
                     request_id, client_id, request_method, request_path, context_json, occurred_at
              FROM pickup_security_events
              WHERE event_name LIKE 'pickupsheet.%'
              ORDER BY occurred_at DESC, id DESC
-             LIMIT :limit",
+             LIMIT :limit OFFSET :offset",
         );
         $statement->bindValue(':limit', max(1, min($limit, 100)), PDO::PARAM_INT);
+        $statement->bindValue(':offset', max(0, $offset), PDO::PARAM_INT);
         $statement->execute();
 
-        return array_map(fn (array $row): array => [
-            'eventName' => (string) $row['event_name'],
-            'outcome' => (string) $row['outcome'],
-            'actorId' => (string) ($row['actor_id'] ?? ''),
-            'targetId' => (string) ($row['target_id'] ?? ''),
-            'resourceId' => (string) ($row['resource_id'] ?? ''),
-            'role' => (string) ($row['role'] ?? ''),
-            'identityProvider' => (string) ($row['identity_provider'] ?? ''),
-            'requestId' => (string) $row['request_id'],
-            'clientId' => (string) $row['client_id'],
-            'method' => (string) $row['request_method'],
-            'path' => (string) $row['request_path'],
-            'occurredAt' => (string) $row['occurred_at'],
-            'context' => $this->decodedContext($row['context_json'] ?? null),
-        ], $statement->fetchAll());
+        return [
+            'items' => array_map(fn (array $row): array => [
+                'eventName' => (string) $row['event_name'],
+                'outcome' => (string) $row['outcome'],
+                'actorId' => (string) ($row['actor_id'] ?? ''),
+                'targetId' => (string) ($row['target_id'] ?? ''),
+                'resourceId' => (string) ($row['resource_id'] ?? ''),
+                'role' => (string) ($row['role'] ?? ''),
+                'identityProvider' => (string) ($row['identity_provider'] ?? ''),
+                'requestId' => (string) $row['request_id'],
+                'clientId' => (string) $row['client_id'],
+                'method' => (string) $row['request_method'],
+                'path' => (string) $row['request_path'],
+                'occurredAt' => (string) $row['occurred_at'],
+                'context' => $this->decodedContext($row['context_json'] ?? null),
+            ], $statement->fetchAll()),
+            'totalRecords' => (int) $countStatement->fetchColumn(),
+        ];
     }
 
     private function ensureSchema(): void

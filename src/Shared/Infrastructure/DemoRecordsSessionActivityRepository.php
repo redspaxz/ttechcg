@@ -49,6 +49,11 @@ final class DemoRecordsSessionActivityRepository implements RecordsSessionActivi
 
     public function summary(int $days, int $limit): array
     {
+        return $this->paginatedSummary($days, $limit, 0)['items'];
+    }
+
+    public function paginatedSummary(int $days, int $limit, int $offset): array
+    {
         $now = time();
         $minimumTimestamp = $now - max(1, $days) * 86400;
         $activeAfter = $now - self::ACTIVE_WINDOW_SECONDS;
@@ -99,7 +104,11 @@ final class DemoRecordsSessionActivityRepository implements RecordsSessionActivi
             return $loginOrder !== 0 ? $loginOrder : strcmp($right['lastLoginAt'], $left['lastLoginAt']);
         });
 
-        return array_slice($users, 0, max(1, min($limit, 100)));
+        return [
+            'items' => array_slice($users, max(0, $offset), max(1, min($limit, 100))),
+            'totalRecords' => count($users),
+            'activeRecords' => count(array_filter($users, static fn (array $user): bool => $user['activeNow'])),
+        ];
     }
 
     /** @return array<string, array{username: string, fullName: string, role: string, identityProvider: string, loggedInAt: int, lastSeenAt: int, loggedOutAt: ?int}> */

@@ -70,8 +70,30 @@ final class MysqlRecordsSessionActivityRepository implements RecordsSessionActiv
 
     public function summary(int $days, int $limit): array
     {
+        return $this->paginatedSummary($days, $limit, 0)['items'];
+    }
+
+    public function paginatedSummary(int $days, int $limit, int $offset): array
+    {
         $this->ensureSchema();
         $now = time();
+        $minimumDate = gmdate('Y-m-d H:i:s', $now - max(1, $days) * 86400);
+        $activeAfter = gmdate('Y-m-d H:i:s', $now - self::ACTIVE_WINDOW_SECONDS);
+        $countStatement = $this->connection->prepare(
+            'SELECT COUNT(*) AS total_records, COALESCE(SUM(active_now), 0) AS active_records
+             FROM (
+                 SELECT username, identity_provider,
+                        MAX(CASE WHEN logged_out_at IS NULL AND last_seen_at >= :active_after THEN 1 ELSE 0 END) AS active_now
+                 FROM pickup_records_session_activity
+                 WHERE logged_in_at >= :minimum_date
+                 GROUP BY username, identity_provider
+             ) AS activity_users',
+        );
+        $countStatement->execute([
+            'active_after' => $activeAfter,
+            'minimum_date' => $minimumDate,
+        ]);
+        $counts = $countStatement->fetch();
         $statement = $this->connection->prepare(
             'SELECT username,
                     MAX(full_name) AS full_name,
@@ -86,24 +108,29 @@ final class MysqlRecordsSessionActivityRepository implements RecordsSessionActiv
              WHERE logged_in_at >= :minimum_date
              GROUP BY username, identity_provider
              ORDER BY active_now DESC, login_count DESC, last_login_at DESC
-             LIMIT :limit',
+             LIMIT :limit OFFSET :offset',
         );
-        $statement->bindValue(':active_after', gmdate('Y-m-d H:i:s', $now - self::ACTIVE_WINDOW_SECONDS));
-        $statement->bindValue(':minimum_date', gmdate('Y-m-d H:i:s', $now - max(1, $days) * 86400));
+        $statement->bindValue(':active_after', $activeAfter);
+        $statement->bindValue(':minimum_date', $minimumDate);
         $statement->bindValue(':limit', max(1, min($limit, 100)), PDO::PARAM_INT);
+        $statement->bindValue(':offset', max(0, $offset), PDO::PARAM_INT);
         $statement->execute();
 
-        return array_map(static fn (array $row): array => [
-            'username' => (string) $row['username'],
-            'fullName' => (string) $row['full_name'],
-            'role' => (string) $row['role'],
-            'identityProvider' => (string) $row['identity_provider'],
-            'loginCount' => (int) $row['login_count'],
-            'totalSessionSeconds' => (int) $row['total_session_seconds'],
-            'averageSessionSeconds' => (int) $row['average_session_seconds'],
-            'lastLoginAt' => (string) $row['last_login_at'],
-            'activeNow' => (bool) $row['active_now'],
-        ], $statement->fetchAll());
+        return [
+            'items' => array_map(static fn (array $row): array => [
+                'username' => (string) $row['username'],
+                'fullName' => (string) $row['full_name'],
+                'role' => (string) $row['role'],
+                'identityProvider' => (string) $row['identity_provider'],
+                'loginCount' => (int) $row['login_count'],
+                'totalSessionSeconds' => (int) $row['total_session_seconds'],
+                'averageSessionSeconds' => (int) $row['average_session_seconds'],
+                'lastLoginAt' => (string) $row['last_login_at'],
+                'activeNow' => (bool) $row['active_now'],
+            ], $statement->fetchAll()),
+            'totalRecords' => (int) ($counts['total_records'] ?? 0),
+            'activeRecords' => (int) ($counts['active_records'] ?? 0),
+        ];
     }
 
     private function ensureSchema(): void

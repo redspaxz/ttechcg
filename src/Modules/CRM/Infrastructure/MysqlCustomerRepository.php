@@ -99,7 +99,7 @@ final class MysqlCustomerRepository implements CustomerRepository
         return is_array($row) ? $this->profile($row) : null;
     }
 
-    public function recentShipments(string $customerKey, int $limit): array
+    public function recentShipments(string $customerKey, int $limit, int $offset = 0): array
     {
         $statement = $this->connection->prepare(
             "SELECT p.reference_number, p.collection_date, ps.awb_number, ps.destination,
@@ -109,10 +109,11 @@ final class MysqlCustomerRepository implements CustomerRepository
              WHERE p.deleted_at IS NULL
                AND SHA2(LOWER(TRIM(ps.consignor)), 256) = :customer_key
              ORDER BY p.collection_date DESC, p.id DESC, ps.line_number DESC
-             LIMIT :limit",
+             LIMIT :limit OFFSET :offset",
         );
         $statement->bindValue(':customer_key', $customerKey);
         $statement->bindValue(':limit', max(1, min($limit, 50)), PDO::PARAM_INT);
+        $statement->bindValue(':offset', max(0, $offset), PDO::PARAM_INT);
         $statement->execute();
 
         return array_map(static fn (array $row): array => [
@@ -123,6 +124,19 @@ final class MysqlCustomerRepository implements CustomerRepository
             'amountXaf' => (int) $row['amount_xaf'],
             'status' => (string) $row['sheet_status'],
         ], $statement->fetchAll());
+    }
+
+    public function shipmentCount(string $customerKey): int
+    {
+        $statement = $this->connection->prepare(
+            'SELECT COUNT(*)
+             FROM pickup_shipments ps
+             INNER JOIN pickup_sheets p ON p.id = ps.pickup_sheet_id
+             WHERE p.deleted_at IS NULL
+               AND SHA2(LOWER(TRIM(ps.consignor)), 256) = :customer_key',
+        );
+        $statement->execute(['customer_key' => $customerKey]);
+        return (int) $statement->fetchColumn();
     }
 
     public function save(CustomerProfile $customer, string $actorId): CustomerProfile
@@ -183,7 +197,7 @@ final class MysqlCustomerRepository implements CustomerRepository
         ], $statement->fetchAll());
     }
 
-    public function rewardRedemptions(string $customerKey, int $limit): array
+    public function rewardRedemptions(string $customerKey, int $limit, int $offset = 0): array
     {
         $this->ensureSchema();
         $statement = $this->connection->prepare(
@@ -191,10 +205,11 @@ final class MysqlCustomerRepository implements CustomerRepository
              FROM pickup_customer_reward_adjustments
              WHERE customer_key = :customer_key AND points_delta < 0
              ORDER BY created_at DESC, id DESC
-             LIMIT :limit',
+             LIMIT :limit OFFSET :offset',
         );
         $statement->bindValue(':customer_key', $customerKey);
         $statement->bindValue(':limit', max(1, min($limit, 50)), PDO::PARAM_INT);
+        $statement->bindValue(':offset', max(0, $offset), PDO::PARAM_INT);
         $statement->execute();
 
         return array_map(static fn (array $row): array => [
@@ -203,6 +218,18 @@ final class MysqlCustomerRepository implements CustomerRepository
             'actorId' => (string) $row['actor_id'],
             'createdAt' => (string) $row['created_at'],
         ], $statement->fetchAll());
+    }
+
+    public function rewardRedemptionCount(string $customerKey): int
+    {
+        $this->ensureSchema();
+        $statement = $this->connection->prepare(
+            'SELECT COUNT(*)
+             FROM pickup_customer_reward_adjustments
+             WHERE customer_key = :customer_key AND points_delta < 0',
+        );
+        $statement->execute(['customer_key' => $customerKey]);
+        return (int) $statement->fetchColumn();
     }
 
     public function addRewardAdjustment(

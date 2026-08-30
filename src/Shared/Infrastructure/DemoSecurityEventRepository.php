@@ -28,13 +28,21 @@ final class DemoSecurityEventRepository implements SecurityEventRepository
 
     public function recentPickupsheet(int $limit): array
     {
+        return $this->paginatedPickupsheet($limit, 0)['items'];
+    }
+
+    public function paginatedPickupsheet(int $limit, int $offset): array
+    {
         $events = $_SESSION[self::SESSION_KEY] ?? [];
         $events = array_values(array_filter(
             is_array($events) ? $events : [],
             static fn (mixed $event): bool => is_array($event)
                 && str_starts_with((string) ($event['eventName'] ?? ''), 'pickupsheet.'),
         ));
-        return array_slice(array_reverse($events), 0, max(1, min($limit, 100)));
+        return [
+            'items' => array_slice(array_reverse($events), max(0, $offset), max(1, min($limit, 100))),
+            'totalRecords' => count($events),
+        ];
     }
 
     /** @param array<string, bool|float|int|string|null> $context @return array<string, mixed> */

@@ -67,4 +67,27 @@ final class SecurityLogger
     {
         return $this->repository?->recentPickupsheet(max(1, min($limit, 100))) ?? [];
     }
+
+    /** @return array{items: list<array<string, mixed>>, page: int, perPage: int, totalRecords: int, totalPages: int} */
+    public function paginatedPickupsheet(int $page = 1, int $perPage = 10): array
+    {
+        $perPage = max(1, min($perPage, 50));
+        $page = max(1, $page);
+        $result = $this->repository?->paginatedPickupsheet($perPage, ($page - 1) * $perPage)
+            ?? ['items' => [], 'totalRecords' => 0];
+        $totalPages = max(1, (int) ceil($result['totalRecords'] / $perPage));
+        if ($page > $totalPages) {
+            $page = $totalPages;
+            $result = $this->repository?->paginatedPickupsheet($perPage, ($page - 1) * $perPage)
+                ?? ['items' => [], 'totalRecords' => 0];
+        }
+
+        return [
+            'items' => $result['items'],
+            'page' => $page,
+            'perPage' => $perPage,
+            'totalRecords' => $result['totalRecords'],
+            'totalPages' => $totalPages,
+        ];
+    }
 }

@@ -24,4 +24,9 @@ final class UnavailableSecurityEventRepository implements SecurityEventRepositor
     {
         return [];
     }
+
+    public function paginatedPickupsheet(int $limit, int $offset): array
+    {
+        return ['items' => [], 'totalRecords' => 0];
+    }
 }

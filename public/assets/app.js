@@ -157,11 +157,14 @@ if (pickupForm) {
     reindexRows();
 }
 
-const pickupRecords = document.querySelector('[data-pickup-records]');
-if (pickupRecords) {
-    const content = pickupRecords.querySelector('[data-pickup-records-content]');
-    const spinner = pickupRecords.querySelector('[data-pickup-records-spinner]');
-    const endpoint = pickupRecords.dataset.pageEndpoint;
+const ajaxPagerControllers = new Map();
+
+document.querySelectorAll('[data-ajax-pager]').forEach((pager) => {
+    const content = pager.querySelector('[data-ajax-pager-content]');
+    const spinner = pager.querySelector('[data-ajax-pager-spinner]');
+    const endpoint = pager.dataset.pageEndpoint;
+    const pageParameter = pager.dataset.pageParam || 'page';
+    const pagerId = pager.dataset.ajaxPagerId || pageParameter;
     let activeRequest = null;
 
     const setLoading = (loading) => {
@@ -176,12 +179,18 @@ if (pickupRecords) {
         notice.className = 'notice notice-error';
         notice.dataset.paginationError = '';
         notice.setAttribute('role', 'alert');
-        notice.textContent = 'Pickup records could not be loaded. Please try again.';
+        notice.textContent = pager.dataset.errorMessage || 'This table could not be loaded. Please try again.';
         content.prepend(notice);
     };
 
-    const loadPage = async (page, updateHistory = true) => {
-        if (!content || !endpoint || !Number.isInteger(page) || page < 1) return;
+    const pageFromUrl = (url) => {
+        const page = Number.parseInt(url.searchParams.get(pageParameter) || '1', 10);
+        return Number.isInteger(page) && page > 0 ? page : 1;
+    };
+
+    const loadUrl = async (browserUrl, updateHistory = true, shouldScroll = true) => {
+        if (!content || !endpoint) return;
+        const requestedPage = pageFromUrl(browserUrl);
 
         activeRequest?.abort();
         const request = new AbortController();
@@ -190,27 +199,32 @@ if (pickupRecords) {
 
         try {
             const pageEndpoint = new URL(endpoint, window.location.href);
-            pageEndpoint.searchParams.set('page', String(page));
+            pageEndpoint.search = browserUrl.search;
+            pageEndpoint.searchParams.set(pageParameter, String(requestedPage));
             const response = await fetch(pageEndpoint, {
                 credentials: 'same-origin',
                 headers: { 'X-Requested-With': 'XMLHttpRequest' },
                 signal: request.signal,
             });
-            if (response.redirected && new URL(response.url).pathname.endsWith('/dhl/pickupsheet/login')) {
+            if (response.redirected && response.url && new URL(response.url).pathname.endsWith('/dhl/pickupsheet/login')) {
                 window.location.assign(response.url);
                 return;
             }
             if (!response.ok) throw new Error(`Pagination request failed with ${response.status}`);
 
             content.innerHTML = await response.text();
-            pickupRecords.scrollIntoView({
-                behavior: window.matchMedia('(prefers-reduced-motion: reduce)').matches ? 'auto' : 'smooth',
-                block: 'start',
-            });
+            const pageState = content.querySelector('[data-ajax-current-page]');
+            const actualPage = Number.parseInt(pageState?.dataset.ajaxCurrentPage || String(requestedPage), 10);
+            pager.dataset.currentPage = String(Number.isInteger(actualPage) && actualPage > 0 ? actualPage : requestedPage);
+            browserUrl.searchParams.set(pageParameter, pager.dataset.currentPage);
+            if (shouldScroll) {
+                pager.scrollIntoView({
+                    behavior: window.matchMedia('(prefers-reduced-motion: reduce)').matches ? 'auto' : 'smooth',
+                    block: 'start',
+                });
+            }
             if (updateHistory) {
-                const browserUrl = new URL(window.location.href);
-                browserUrl.searchParams.set('page', String(page));
-                window.history.pushState({ pickupPage: page }, '', browserUrl);
+                window.history.pushState({ ajaxPager: pagerId }, '', browserUrl);
             }
         } catch (error) {
             if (error?.name !== 'AbortError') showLoadError();
@@ -222,18 +236,54 @@ if (pickupRecords) {
         }
     };
 
-    pickupRecords.addEventListener('click', (event) => {
-        const link = event.target.closest('[data-pickup-page]');
+    pager.addEventListener('click', (event) => {
+        const link = event.target.closest('[data-ajax-page]');
         if (!link) return;
-        const page = Number.parseInt(link.dataset.pickupPage ?? '', 10);
+        const page = Number.parseInt(link.dataset.ajaxPage || '', 10);
         if (!Number.isInteger(page) || page < 1) return;
         event.preventDefault();
-        loadPage(page);
+        const browserUrl = new URL(link.href || link.getAttribute('href'), window.location.href);
+        browserUrl.searchParams.set(pageParameter, String(page));
+        loadUrl(browserUrl);
     });
 
+    ajaxPagerControllers.set(pagerId, {
+        currentPage: () => Number.parseInt(pager.dataset.currentPage || '1', 10),
+        loadUrl,
+        pageFromUrl,
+    });
+});
+
+document.querySelectorAll('[data-ajax-pager-form]').forEach((form) => {
+    form.addEventListener('submit', (event) => {
+        const controller = ajaxPagerControllers.get(form.dataset.ajaxPagerForm);
+        if (!controller) return;
+        event.preventDefault();
+        const browserUrl = new URL(form.action, window.location.href);
+        new FormData(form).forEach((value, key) => {
+            if (typeof value === 'string' && value !== '') browserUrl.searchParams.set(key, value);
+        });
+        browserUrl.searchParams.set('page', '1');
+        controller.loadUrl(browserUrl);
+    });
+});
+
+document.querySelectorAll('[data-ajax-pager-clear]').forEach((link) => {
+    link.addEventListener('click', (event) => {
+        const controller = ajaxPagerControllers.get(link.dataset.ajaxPagerClear);
+        if (!controller) return;
+        event.preventDefault();
+        controller.loadUrl(new URL(link.href, window.location.href));
+    });
+});
+
+if (ajaxPagerControllers.size > 0) {
     window.addEventListener('popstate', () => {
-        const page = Number.parseInt(new URL(window.location.href).searchParams.get('page') ?? '1', 10);
-        loadPage(Number.isInteger(page) && page > 0 ? page : 1, false);
+        const browserUrl = new URL(window.location.href);
+        ajaxPagerControllers.forEach((controller) => {
+            const page = controller.pageFromUrl(browserUrl);
+            if (page !== controller.currentPage()) controller.loadUrl(new URL(browserUrl), false, false);
+        });
     });
 }
 
