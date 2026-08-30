@@ -10,7 +10,7 @@ final class RecordsPrincipal
     private const ROLE_PERMISSIONS = [
         'viewer' => ['create', 'list', 'paginate'],
         'operator' => ['create', 'list', 'paginate', 'print', 'export'],
-        'admin' => ['dashboard', 'crm', 'create', 'edit', 'mark_paid', 'delete', 'list', 'paginate', 'print', 'export', 'manage'],
+        'admin' => ['dashboard', 'crm', 'backup', 'create', 'edit', 'mark_paid', 'delete', 'list', 'paginate', 'print', 'export', 'manage'],
     ];
 
     public function __construct(

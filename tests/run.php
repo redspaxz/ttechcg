@@ -2,6 +2,9 @@
 
 declare(strict_types=1);
 
+use App\Modules\Backup\Application\BackupService;
+use App\Modules\Backup\Domain\BackupRepository;
+use App\Modules\Backup\UI\BackupController;
 use App\Modules\Contact\Application\InquiryService;
 use App\Modules\Contact\Domain\Inquiry;
 use App\Modules\Contact\Domain\InquiryNotifier;
@@ -293,6 +296,14 @@ $arrayRequest = new Request('POST', '/dhl/pickupsheet', [], ['shipments' => [['a
 $assert(($arrayRequest->arrayInput('shipments')[0]['awb_number'] ?? '') === '1234567890', 'Request should expose nested shipment arrays.');
 $rawPasswordRequest = new Request('POST', '/protected', [], ['password' => '  retain-spaces  '], '');
 $assert($rawPasswordRequest->rawInput('password') === '  retain-spaces  ', 'Password input should not be silently trimmed.');
+$uploadRequest = new Request('POST', '/upload', [], [], '', [], ['backup_file' => [
+    'name' => '../backup.json',
+    'type' => 'application/json',
+    'tmp_name' => 'C:\\tmp\\backup',
+    'error' => UPLOAD_ERR_OK,
+    'size' => 2048,
+]]);
+$assert(($uploadRequest->uploadedFile('backup_file')['name'] ?? '') === 'backup.json' && ($uploadRequest->uploadedFile('backup_file')['size'] ?? 0) === 2048, 'Request should expose normalized upload metadata without trusting the client path.');
 
 $geoRouter = new Router();
 $geoRouter->get('/', static fn (Request $request): Response => Response::html('Public site'));
@@ -410,7 +421,7 @@ $operatorServer = [
 $adminPrincipal = $recordsAccess->authenticate(new Request('GET', '/protected', [], [], '', $recordsServer));
 $viewerPrincipal = $recordsAccess->authenticate(new Request('GET', '/protected', [], [], '', $viewerServer));
 $operatorPrincipal = $recordsAccess->authenticate(new Request('GET', '/protected', [], [], '', $operatorServer));
-$assert($adminPrincipal?->role === 'admin' && $adminPrincipal->can('manage') && $adminPrincipal->can('dashboard'), 'An admin should manage users and receive the activity dashboard.');
+$assert($adminPrincipal?->role === 'admin' && $adminPrincipal->can('manage') && $adminPrincipal->can('dashboard') && $adminPrincipal->can('backup'), 'An admin should manage users, backups, and the activity dashboard.');
 $assert($adminPrincipal?->can('crm') === true && $viewerPrincipal?->can('crm') === false && $operatorPrincipal?->can('crm') === false, 'Only administrators should manage CRM customer data.');
 $assert($adminPrincipal?->fullName() === 'Records Administrator', 'Authenticated principals should expose the account first and last name.');
 $assert($adminPrincipal?->can('edit') === true && $adminPrincipal->can('mark_paid') === true && $adminPrincipal->can('delete') === true, 'An administrator should edit, mark paid, and delete pickup records.');
@@ -506,6 +517,58 @@ $assert(
     DhlTrackingUrl::forAwb(' 1234567890 ') === 'https://www.dhl.com/cm-en/home/tracking.html?tracking-id=1234567890&submit=1&inputsource=marketingstage',
     'DHL tracking links should substitute the trimmed AWB into the Cameroon tracking URL.',
 );
+
+$backupFixtureRepository = new class implements BackupRepository {
+    /** @var array<string, array{columns: list<string>, rows: list<array<string, mixed>>}> */
+    public array $restoredTables = [];
+
+    public function exportTables(): array
+    {
+        return [
+            'pickup_sheets' => [
+                'columns' => ['id', 'reference_number'],
+                'rows' => [['id' => 7, 'reference_number' => 'PS-20260729-TESTBACKUP000000000000']],
+            ],
+            'pickup_records_users' => [
+                'columns' => ['id', 'username', 'password_hash'],
+                'rows' => [[
+                    'id' => 3,
+                    'username' => 'private-contact@example.com',
+                    'password_hash' => '$2y$12$not-a-real-production-hash',
+                ]],
+            ],
+        ];
+    }
+
+    public function restoreTables(array $tables): array
+    {
+        $this->restoredTables = $tables;
+        return array_map(static fn (array $table): int => count($table['rows']), $tables);
+    }
+};
+$backupFixtureService = new BackupService($backupFixtureRepository);
+$backupPassphrase = 'correct horse battery staple 2026';
+$encryptedFixture = $backupFixtureService->createEncrypted($backupPassphrase);
+$assert($encryptedFixture['tableCount'] === 2 && $encryptedFixture['rowCount'] === 2, 'Encrypted backup metadata should count exported tables and rows.');
+$assert(!str_contains($encryptedFixture['contents'], 'private-contact@example.com') && !str_contains($encryptedFixture['contents'], 'not-a-real-production-hash'), 'Encrypted backups must not expose account data or password hashes as plaintext.');
+$restoredFixture = $backupFixtureService->restoreEncrypted($encryptedFixture['contents'], $backupPassphrase);
+$assert($restoredFixture['rowCount'] === 2 && ($backupFixtureRepository->restoredTables['pickup_sheets']['rows'][0]['id'] ?? null) === 7, 'A valid passphrase should decrypt and restore the complete backup payload.');
+$wrongBackupPassphraseDenied = false;
+try {
+    $backupFixtureService->restoreEncrypted($encryptedFixture['contents'], 'incorrect backup passphrase 2026');
+} catch (InvalidArgumentException) {
+    $wrongBackupPassphraseDenied = true;
+}
+$assert($wrongBackupPassphraseDenied, 'An incorrect backup passphrase should fail closed.');
+$tamperedEnvelope = json_decode($encryptedFixture['contents'], true, 32, JSON_THROW_ON_ERROR);
+$tamperedEnvelope['payload'][0] = $tamperedEnvelope['payload'][0] === 'A' ? 'B' : 'A';
+$tamperedBackupDenied = false;
+try {
+    $backupFixtureService->restoreEncrypted((string) json_encode($tamperedEnvelope, JSON_THROW_ON_ERROR), $backupPassphrase);
+} catch (InvalidArgumentException) {
+    $tamperedBackupDenied = true;
+}
+$assert($tamperedBackupDenied, 'AES-GCM authentication should reject a modified backup payload.');
 
 $bronzeCustomer = new CustomerProfile(null, str_repeat('a', 64), 'Bronze Customer', cargoWeightRewardPoints: 99);
 $silverCustomer = new CustomerProfile(null, str_repeat('b', 64), 'Silver Customer', cargoWeightRewardPoints: 75, rewardEarnedAdjustmentPoints: 25);
@@ -814,6 +877,16 @@ $customerController = new CustomerController(
     $disabledRateLimiter,
     $testSecurityLogger,
 );
+$backupController = new BackupController(
+    $backupFixtureService,
+    $view,
+    $pickupCsrf,
+    $recordsAccess,
+    $recordsSession,
+    $disabledRateLimiter,
+    $testSecurityLogger,
+    true,
+);
 $pickupAuthController = new PickupsheetAuthController(
     $view,
     $pickupCsrf,
@@ -949,6 +1022,47 @@ $assert($adminLogin->status() === 303 && ($adminLogin->headers()['Location'] ?? 
 $emptyDashboard = $pickupController->dashboard(new Request('GET', '/dhl/pickupsheet/dashboard'));
 $assert($emptyDashboard->status() === 200 && str_contains($emptyDashboard->body(), 'Activity dashboard'), 'The administrator should receive the Pickupsheet control panel.');
 $assert(str_contains($emptyDashboard->body(), 'Manage users and RBAC'), 'The dashboard should link its user and RBAC controls.');
+$assert(str_contains($emptyDashboard->body(), '/dhl/pickupsheet/admin/backup') && str_contains($emptyDashboard->body(), 'Backup and restore data'), 'The dashboard should link the administrator backup workspace.');
+
+$backupPage = $backupController->index(new Request('GET', '/dhl/pickupsheet/admin/backup'));
+$assert($backupPage->status() === 200 && str_contains($backupPage->body(), 'Create encrypted backup') && str_contains($backupPage->body(), 'Restore encrypted backup'), 'An administrator should open the backup and restore workspace.');
+$assert(str_contains($backupPage->body(), 'AES-256-GCM') && str_contains($backupPage->body(), 'Type RESTORE exactly'), 'The backup workspace should disclose encryption and explicit destructive confirmation.');
+$invalidBackupCsrf = $backupController->download(new Request('POST', '/dhl/pickupsheet/admin/backup/download', [], [
+    '_token' => 'invalid-token',
+    'passphrase' => $backupPassphrase,
+    'passphrase_confirmation' => $backupPassphrase,
+]));
+$assert($invalidBackupCsrf->status() === 419, 'Backup downloads should require a valid CSRF token.');
+$downloadedBackup = $backupController->download(new Request('POST', '/dhl/pickupsheet/admin/backup/download', [], [
+    '_token' => $pickupCsrf->token(),
+    'passphrase' => $backupPassphrase,
+    'passphrase_confirmation' => $backupPassphrase,
+]));
+$assert($downloadedBackup->status() === 200 && str_starts_with($downloadedBackup->headers()['Content-Type'] ?? '', 'application/json'), 'A valid administrator should download an encrypted JSON backup.');
+$assert(str_contains($downloadedBackup->headers()['Content-Disposition'] ?? '', 'ttechcg-pickupsheet-backup-') && !str_contains($downloadedBackup->body(), 'private-contact@example.com'), 'Backup downloads should use a safe dated filename and contain no plaintext account data.');
+$backupUploadPath = tempnam(dirname(__DIR__) . '/storage', 'backup-test-');
+$assert(is_string($backupUploadPath) && file_put_contents($backupUploadPath, $downloadedBackup->body()) !== false, 'The encrypted backup fixture should be writable for restore testing.');
+$restoreConfirmationDenied = $backupController->restore(new Request('POST', '/dhl/pickupsheet/admin/backup/restore', [], [
+    '_token' => $pickupCsrf->token(),
+    'passphrase' => $backupPassphrase,
+    'confirmation' => 'restore',
+]));
+$assert($restoreConfirmationDenied->status() === 303 && str_contains((string) ($_SESSION['_backup_errors'][0] ?? ''), 'RESTORE exactly'), 'Restore should require the exact destructive confirmation phrase.');
+$restoredBackup = $backupController->restore(new Request('POST', '/dhl/pickupsheet/admin/backup/restore', [], [
+    '_token' => $pickupCsrf->token(),
+    'passphrase' => $backupPassphrase,
+    'confirmation' => 'RESTORE',
+], '', [], ['backup_file' => [
+    'name' => 'pickupsheet-backup.json',
+    'type' => 'application/json',
+    'tmp_name' => $backupUploadPath,
+    'error' => UPLOAD_ERR_OK,
+    'size' => filesize($backupUploadPath),
+]]));
+if (is_string($backupUploadPath) && is_file($backupUploadPath)) {
+    unlink($backupUploadPath);
+}
+$assert($restoredBackup->status() === 303 && str_contains((string) ($_SESSION['_backup_flash'] ?? ''), '2 rows across 2 tables'), 'A valid encrypted backup should restore all validated rows and report its result.');
 
 $openPickup = $pickupController->index(new Request('GET', '/dhl/pickupsheet', [], [], ''));
 $assert($openPickup->status() === 200, 'A signed-in administrator should open the pickup form.');
@@ -1087,6 +1201,8 @@ $operatorEdit = $pickupController->edit(new Request('GET', '/dhl/pickupsheet/sub
 $assert($operatorEdit->status() === 403, 'An operator must not open the audited record editor.');
 $operatorDashboard = $pickupController->dashboard(new Request('GET', '/dhl/pickupsheet/dashboard'));
 $assert($operatorDashboard->status() === 403, 'An operator should not enter the administrator dashboard.');
+$operatorBackup = $backupController->index(new Request('GET', '/dhl/pickupsheet/admin/backup'));
+$assert($operatorBackup->status() === 403, 'An operator must not access backup or restore controls.');
 $operatorDelete = $pickupController->deletePickupSheet(new Request('POST', '/dhl/pickupsheet/submissions/delete', [], [
     '_token' => $pickupCsrf->token(),
     'reference' => $savedReference,
@@ -1489,7 +1605,7 @@ $assert(is_string($dhlAsset) && !str_contains($dhlAsset, '<text'), 'The disquali
 $partnerSources = file_get_contents(dirname(__DIR__) . '/public/assets/partners/README.md');
 $assert(is_string($partnerSources) && str_contains($partnerSources, 'www.dhl.com/content/dam/dhl/global/core/images/logos/dhl-logo.svg'), 'The official DHL artwork source should be documented.');
 $assert(!str_contains($home, 'href="/dhl/pickupsheet"'), 'Pickupsheet should not be discoverable from the public site chrome or homepage.');
-$assert(str_contains($home, 'styles.css?v=20260830-loyalty-rewards'), 'Loyalty reward styles should use a cache-safe stylesheet version.');
+$assert(str_contains($home, 'styles.css?v=20260830-backup-restore'), 'Backup and restore styles should use a cache-safe stylesheet version.');
 $assert(str_contains($home, 'app.js?v=20260827-jumpcloud-rbac'), 'The JumpCloud RBAC update should use a cache-safe application script version.');
 $assert(str_contains($home, 'analytics.js?v=20260825-security-hardening'), 'The current consent-aware Google Analytics loader should render on every page.');
 $assert(str_contains($home, 'data-analytics-accept'), 'The site should offer an explicit analytics acceptance control.');
@@ -1645,6 +1761,7 @@ $assert(str_contains($privacy, 'event action, result, protected route, request i
 $assert(str_contains($privacy, 'Shipment consignor names are synchronized into the administrator-only customer directory'), 'The privacy notice should disclose shipment-to-CRM synchronization.');
 $assert(str_contains($privacy, 'contact name, business email, phone, address, city') && str_contains($privacy, 'CRM and reward access is limited to Pickupsheet administrators'), 'The privacy notice should disclose CRM fields and the administrator-only access boundary.');
 $assert(str_contains($privacy, '10 points per kilogram shipped') && str_contains($privacy, 'required reason, UTC time, and pseudonymous administrator identifier'), 'The privacy notice should disclose weight-based reward points and adjustment-ledger fields.');
+$assert(str_contains($privacy, 'passphrase-encrypted backups') && str_contains($privacy, 'environment secrets and plaintext passwords are excluded'), 'The privacy notice should disclose disaster-recovery processing and its secret boundary.');
 $assert(str_contains($privacy, "visitor's country code from the source IP address") && str_contains($privacy, 'restrict portal access to Cameroon and Nigeria'), 'The privacy notice should disclose country-level Pickupsheet access enforcement.');
 
 $environmentExample = file_get_contents(dirname(__DIR__) . '/.env.example');
@@ -1849,6 +1966,15 @@ $assert(is_string($cloudflareAccessProviderSource) && str_contains($cloudflareAc
 $assert(is_string($cloudflareAccessProviderSource) && str_contains($cloudflareAccessProviderSource, "'/cdn-cgi/access/get-identity'"), 'Cloudflare Access should retrieve the full identity for complete group mapping.');
 $assert(is_string($cloudflareAccessProviderSource) && str_contains($cloudflareAccessProviderSource, '($claims[\'type\'] ?? null) !== \'app\''), 'Cloudflare Access should accept only application tokens.');
 $assert(is_string($oidcHttpSource) && str_contains($oidcHttpSource, 'CURLOPT_SSL_VERIFYPEER => true') && str_contains($oidcHttpSource, 'CURLOPT_FOLLOWLOCATION => false'), 'OIDC back-channel requests should verify TLS and reject redirects.');
+$backupServiceSource = file_get_contents(dirname(__DIR__) . '/src/Modules/Backup/Application/BackupService.php');
+$backupRepositorySource = file_get_contents(dirname(__DIR__) . '/src/Modules/Backup/Infrastructure/MysqlBackupRepository.php');
+$backupControllerSource = file_get_contents(dirname(__DIR__) . '/src/Modules/Backup/UI/BackupController.php');
+$assert(is_string($backupServiceSource) && str_contains($backupServiceSource, "'aes-256-gcm'") && str_contains($backupServiceSource, "hash_pbkdf2('sha256'") && str_contains($backupServiceSource, 'KDF_ITERATIONS = 210000'), 'Backups should use authenticated AES-256-GCM encryption with a hardened PBKDF2-SHA256 key.');
+$assert(is_string($backupServiceSource) && !str_contains($backupServiceSource, 'getenv('), 'Backup encryption must never derive its passphrase from stored environment configuration.');
+$assert(is_string($backupRepositorySource) && str_contains($backupRepositorySource, "'pickup_sheets'") && str_contains($backupRepositorySource, "'pickup_customer_reward_adjustments'"), 'The MySQL backup allowlist should include operational and CRM reward data.');
+$assert(is_string($backupRepositorySource) && !str_contains($backupRepositorySource, 'schema_migrations') && !str_contains($backupRepositorySource, '.env'), 'Backups should exclude schema bookkeeping and environment secrets.');
+$assert(is_string($backupRepositorySource) && substr_count($backupRepositorySource, 'beginTransaction()') === 2 && substr_count($backupRepositorySource, 'rollBack()') === 2, 'Export should use a consistent snapshot and restore should roll back every partial database change.');
+$assert(is_string($backupControllerSource) && str_contains($backupControllerSource, "!== 'RESTORE'") && str_contains($backupControllerSource, "validate(\$request->input('_token'))"), 'Restore should require exact destructive confirmation and a valid CSRF token.');
 $bootstrap = file_get_contents(dirname(__DIR__) . '/bootstrap/app.php');
 $assert(is_string($bootstrap) && str_contains($bootstrap, "'httponly' => true"), 'The security session cookie should be inaccessible to client-side scripts.');
 $assert(is_string($bootstrap) && str_contains($bootstrap, "'samesite' => 'Lax'"), 'The security session cookie should use a SameSite policy.');
@@ -1864,6 +1990,7 @@ $assert(is_string($bootstrap) && str_contains($bootstrap, "'/dhl/pickupsheet'"),
 $assert(is_string($bootstrap) && str_contains($bootstrap, "'/dhl/pickupsheet/submissions/page'"), 'Pickupsheet should expose a protected AJAX pagination endpoint.');
 $assert(is_string($bootstrap) && str_contains($bootstrap, "'/dhl/pickupsheet/submissions/users'"), 'Pickupsheet should expose administrator-only account management.');
 $assert(is_string($bootstrap) && str_contains($bootstrap, "'/dhl/pickupsheet/dashboard'"), 'Pickupsheet should expose the administrator KPI control panel.');
+$assert(is_string($bootstrap) && str_contains($bootstrap, "'/dhl/pickupsheet/admin/backup'") && str_contains($bootstrap, "'/dhl/pickupsheet/admin/backup/restore'"), 'Pickupsheet should expose administrator-only backup and restore routes.');
 $assert(is_string($bootstrap) && str_contains($bootstrap, "'/dhl/pickupsheet/customers'"), 'Pickupsheet should expose the administrator-only customer CRM.');
 $assert(is_string($bootstrap) && str_contains($bootstrap, "'/dhl/pickupsheet/customers/rewards'"), 'Pickupsheet should expose the protected customer reward adjustment action.');
 $assert(is_string($bootstrap) && str_contains($bootstrap, "'/dhl/pickupsheet/submissions/edit'"), 'Pickupsheet should expose the administrator-only audited record editor.');

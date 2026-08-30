@@ -12,6 +12,7 @@ final class Request
      * @param array<string, mixed> $query
      * @param array<string, mixed> $body
      * @param array<string, mixed> $server
+     * @param array<string, mixed> $files
      */
     public function __construct(
         public readonly string $method,
@@ -20,6 +21,7 @@ final class Request
         private readonly array $body = [],
         public readonly string $basePath = '',
         private readonly array $server = [],
+        private readonly array $files = [],
     ) {
     }
 
@@ -39,7 +41,7 @@ final class Request
             $normalizedPath = rtrim($normalizedPath, '/');
         }
 
-        return new self($method, $normalizedPath, $_GET, $_POST, $basePath, $_SERVER);
+        return new self($method, $normalizedPath, $_GET, $_POST, $basePath, $_SERVER, $_FILES);
     }
 
     public function input(string $key, string $default = ''): string
@@ -65,6 +67,23 @@ final class Request
     {
         $value = $this->query[$key] ?? $default;
         return is_string($value) ? trim($value) : $default;
+    }
+
+    /** @return null|array{name: string, type: string, tmpName: string, error: int, size: int} */
+    public function uploadedFile(string $key): ?array
+    {
+        $file = $this->files[$key] ?? null;
+        if (!is_array($file)) {
+            return null;
+        }
+
+        return [
+            'name' => is_string($file['name'] ?? null) ? basename($file['name']) : '',
+            'type' => is_string($file['type'] ?? null) ? substr($file['type'], 0, 100) : '',
+            'tmpName' => is_string($file['tmp_name'] ?? null) ? $file['tmp_name'] : '',
+            'error' => is_int($file['error'] ?? null) ? $file['error'] : UPLOAD_ERR_NO_FILE,
+            'size' => is_int($file['size'] ?? null) ? max(0, $file['size']) : 0,
+        ];
     }
 
     public function header(string $name): string

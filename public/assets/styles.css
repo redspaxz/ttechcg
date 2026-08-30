@@ -1070,7 +1070,7 @@ button, a, input, select, textarea { -webkit-tap-highlight-color: transparent; }
 .pickup-admin-heading h1 { margin: 8px 0 0; color: #fff; font-size: clamp(3.4rem, 7vw, 6.6rem); letter-spacing: -0.08em; line-height: 0.88; }
 .pickup-admin-heading > div > p:last-child { max-width: 700px; margin: 24px 0 0; color: #aaa; line-height: 1.7; }
 .pickup-admin-heading .pickup-storage-state { border-color: rgba(255, 255, 255, 0.22); color: #ddd; }
-.pickup-admin-actions { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); border: 1px solid #333; }
+.pickup-admin-actions { display: grid; grid-template-columns: repeat(5, minmax(0, 1fr)); border: 1px solid #333; }
 .pickup-admin-actions a { display: grid; grid-template-columns: 1fr auto; gap: 12px; min-height: 150px; padding: 24px; border-right: 1px solid #333; background: #131315; color: #fff; text-decoration: none; }
 .pickup-admin-actions a:last-child { border-right: 0; }
 .pickup-admin-actions a:hover { background: #1b1b1e; }
@@ -1171,11 +1171,49 @@ button, a, input, select, textarea { -webkit-tap-highlight-color: transparent; }
     .pickup-login-aside { min-height: 420px; }
     .pickup-admin-actions,
     .pickup-kpi-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); }
-    .pickup-admin-actions a:nth-child(2),
+    .pickup-admin-actions a { border-bottom: 1px solid #333; }
+    .pickup-admin-actions a:nth-child(odd) { border-right: 1px solid #333; }
+    .pickup-admin-actions a:nth-child(even),
     .pickup-kpi-grid article:nth-child(2) { border-right: 0; }
-    .pickup-admin-actions a:nth-child(-n + 2),
+    .pickup-admin-actions a:last-child { border-bottom: 0; }
     .pickup-kpi-grid article:nth-child(-n + 2) { border-bottom: 1px solid #333; }
     .pickup-dashboard-grid { grid-template-columns: 1fr; }
+}
+
+/* Pickupsheet encrypted backup and restore */
+.pickup-backup-workspace .pickup-back { color: #f5f5f3; }
+.pickup-backup-shell { max-width: 1220px; }
+.pickup-backup-scope { display: grid; grid-template-columns: minmax(260px, 0.65fr) minmax(0, 1.35fr); gap: 36px; align-items: center; margin-bottom: 28px; padding: 25px 28px; border: 1px solid #333; background: #131315; }
+.pickup-backup-scope span { color: var(--copper); font-size: 0.64rem; font-weight: 850; letter-spacing: 0.09em; text-transform: uppercase; }
+.pickup-backup-scope h2 { margin: 7px 0 0; color: #fff; font-size: clamp(1.4rem, 3vw, 2.1rem); letter-spacing: -0.04em; }
+.pickup-backup-scope p { margin: 0; color: #aaa; line-height: 1.65; }
+.pickup-backup-scope code { color: #fff; }
+.pickup-backup-grid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 28px; }
+.pickup-backup-card { padding: 28px; border: 1px solid #333; background: #131315; }
+.pickup-backup-card > p { margin: 22px 0; color: #aaa; line-height: 1.65; }
+.pickup-backup-card form { display: grid; gap: 18px; margin-top: 24px; }
+.pickup-backup-card label { display: grid; gap: 8px; }
+.pickup-backup-card label > span { color: #ddd; font-size: 0.65rem; font-weight: 850; letter-spacing: 0.07em; text-transform: uppercase; }
+.pickup-backup-card label > small { color: #888; font-size: 0.67rem; }
+.pickup-backup-card input { width: 100%; min-height: 52px; padding: 12px 14px; border: 1px solid #4a4a4e; border-radius: 0; background: #0b0b0c; color: #fff; font: inherit; }
+.pickup-backup-card input[type="file"] { padding: 12px; }
+.pickup-backup-card input:focus { border-color: var(--copper); outline: 3px solid rgba(196, 97, 31, 0.18); }
+.pickup-backup-card input:disabled,
+.pickup-backup-card button:disabled { cursor: not-allowed; opacity: 0.5; }
+.pickup-backup-card .button { width: 100%; justify-content: space-between; background: #fff; color: #111; }
+.pickup-restore-warning { margin-top: 22px; padding: 17px 18px; border-left: 4px solid #ef7777; background: rgba(220, 70, 70, 0.09); }
+.pickup-restore-warning strong { color: #fff; }
+.pickup-restore-warning p { margin: 7px 0 0; color: #bbb; font-size: 0.75rem; line-height: 1.55; }
+.pickup-backup-card .pickup-restore-button { background: #b10d18; color: #fff; }
+
+@media (max-width: 900px) {
+    .pickup-backup-scope,
+    .pickup-backup-grid { grid-template-columns: 1fr; }
+}
+
+@media (max-width: 620px) {
+    .pickup-backup-card,
+    .pickup-backup-scope { padding: 22px 17px; }
 }
 
 @media (max-width: 620px) {

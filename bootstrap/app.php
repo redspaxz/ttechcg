@@ -2,6 +2,10 @@
 
 declare(strict_types=1);
 
+use App\Modules\Backup\Application\BackupService;
+use App\Modules\Backup\Infrastructure\MysqlBackupRepository;
+use App\Modules\Backup\Infrastructure\UnavailableBackupRepository;
+use App\Modules\Backup\UI\BackupController;
 use App\Modules\Contact\Application\InquiryService;
 use App\Modules\Contact\Infrastructure\DemoInquiryRepository;
 use App\Modules\Contact\Infrastructure\MysqlInquiryRepository;
@@ -114,6 +118,9 @@ $securityEventRepository = match (true) {
     $isProduction => new UnavailableSecurityEventRepository(),
     default => new DemoSecurityEventRepository(),
 };
+$backupRepository = $connection !== null
+    ? new MysqlBackupRepository($connection)
+    : new UnavailableBackupRepository();
 $storageMode = $connection === null ? 'Demo workspace' : 'MySQL connected';
 $contactEmail = (string) ($config['contact_email'] ?? '');
 $notifier = filter_var($contactEmail, FILTER_VALIDATE_EMAIL)
@@ -182,6 +189,16 @@ $customerController = new CustomerController(
     $rateLimiter,
     $securityLogger,
 );
+$backupController = new BackupController(
+    new BackupService($backupRepository),
+    $view,
+    $csrf,
+    $recordsAccess,
+    $recordsSession,
+    $rateLimiter,
+    $securityLogger,
+    $connection !== null && extension_loaded('openssl') && in_array('aes-256-gcm', openssl_get_cipher_methods(), true),
+);
 
 $router = new Router();
 $router->get('/', fn (Request $request): Response => $siteController->home($request));
@@ -196,6 +213,9 @@ $router->get('/dhl/pickupsheet/auth/jumpcloud', fn (Request $request): Response 
 $router->get('/dhl/pickupsheet/auth/jumpcloud/callback', fn (Request $request): Response => $pickupsheetAuthController->jumpCloudCallback($request));
 $router->post('/dhl/pickupsheet/logout', fn (Request $request): Response => $pickupsheetAuthController->logout($request));
 $router->get('/dhl/pickupsheet/dashboard', fn (Request $request): Response => $pickupsheetController->dashboard($request));
+$router->get('/dhl/pickupsheet/admin/backup', fn (Request $request): Response => $backupController->index($request));
+$router->post('/dhl/pickupsheet/admin/backup/download', fn (Request $request): Response => $backupController->download($request));
+$router->post('/dhl/pickupsheet/admin/backup/restore', fn (Request $request): Response => $backupController->restore($request));
 $router->get('/dhl/pickupsheet/customers', fn (Request $request): Response => $customerController->index($request));
 $router->get('/dhl/pickupsheet/customers/new', fn (Request $request): Response => $customerController->create($request));
 $router->get('/dhl/pickupsheet/customers/edit', fn (Request $request): Response => $customerController->edit($request));

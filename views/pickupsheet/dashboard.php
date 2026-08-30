@@ -54,6 +54,8 @@ $auditEventLabel = static fn (string $event): string => match ($event) {
     'pickupsheet.admin_password_reset' => 'Admin password reset',
     'pickupsheet.crm_customer_save' => 'CRM customer saved',
     'pickupsheet.crm_reward_adjustment' => 'CRM rewards adjusted',
+    'pickupsheet.backup_download' => 'Encrypted backup created',
+    'pickupsheet.backup_restore' => 'Encrypted backup restored',
     'pickupsheet.country_access' => 'Country restriction',
     default => ucwords(str_replace(['pickupsheet.', '_', '.'], ['', ' ', ' '], $event)),
 };
@@ -105,6 +107,12 @@ $auditDetails = static function (array $log): string {
     if (isset($context['reward_balance'])) {
         $details[] = 'Reward balance: ' . (int) $context['reward_balance'];
     }
+    if (isset($context['table_count'])) {
+        $details[] = 'Tables: ' . (int) $context['table_count'];
+    }
+    if (isset($context['row_count'])) {
+        $details[] = 'Rows: ' . (int) $context['row_count'];
+    }
     return $details === [] ? 'No additional metadata' : implode(' · ', $details);
 };
 ?>
@@ -131,6 +139,7 @@ $auditDetails = static function (array $log): string {
             <a href="<?= $e($basePath) ?>/dhl/pickupsheet/submissions"><span>Records</span><strong>View all pickup sheets</strong><i aria-hidden="true">&#8599;</i></a>
             <a href="<?= $e($basePath) ?>/dhl/pickupsheet/customers"><span>CRM</span><strong>Manage customer relationships</strong><i aria-hidden="true">&#8599;</i></a>
             <a href="<?= $e($basePath) ?>/dhl/pickupsheet/submissions/users"><span>Access</span><strong>Manage users and RBAC</strong><i aria-hidden="true">&#8599;</i></a>
+            <a href="<?= $e($basePath) ?>/dhl/pickupsheet/admin/backup"><span>Resilience</span><strong>Backup and restore data</strong><i aria-hidden="true">&#8599;</i></a>
             <a href="<?= $e($basePath) ?>/dhl/pickupsheet/"><span>Operations</span><strong>Create pickup sheet</strong><i aria-hidden="true">&#8599;</i></a>
         </nav>
 
