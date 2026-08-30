@@ -64,4 +64,9 @@ final class UnavailableRecordsUserRepository implements RecordsUserRepository, R
     ): ?RecordsUserAccount {
         throw new RuntimeException('Managed records-user storage is unavailable.');
     }
+
+    public function delete(int $id, string $actorId): bool
+    {
+        throw new RuntimeException('Managed records-user storage is unavailable.');
+    }
 }

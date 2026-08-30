@@ -123,4 +123,18 @@ final class DemoRecordsUserRepository implements RecordsUserRepository, RecordsA
         }
         return null;
     }
+
+    public function delete(int $id, string $actorId): bool
+    {
+        $accounts = $this->all();
+        $remaining = array_values(array_filter(
+            $accounts,
+            static fn (RecordsUserAccount $account): bool => $account->id !== $id,
+        ));
+        if (count($remaining) === count($accounts)) {
+            return false;
+        }
+        $_SESSION[self::SESSION_KEY] = $remaining;
+        return true;
+    }
 }

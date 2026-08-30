@@ -9,6 +9,8 @@ use App\Shared\Http\Response;
 use App\Shared\Security\CloudflareAccessProvider;
 use App\Shared\Security\Csrf;
 use App\Shared\Security\JumpCloudOidcProvider;
+use App\Shared\Security\LoginMethodSettings;
+use App\Shared\Security\LoginMethodSettingsService;
 use App\Shared\Security\RateLimiter;
 use App\Shared\Security\RecordsAccess;
 use App\Shared\Security\RecordsPrincipal;
@@ -31,6 +33,7 @@ final class PickupsheetAuthController
         private readonly array $config,
         private readonly ?JumpCloudOidcProvider $jumpCloud = null,
         private readonly ?CloudflareAccessProvider $cloudflareAccess = null,
+        private readonly ?LoginMethodSettingsService $loginMethodSettings = null,
     ) {
     }
 
@@ -80,8 +83,9 @@ final class PickupsheetAuthController
         $username = $_SESSION['_pickup_login_username'] ?? '';
         unset($_SESSION['_pickup_login_error'], $_SESSION['_pickup_login_flash'], $_SESSION['_pickup_login_username']);
 
-        $localLoginEnabled = $this->localLoginEnabled();
-        $jumpCloudEnabled = $this->jumpCloudConfigured();
+        $loginMethods = $this->loginMethods();
+        $localLoginEnabled = $loginMethods->localLoginEnabled;
+        $jumpCloudEnabled = $loginMethods->jumpCloudLoginEnabled;
         $loginMethodsAvailable = $localLoginEnabled || $jumpCloudEnabled;
         if (!$loginMethodsAvailable && !is_string($error)) {
             $error = 'No direct sign-in method is enabled. Contact the system administrator.';
@@ -276,17 +280,45 @@ final class PickupsheetAuthController
 
     private function jumpCloudConfigured(): bool
     {
-        return $this->jumpCloud?->isConfigured() === true;
+        return $this->loginMethods()->jumpCloudLoginEnabled;
     }
 
     private function localLoginEnabled(): bool
     {
-        return (bool) ($this->config['local_login_enabled'] ?? true);
+        return $this->loginMethods()->localLoginEnabled;
     }
 
     private function cloudflareAccessConfigured(): bool
     {
         return $this->cloudflareAccess?->isConfigured() === true;
+    }
+
+    private function loginMethods(): LoginMethodSettings
+    {
+        if ($this->loginMethodSettings !== null) {
+            try {
+                return $this->loginMethodSettings->current();
+            } catch (Throwable $exception) {
+                error_log('Pickupsheet login-method settings could not be loaded: ' . $exception->getMessage());
+                return new LoginMethodSettings(
+                    false,
+                    false,
+                    (bool) ($this->config['local_login_enabled'] ?? true),
+                    $this->jumpCloud?->isConfigured() === true,
+                    $this->cloudflareAccessConfigured(),
+                );
+            }
+        }
+
+        $localConfigured = (bool) ($this->config['local_login_enabled'] ?? true);
+        $jumpCloudConfigured = $this->jumpCloud?->isConfigured() === true;
+        return new LoginMethodSettings(
+            $localConfigured,
+            $jumpCloudConfigured,
+            $localConfigured,
+            $jumpCloudConfigured,
+            $this->cloudflareAccessConfigured(),
+        );
     }
 
 }

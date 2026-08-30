@@ -202,6 +202,16 @@ final class MysqlRecordsUserRepository implements RecordsUserRepository, Records
         return $this->findById($id);
     }
 
+    public function delete(int $id, string $actorId): bool
+    {
+        $this->ensureSchema();
+        $statement = $this->connection->prepare(
+            "DELETE FROM pickup_records_users WHERE id = :id AND role IN ('operator', 'viewer')",
+        );
+        $statement->execute(['id' => $id]);
+        return $statement->rowCount() === 1;
+    }
+
     private function account(mixed $row): ?RecordsUserAccount
     {
         if (!is_array($row)) {

@@ -34,16 +34,20 @@ use App\Shared\Infrastructure\DemoRecordsSessionActivityRepository;
 use App\Shared\Infrastructure\DemoSecurityEventRepository;
 use App\Shared\Infrastructure\Environment;
 use App\Shared\Infrastructure\MigrationRunner;
+use App\Shared\Infrastructure\DemoLoginMethodSettingsRepository;
+use App\Shared\Infrastructure\MysqlLoginMethodSettingsRepository;
 use App\Shared\Infrastructure\MysqlRecordsUserRepository;
 use App\Shared\Infrastructure\MysqlRecordsSessionActivityRepository;
 use App\Shared\Infrastructure\MysqlSecurityEventRepository;
 use App\Shared\Infrastructure\UnavailableRecordsUserRepository;
+use App\Shared\Infrastructure\UnavailableLoginMethodSettingsRepository;
 use App\Shared\Infrastructure\UnavailableRecordsSessionActivityRepository;
 use App\Shared\Infrastructure\UnavailableSecurityEventRepository;
 use App\Shared\Security\Captcha;
 use App\Shared\Security\CloudflareAccessProvider;
 use App\Shared\Security\Csrf;
 use App\Shared\Security\JumpCloudOidcProvider;
+use App\Shared\Security\LoginMethodSettingsService;
 use App\Shared\Security\PickupsheetCountryPolicy;
 use App\Shared\Security\RateLimiter;
 use App\Shared\Security\RecordsAccess;
@@ -118,6 +122,11 @@ $securityEventRepository = match (true) {
     $isProduction => new UnavailableSecurityEventRepository(),
     default => new DemoSecurityEventRepository(),
 };
+$loginMethodSettingsRepository = match (true) {
+    $connection !== null => new MysqlLoginMethodSettingsRepository($connection),
+    $isProduction => new UnavailableLoginMethodSettingsRepository(),
+    default => new DemoLoginMethodSettingsRepository(),
+};
 $backupRepository = $connection !== null
     ? new MysqlBackupRepository($connection)
     : new UnavailableBackupRepository();
@@ -141,6 +150,12 @@ $config['jumpcloud_oidc_configured'] = $jumpCloud->isConfigured();
 $config['jumpcloud_login_enabled'] = $jumpCloud->isConfigured();
 $config['jumpcloud_role_groups'] = $jumpCloud->roleGroups();
 $config['cloudflare_access_configured'] = $cloudflareAccess->isConfigured();
+$loginMethodSettings = new LoginMethodSettingsService(
+    $loginMethodSettingsRepository,
+    (bool) ($config['local_login_enabled'] ?? true),
+    $jumpCloud->isConfigured(),
+    $cloudflareAccess->isConfigured(),
+);
 $recordsUserService = new RecordsUserService($recordsUserRepository, $recordsAccess->environmentUsernames());
 $contactCaptcha = new Captcha('contact');
 $pickupCaptcha = new Captcha('pickupsheet');
@@ -166,6 +181,7 @@ $pickupsheetAuthController = new PickupsheetAuthController(
     $config,
     $jumpCloud,
     $cloudflareAccess,
+    $loginMethodSettings,
 );
 $pickupsheetController = new PickupsheetController(
     new PickupSheetService($pickupSheetRepository),
@@ -180,6 +196,7 @@ $pickupsheetController = new PickupsheetController(
     $recordsUserService,
     $rateLimiter,
     $securityLogger,
+    $loginMethodSettings,
 );
 $customerController = new CustomerController(
     new CustomerService($customerRepository),
@@ -239,6 +256,8 @@ $router->post('/dhl/pickupsheet/submissions/delete', fn (Request $request): Resp
 $router->get('/dhl/pickupsheet/submissions/users', fn (Request $request): Response => $pickupsheetController->users($request));
 $router->post('/dhl/pickupsheet/submissions/users', fn (Request $request): Response => $pickupsheetController->createUser($request));
 $router->post('/dhl/pickupsheet/submissions/users/update', fn (Request $request): Response => $pickupsheetController->updateUser($request));
+$router->post('/dhl/pickupsheet/submissions/users/delete', fn (Request $request): Response => $pickupsheetController->deleteUser($request));
+$router->post('/dhl/pickupsheet/submissions/users/login-methods', fn (Request $request): Response => $pickupsheetController->updateLoginMethods($request));
 $router->post('/dhl/pickupsheet/submissions/users/admin-password', fn (Request $request): Response => $pickupsheetController->resetAdminPassword($request));
 $router->get('/dhl/pickupsheet/submissions/print', fn (Request $request): Response => $pickupsheetController->print($request));
 $router->get('/dhl/pickupsheet/submissions/export', fn (Request $request): Response => $pickupsheetController->export($request));

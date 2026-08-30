@@ -115,6 +115,25 @@ final class RecordsUserService
         return $updated;
     }
 
+    public function delete(string $accountId, RecordsPrincipal $actor): RecordsUserAccount
+    {
+        $this->assertAdmin($actor);
+        $id = filter_var($accountId, FILTER_VALIDATE_INT, ['options' => ['min_range' => 1]]);
+        if (!is_int($id)) {
+            throw new InvalidArgumentException('Select a valid managed account.');
+        }
+
+        $account = $this->repository->findById($id);
+        if ($account === null || !in_array($account->role, self::MANAGED_ROLES, true)) {
+            throw new InvalidArgumentException('Only local operator and viewer accounts can be deleted.');
+        }
+        if (!$this->repository->delete($id, $this->actorId($actor))) {
+            throw new InvalidArgumentException('The managed account no longer exists.');
+        }
+
+        return $account;
+    }
+
     /** @param array<string, string> $input */
     public function resetAdministratorPassword(array $input, RecordsPrincipal $actor): void
     {

@@ -281,9 +281,119 @@ if (ajaxPagerControllers.size > 0) {
     });
 }
 
+const accountEditors = Array.from(document.querySelectorAll('[data-user-editor]'));
+const closeAccountEditor = (editor) => {
+    if (!editor) return;
+    editor.hidden = true;
+    document.querySelectorAll('[data-user-edit-toggle]').forEach((button) => {
+        if (button.dataset.userEditToggle === editor.id) button.setAttribute('aria-expanded', 'false');
+    });
+};
+
+document.querySelectorAll('[data-user-edit-toggle]').forEach((button) => {
+    button.addEventListener('click', () => {
+        const editor = document.getElementById(button.dataset.userEditToggle || '');
+        if (!editor) return;
+        const opening = editor.hidden;
+        accountEditors.forEach(closeAccountEditor);
+        if (!opening) return;
+        editor.hidden = false;
+        button.setAttribute('aria-expanded', 'true');
+        editor.querySelector('input:not([type="hidden"])')?.focus({ preventScroll: true });
+    });
+});
+
+document.querySelectorAll('[data-user-edit-cancel]').forEach((button) => {
+    button.addEventListener('click', () => closeAccountEditor(button.closest('[data-user-editor]')));
+});
+
+const loginMethodForm = document.querySelector('[data-login-method-form]');
+if (loginMethodForm) {
+    const methodToggles = Array.from(loginMethodForm.querySelectorAll('[data-login-method-toggle]'));
+    const notice = loginMethodForm.querySelector('[data-login-method-notice]');
+    const saveButton = loginMethodForm.querySelector('[data-login-method-save]');
+    let savedState = Object.fromEntries(methodToggles.map((toggle) => [toggle.dataset.loginMethodToggle, toggle.checked]));
+    let saving = false;
+
+    const showMethodNotice = (message, failed = false) => {
+        if (!notice) return;
+        notice.hidden = false;
+        notice.textContent = message;
+        notice.dataset.failed = failed ? 'true' : 'false';
+    };
+    const renderMethodState = (key, enabled) => {
+        const card = loginMethodForm.querySelector(`[data-login-method-card="${key}"]`);
+        const status = loginMethodForm.querySelector(`[data-login-method-status="${key}"]`);
+        if (!card || !status) return;
+        card.dataset.enabled = enabled ? 'true' : 'false';
+        status.textContent = card.dataset.configured === 'true' ? (enabled ? 'Enabled' : 'Disabled') : 'Unavailable';
+    };
+
+    loginMethodForm.addEventListener('submit', async (event) => {
+        event.preventDefault();
+        if (saving) return;
+        saving = true;
+        methodToggles.forEach((toggle) => { toggle.disabled = true; });
+        if (saveButton) {
+            saveButton.disabled = true;
+            saveButton.textContent = 'Saving...';
+        }
+
+        const payload = new FormData(loginMethodForm);
+        methodToggles.forEach((toggle) => payload.set(toggle.name, toggle.checked ? '1' : '0'));
+        try {
+            const response = await fetch(loginMethodForm.action, {
+                method: 'POST',
+                body: payload,
+                credentials: 'same-origin',
+                headers: { 'X-Requested-With': 'XMLHttpRequest' },
+            });
+            const result = await response.json();
+            if (!response.ok || result.ok !== true) throw new Error(result.message || 'Sign-in methods could not be saved.');
+            const state = {
+                local: result.localLoginEnabled === true,
+                jumpcloud: result.jumpCloudLoginEnabled === true,
+            };
+            methodToggles.forEach((toggle) => {
+                toggle.checked = state[toggle.dataset.loginMethodToggle] === true;
+                renderMethodState(toggle.dataset.loginMethodToggle, toggle.checked);
+            });
+            savedState = state;
+            showMethodNotice(result.message || 'Sign-in methods updated.');
+        } catch (error) {
+            methodToggles.forEach((toggle) => {
+                toggle.checked = savedState[toggle.dataset.loginMethodToggle] === true;
+                renderMethodState(toggle.dataset.loginMethodToggle, toggle.checked);
+            });
+            showMethodNotice(error instanceof Error ? error.message : 'Sign-in methods could not be saved.', true);
+        } finally {
+            saving = false;
+            methodToggles.forEach((toggle) => {
+                const card = toggle.closest('[data-login-method-card]');
+                toggle.disabled = card?.dataset.configured !== 'true';
+            });
+            if (saveButton) {
+                saveButton.disabled = false;
+                saveButton.textContent = 'Save sign-in methods';
+            }
+        }
+    });
+
+    methodToggles.forEach((toggle) => toggle.addEventListener('change', () => loginMethodForm.requestSubmit()));
+}
+
 document.addEventListener('submit', (event) => {
     if (event.target.matches('[data-pickup-delete]')
         && !window.confirm('Delete this pickup sheet from active records? Its audit history will be retained.')) {
         event.preventDefault();
+    }
+    if (event.target.matches('[data-user-delete-form]')) {
+        const accountName = event.target.dataset.accountName || 'this local account';
+        if (!window.confirm(`Permanently delete ${accountName}? This account will no longer be able to sign in.`)) {
+            event.preventDefault();
+            return;
+        }
+        const confirmation = event.target.querySelector('[data-confirm-delete]');
+        if (confirmation) confirmation.value = '1';
     }
 });

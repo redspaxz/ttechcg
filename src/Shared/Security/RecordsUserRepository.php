@@ -35,4 +35,6 @@ interface RecordsUserRepository
         ?string $passwordHash,
         string $actorId,
     ): ?RecordsUserAccount;
+
+    public function delete(int $id, string $actorId): bool;
 }

@@ -10,6 +10,8 @@ use App\Shared\Http\Request;
 use App\Shared\Http\Response;
 use App\Shared\Security\Captcha;
 use App\Shared\Security\Csrf;
+use App\Shared\Security\LoginMethodSettings;
+use App\Shared\Security\LoginMethodSettingsService;
 use App\Shared\Security\RateLimiter;
 use App\Shared\Security\RecordsAccess;
 use App\Shared\Security\RecordsPrincipal;
@@ -37,6 +39,7 @@ final class PickupsheetController
         private readonly RecordsUserService $recordsUserService,
         private readonly RateLimiter $rateLimiter,
         private readonly SecurityLogger $securityLogger,
+        private readonly ?LoginMethodSettingsService $loginMethodSettings = null,
     ) {
     }
 
@@ -529,6 +532,7 @@ final class PickupsheetController
         unset($_SESSION['_records_users_flash'], $_SESSION['_records_users_errors'], $_SESSION['_records_users_old']);
 
         $accounts = [];
+        $loginMethods = $this->effectiveLoginMethods();
         try {
             $accounts = $this->recordsUserService->accounts($authorization);
         } catch (RuntimeException $exception) {
@@ -552,6 +556,7 @@ final class PickupsheetController
             'recordsUsername' => $authorization->username,
             'recordsFullName' => $authorization->fullName(),
             'recordsIdentityProvider' => $authorization->identityProvider,
+            'loginMethods' => $loginMethods,
         ]);
 
         return Response::html($body, 200, $this->privateHeaders());
@@ -644,6 +649,98 @@ final class PickupsheetController
             error_log($exception->__toString());
             $_SESSION['_records_users_errors'] = ['The account could not be updated. Check the MySQL connection and try again.'];
             $this->securityLogger->event('pickupsheet.records_user_update', $request, 'failed');
+        }
+
+        return Response::redirect($request->basePath . '/dhl/pickupsheet/submissions/users');
+    }
+
+    public function deleteUser(Request $request): Response
+    {
+        $authorization = $this->authorizeRecords($request, 'manage');
+        if ($authorization instanceof Response) {
+            return $authorization;
+        }
+
+        $writeDenied = $this->recordsUserWriteGuard($request);
+        if ($writeDenied !== null) {
+            return $writeDenied;
+        }
+
+        try {
+            if ($request->input('confirm_delete') !== '1') {
+                throw new InvalidArgumentException('Confirm the local account deletion and try again.');
+            }
+            $account = $this->recordsUserService->delete($request->input('id'), $authorization);
+            $_SESSION['_records_users_flash'] = sprintf('Local account %s deleted.', $account->username);
+            $this->securityLogger->event('pickupsheet.records_user_delete', $request, 'accepted', [
+                'actor_id' => $this->actorId($authorization),
+                'target_id' => substr(hash('sha256', $account->username), 0, 24),
+                'target_role' => $account->role,
+            ]);
+        } catch (InvalidArgumentException $exception) {
+            $_SESSION['_records_users_errors'] = [$exception->getMessage()];
+            $this->securityLogger->event('pickupsheet.records_user_delete', $request, 'denied');
+        } catch (RuntimeException $exception) {
+            error_log($exception->__toString());
+            $_SESSION['_records_users_errors'] = ['The local account could not be deleted. Check the MySQL connection and try again.'];
+            $this->securityLogger->event('pickupsheet.records_user_delete', $request, 'failed');
+        }
+
+        return Response::redirect($request->basePath . '/dhl/pickupsheet/submissions/users');
+    }
+
+    public function updateLoginMethods(Request $request): Response
+    {
+        $authorization = $this->authorizeRecords($request, 'manage');
+        if ($authorization instanceof Response) {
+            return $authorization;
+        }
+
+        $writeDenied = $this->recordsUserWriteGuard($request);
+        if ($writeDenied !== null) {
+            return $writeDenied;
+        }
+
+        $ajax = strcasecmp($request->header('X-Requested-With'), 'XMLHttpRequest') === 0;
+        try {
+            if ($this->loginMethodSettings === null) {
+                throw new RuntimeException('Login-method settings storage is unavailable.');
+            }
+            $settings = $this->loginMethodSettings->update(
+                $request->input('local_login_enabled') === '1',
+                $request->input('jumpcloud_login_enabled') === '1',
+                $this->actorId($authorization),
+            );
+            $message = 'Sign-in methods updated.';
+            $this->securityLogger->event('pickupsheet.login_methods_update', $request, 'accepted', [
+                'actor_id' => $this->actorId($authorization),
+                'local_login_enabled' => $settings->localLoginEnabled,
+                'jumpcloud_login_enabled' => $settings->jumpCloudLoginEnabled,
+            ]);
+            if ($ajax) {
+                return Response::json([
+                    'ok' => true,
+                    'message' => $message,
+                    'localLoginEnabled' => $settings->localLoginEnabled,
+                    'jumpCloudLoginEnabled' => $settings->jumpCloudLoginEnabled,
+                    'updatedAt' => $settings->updatedAt,
+                ], 200, $this->privateHeaders());
+            }
+            $_SESSION['_records_users_flash'] = $message;
+        } catch (InvalidArgumentException $exception) {
+            $this->securityLogger->event('pickupsheet.login_methods_update', $request, 'denied');
+            if ($ajax) {
+                return Response::json(['ok' => false, 'message' => $exception->getMessage()], 422, $this->privateHeaders());
+            }
+            $_SESSION['_records_users_errors'] = [$exception->getMessage()];
+        } catch (RuntimeException $exception) {
+            error_log($exception->__toString());
+            $message = 'Sign-in methods could not be saved. Apply migration 014 and check MySQL.';
+            $this->securityLogger->event('pickupsheet.login_methods_update', $request, 'failed');
+            if ($ajax) {
+                return Response::json(['ok' => false, 'message' => $message], 503, $this->privateHeaders());
+            }
+            $_SESSION['_records_users_errors'] = [$message];
         }
 
         return Response::redirect($request->basePath . '/dhl/pickupsheet/submissions/users');
@@ -771,6 +868,27 @@ final class PickupsheetController
             'Cache-Control' => 'private, no-store, max-age=0',
             'X-Robots-Tag' => 'noindex, nofollow',
         ];
+    }
+
+    private function effectiveLoginMethods(): LoginMethodSettings
+    {
+        if ($this->loginMethodSettings !== null) {
+            try {
+                return $this->loginMethodSettings->current();
+            } catch (RuntimeException $exception) {
+                error_log($exception->__toString());
+            }
+        }
+
+        $localConfigured = (bool) ($this->config['local_login_enabled'] ?? true);
+        $jumpCloudConfigured = (bool) ($this->config['jumpcloud_oidc_configured'] ?? false);
+        return new LoginMethodSettings(
+            $localConfigured,
+            $jumpCloudConfigured,
+            $localConfigured,
+            $jumpCloudConfigured,
+            (bool) ($this->config['cloudflare_access_configured'] ?? false),
+        );
     }
 
     private function authorizeRecords(Request $request, string $action, bool $logGranted = true): RecordsPrincipal|Response

@@ -27,12 +27,14 @@ use App\Shared\Http\Request;
 use App\Shared\Http\Response;
 use App\Shared\Http\Router;
 use App\Shared\Infrastructure\DemoRecordsUserRepository;
+use App\Shared\Infrastructure\DemoLoginMethodSettingsRepository;
 use App\Shared\Infrastructure\DemoRecordsSessionActivityRepository;
 use App\Shared\Infrastructure\DemoSecurityEventRepository;
 use App\Shared\Security\Captcha;
 use App\Shared\Security\CloudflareAccessProvider;
 use App\Shared\Security\Csrf;
 use App\Shared\Security\JumpCloudOidcProvider;
+use App\Shared\Security\LoginMethodSettingsService;
 use App\Shared\Security\OidcHttpClient;
 use App\Shared\Security\PickupsheetCountryPolicy;
 use App\Shared\Security\RateLimiter;
@@ -854,6 +856,12 @@ $assert(str_contains((string) ($_SESSION['_errors'][0] ?? ''), 'human verificati
 $_SESSION = [];
 $pickupCsrf = new Csrf();
 $pickupCaptcha = new Captcha('pickupsheet-test');
+$loginMethodSettings = new LoginMethodSettingsService(
+    new DemoLoginMethodSettingsRepository(),
+    true,
+    false,
+    false,
+);
 $pickupController = new PickupsheetController(
     new PickupSheetService(new DemoPickupSheetRepository()),
     $view,
@@ -867,6 +875,7 @@ $pickupController = new PickupsheetController(
     $recordsUserService,
     $disabledRateLimiter,
     $testSecurityLogger,
+    $loginMethodSettings,
 );
 $customerController = new CustomerController(
     new CustomerService(new DemoCustomerRepository(new DemoPickupSheetRepository())),
@@ -895,6 +904,9 @@ $pickupAuthController = new PickupsheetAuthController(
     $disabledRateLimiter,
     $testSecurityLogger,
     $config,
+    null,
+    null,
+    $loginMethodSettings,
 );
 
 $jumpCloudConfig = array_merge($config, [
@@ -1438,6 +1450,21 @@ $assert(str_contains($adminUsers->body(), 'Create local account'), 'The administ
 $assert(str_contains($adminUsers->body(), 'Reset my admin password'), 'The administrator should receive a current-password-confirmed password reset form.');
 $assert(str_contains($adminUsers->body(), 'Email or username') && str_contains($adminUsers->body(), 'Account status'), 'Account management should expose flexible login IDs and explicit account status.');
 $assert(str_contains($adminUsers->body(), 'name="first_name"') && str_contains($adminUsers->body(), 'name="last_name"'), 'Account management should require first and last names.');
+$assert(str_contains($adminUsers->body(), 'data-login-method-toggle="local"') && str_contains($adminUsers->body(), 'data-login-method-card="jumpcloud" data-enabled="false" data-configured="false"') && str_contains($adminUsers->body(), 'OIDC configuration is incomplete'), 'Administrators should receive operational toggles only for methods allowed by server configuration.');
+
+$saveLoginMethods = $pickupController->updateLoginMethods(new Request('POST', '/dhl/pickupsheet/submissions/users/login-methods', [], [
+    '_token' => $pickupCsrf->token(),
+    'local_login_enabled' => '1',
+    'jumpcloud_login_enabled' => '0',
+], '', array_merge($recordsServer, ['HTTP_X_REQUESTED_WITH' => 'XMLHttpRequest'])));
+$savedLoginMethods = json_decode($saveLoginMethods->body(), true);
+$assert($saveLoginMethods->status() === 200 && ($savedLoginMethods['localLoginEnabled'] ?? null) === true && ($savedLoginMethods['jumpCloudLoginEnabled'] ?? null) === false, 'An administrator should persist available sign-in methods through the protected AJAX endpoint.');
+$rejectLoginLockout = $pickupController->updateLoginMethods(new Request('POST', '/dhl/pickupsheet/submissions/users/login-methods', [], [
+    '_token' => $pickupCsrf->token(),
+    'local_login_enabled' => '0',
+    'jumpcloud_login_enabled' => '0',
+], '', array_merge($recordsServer, ['HTTP_X_REQUESTED_WITH' => 'XMLHttpRequest'])));
+$assert($rejectLoginLockout->status() === 422 && str_contains($rejectLoginLockout->body(), 'avoid locking every administrator out'), 'Sign-in toggles must prevent an administrator lockout when Cloudflare Access is unavailable.');
 
 $invalidUserCsrf = $pickupController->createUser(new Request('POST', '/dhl/pickupsheet/submissions/users', [], [
     '_token' => 'invalid-token',
@@ -1462,7 +1489,8 @@ $assert($createManagedUser->status() === 303, 'An administrator should be able t
 $managedAccount = $recordsUserRepository->all()[0] ?? null;
 $assert($managedAccount?->role === 'operator' && $managedAccount->active && $managedAccount->fullName() === 'Marc Operator', 'A created lower-tier account should persist required names, role, and active status.');
 $adminUsersWithAccount = $pickupController->users(new Request('GET', '/dhl/pickupsheet/submissions/users', [], [], '', $recordsServer));
-$assert(str_contains($adminUsersWithAccount->body(), 'managed-operator') && str_contains($adminUsersWithAccount->body(), 'class="records-user-table"') && str_contains($adminUsersWithAccount->body(), 'Account history'), 'The management page should list detailed lower-tier accounts in an editable table.');
+$assert(str_contains($adminUsersWithAccount->body(), 'managed-operator') && str_contains($adminUsersWithAccount->body(), 'class="records-user-table"') && str_contains($adminUsersWithAccount->body(), 'data-user-edit-toggle="user-editor-1"'), 'The management page should list read-only lower-tier account details with an explicit Edit action.');
+$assert(str_contains($adminUsersWithAccount->body(), 'data-user-editor hidden') && str_contains($adminUsersWithAccount->body(), 'data-user-delete-form'), 'Account forms should remain hidden until requested and expose a separate protected Delete action.');
 $assert(str_contains($adminUsersWithAccount->body(), 'PICKUPSHEET_LOCAL_LOGIN_ENABLED=true') && str_contains($adminUsersWithAccount->body(), 'JUMPCLOUD_OIDC_ENABLED=false'), 'The administrator workspace should display the effective local and JumpCloud login configuration.');
 $usersView = file_get_contents(dirname(__DIR__) . '/views/pickupsheet/users.php');
 $assert(is_string($usersView) && !str_contains($usersView, 'passwordHash'), 'The management view must never access or render a stored password hash.');
@@ -1523,10 +1551,25 @@ $disableManagedViewer = $pickupController->updateUser(new Request('POST', '/dhl/
 $assert($disableManagedViewer->status() === 303, 'An administrator should be able to disable a lower-tier account.');
 $assert($recordsAccess->authenticateCredentials('managed-viewer', 'new-managed-password-456') === null, 'A disabled managed account should immediately reject new logins.');
 $inactiveAccountPage = $pickupController->users(new Request('GET', '/dhl/pickupsheet/submissions/users'));
-$assert(str_contains($inactiveAccountPage->body(), '>Access blocked</span>') && str_contains($inactiveAccountPage->body(), '<option value="0" selected>Inactive</option>'), 'The admin account table should clearly display and select an inactive account status.');
+$assert(str_contains($inactiveAccountPage->body(), '>Inactive</span>') && str_contains($inactiveAccountPage->body(), '<option value="0" selected>Inactive</option>'), 'The admin account list should clearly display inactive status and retain it in the hidden editor.');
 $_SESSION['_pickupsheet_identity'] = $staleManagedIdentity;
 $disabledManagedList = $pickupController->submissions(new Request('GET', '/dhl/pickupsheet/submissions'));
 $assert($disabledManagedList->status() === 302, 'Disabling a managed account should invalidate its existing portal session immediately.');
+
+$recordsSession->login($adminPrincipal);
+$missingDeleteConfirmation = $pickupController->deleteUser(new Request('POST', '/dhl/pickupsheet/submissions/users/delete', [], [
+    '_token' => $pickupCsrf->token(),
+    'id' => (string) $managedAccount->id,
+    'confirm_delete' => '0',
+], '', $recordsServer));
+$assert($missingDeleteConfirmation->status() === 303 && $recordsUserRepository->findById($managedAccount->id) !== null, 'Deleting a local account should require the explicit browser confirmation marker.');
+$deleteManagedAccount = $pickupController->deleteUser(new Request('POST', '/dhl/pickupsheet/submissions/users/delete', [], [
+    '_token' => $pickupCsrf->token(),
+    'id' => (string) $managedAccount->id,
+    'confirm_delete' => '1',
+], '', $recordsServer));
+$assert($deleteManagedAccount->status() === 303 && $recordsUserRepository->findById($managedAccount->id) === null, 'An administrator should permanently delete a confirmed local operator or viewer account.');
+$assert($recordsAccess->authenticateCredentials('managed-viewer', 'new-managed-password-456') === null, 'A deleted local account should immediately reject authentication.');
 
 $recordsSession->login($adminPrincipal);
 $printResponse = $pickupController->print(new Request('GET', '/dhl/pickupsheet/submissions/print', ['reference' => $savedReference], [], '', $recordsServer));
@@ -1664,8 +1707,8 @@ $assert(is_string($dhlAsset) && !str_contains($dhlAsset, '<text'), 'The disquali
 $partnerSources = file_get_contents(dirname(__DIR__) . '/public/assets/partners/README.md');
 $assert(is_string($partnerSources) && str_contains($partnerSources, 'www.dhl.com/content/dam/dhl/global/core/images/logos/dhl-logo.svg'), 'The official DHL artwork source should be documented.');
 $assert(!str_contains($home, 'href="/dhl/pickupsheet"'), 'Pickupsheet should not be discoverable from the public site chrome or homepage.');
-$assert(str_contains($home, 'styles.css?v=20260830-auth-accounts'), 'Authentication and account-table styles should use a cache-safe stylesheet version.');
-$assert(str_contains($home, 'app.js?v=20260830-auth-accounts'), 'Steady-view pagination behavior should use a cache-safe script version.');
+$assert(str_contains($home, 'styles.css?v=20260830-auth-toggles-users'), 'Authentication and account-table styles should use a cache-safe stylesheet version.');
+$assert(str_contains($home, 'app.js?v=20260830-auth-toggles-users'), 'Authentication interactions should use a cache-safe script version.');
 $assert(str_contains($home, 'analytics.js?v=20260825-security-hardening'), 'The current consent-aware Google Analytics loader should render on every page.');
 $assert(str_contains($home, 'data-analytics-accept'), 'The site should offer an explicit analytics acceptance control.');
 $assert(str_contains($home, 'data-analytics-decline'), 'The site should offer an explicit analytics decline control.');
@@ -1882,8 +1925,8 @@ $assert(is_string($styles) && str_contains($styles, '.ajax-pager-loading'), 'App
 $assert(is_string($styles) && str_contains($styles, '@keyframes pickup-records-spin'), 'The loading overlay should provide spinner animation.');
 $assert(is_string($styles) && str_contains($styles, '.pickup-pagination'), 'Qualified tables should provide responsive pagination controls.');
 $assert(is_string($styles) && str_contains($styles, '.records-users-layout'), 'Administrator account management should have a dedicated responsive layout.');
-$assert(is_string($styles) && str_contains($styles, '.records-user-table') && str_contains($styles, 'tbody tr:nth-child(even) td'), 'Managed accounts should render in a detailed table with alternating row colors.');
-$assert(is_string($styles) && str_contains($styles, '.records-login-method-grid'), 'The administrator workspace should style the effective authentication-method status.');
+$assert(is_string($styles) && str_contains($styles, '.records-user-table') && str_contains($styles, '.records-user-summary-row:nth-child(4n + 3)'), 'Managed accounts should render in a detailed table with alternating row colors.');
+$assert(is_string($styles) && str_contains($styles, '.records-login-method-grid') && str_contains($styles, '.records-method-switch'), 'The administrator workspace should style authentication-method toggles.');
 $assert(is_string($styles) && str_contains($styles, '/* Pickupsheet login portal */'), 'Pickupsheet should have a dedicated responsive login portal.');
 $assert(is_string($styles) && str_contains($styles, '.pickup-admin-workspace') && str_contains($styles, '.pickup-kpi-grid'), 'The administrator should have a dedicated KPI control-panel layout.');
 $assert(is_string($styles) && str_contains($styles, '.shipment-editor > *') && str_contains($styles, 'max-width: 1180px;'), 'The cash-shipment editor should be centered within the available screen width.');
@@ -1904,6 +1947,9 @@ $assert(is_string($script) && str_contains($script, "document.querySelectorAll('
 $assert(is_string($script) && str_contains($script, 'await fetch(pageEndpoint'), 'Pagination should load table fragments asynchronously.');
 $assert(is_string($script) && str_contains($script, "spinner.hidden = !loading"), 'AJAX pagination should toggle its loading spinner.');
 $assert(is_string($script) && str_contains($script, "window.history.pushState"), 'AJAX pagination should preserve browser history.');
+$assert(is_string($script) && str_contains($script, "document.querySelectorAll('[data-user-edit-toggle]')") && str_contains($script, 'preventScroll: true'), 'Local account editors should open on demand without moving the viewport.');
+$assert(is_string($script) && str_contains($script, "event.target.matches('[data-user-delete-form]')") && str_contains($script, 'Permanently delete'), 'Local account deletion should require an explicit browser confirmation.');
+$assert(is_string($script) && str_contains($script, "document.querySelector('[data-login-method-form]')") && str_contains($script, "'X-Requested-With': 'XMLHttpRequest'"), 'Sign-in toggles should save asynchronously without refreshing account management.');
 $assert(is_string($script) && !str_contains($script, 'scrollIntoView'), 'AJAX pagination should update in place without moving the user\'s viewport.');
 
 $analyticsScript = file_get_contents(dirname(__DIR__) . '/public/assets/analytics.js');
@@ -2009,10 +2055,15 @@ $assert(is_string($recordsUserMigration) && str_contains($recordsUserMigration, 
 $recordsUserNamesMigration = file_get_contents(dirname(__DIR__) . '/database/migrations/009_add_pickup_records_user_names.sql');
 $assert(is_string($recordsUserNamesMigration) && str_contains($recordsUserNamesMigration, 'first_name VARCHAR(49)') && str_contains($recordsUserNamesMigration, 'last_name VARCHAR(49)'), 'Managed users should receive required first and last name storage.');
 $assert(is_string($recordsUserNamesMigration) && str_contains($recordsUserNamesMigration, 'MODIFY COLUMN first_name VARCHAR(49) NOT NULL'), 'The name migration should enforce required identity fields after backfilling existing users.');
+$loginMethodMigration = file_get_contents(dirname(__DIR__) . '/database/migrations/014_create_pickup_auth_settings.sql');
+$assert(is_string($loginMethodMigration) && str_contains($loginMethodMigration, 'CREATE TABLE IF NOT EXISTS pickup_auth_settings') && str_contains($loginMethodMigration, 'local_login_enabled TINYINT(1)'), 'MySQL should persist administrator sign-in method preferences idempotently.');
+$loginMethodServiceSource = file_get_contents(dirname(__DIR__) . '/src/Shared/Security/LoginMethodSettingsService.php');
+$assert(is_string($loginMethodServiceSource) && str_contains($loginMethodServiceSource, 'avoid locking every administrator out') && str_contains($loginMethodServiceSource, 'PICKUPSHEET_LOCAL_LOGIN_ENABLED'), 'Sign-in preference enforcement should preserve environment hard limits and prevent lockout.');
 $recordsUserMysqlRepository = file_get_contents(dirname(__DIR__) . '/src/Shared/Infrastructure/MysqlRecordsUserRepository.php');
 $assert(is_string($recordsUserMysqlRepository) && str_contains($recordsUserMysqlRepository, 'BINARY username = :username AND active = 1'), 'Managed account authentication should require an exact username and active status.');
 $assert(is_string($recordsUserMysqlRepository) && str_contains($recordsUserMysqlRepository, 'password_hash = :password_hash'), 'Administrators should be able to rotate managed account passwords.');
 $assert(is_string($recordsUserMysqlRepository) && str_contains($recordsUserMysqlRepository, 'first_name = :first_name') && str_contains($recordsUserMysqlRepository, 'last_name = :last_name'), 'Administrators should be able to maintain required account names.');
+$assert(is_string($recordsUserMysqlRepository) && str_contains($recordsUserMysqlRepository, "DELETE FROM pickup_records_users WHERE id = :id AND role IN ('operator', 'viewer')"), 'Administrators should be able to delete only confirmed lower-tier local accounts.');
 $assert(is_string($recordsUserMysqlRepository) && str_contains($recordsUserMysqlRepository, 'private function ensureSchema()'), 'Administrator account management should initialize its idempotent schema without cPanel CLI access.');
 $adminCredentialMigration = file_get_contents(dirname(__DIR__) . '/database/migrations/008_create_pickup_records_admin_credentials.sql');
 $assert(is_string($adminCredentialMigration) && str_contains($adminCredentialMigration, 'CREATE TABLE IF NOT EXISTS pickup_records_admin_credentials'), 'MySQL should persist administrator password overrides outside source-controlled environment configuration.');
@@ -2037,7 +2088,7 @@ $backupRepositorySource = file_get_contents(dirname(__DIR__) . '/src/Modules/Bac
 $backupControllerSource = file_get_contents(dirname(__DIR__) . '/src/Modules/Backup/UI/BackupController.php');
 $assert(is_string($backupServiceSource) && str_contains($backupServiceSource, "'aes-256-gcm'") && str_contains($backupServiceSource, "hash_pbkdf2('sha256'") && str_contains($backupServiceSource, 'KDF_ITERATIONS = 210000'), 'Backups should use authenticated AES-256-GCM encryption with a hardened PBKDF2-SHA256 key.');
 $assert(is_string($backupServiceSource) && !str_contains($backupServiceSource, 'getenv('), 'Backup encryption must never derive its passphrase from stored environment configuration.');
-$assert(is_string($backupRepositorySource) && str_contains($backupRepositorySource, "'pickup_sheets'") && str_contains($backupRepositorySource, "'pickup_customer_reward_adjustments'"), 'The MySQL backup allowlist should include operational and CRM reward data.');
+$assert(is_string($backupRepositorySource) && str_contains($backupRepositorySource, "'pickup_sheets'") && str_contains($backupRepositorySource, "'pickup_customer_reward_adjustments'") && str_contains($backupRepositorySource, "'pickup_auth_settings'"), 'The MySQL backup allowlist should include operational, CRM reward, and authentication preference data.');
 $assert(is_string($backupRepositorySource) && !str_contains($backupRepositorySource, 'schema_migrations') && !str_contains($backupRepositorySource, '.env'), 'Backups should exclude schema bookkeeping and environment secrets.');
 $assert(is_string($backupRepositorySource) && substr_count($backupRepositorySource, 'beginTransaction()') === 2 && substr_count($backupRepositorySource, 'rollBack()') === 2, 'Export should use a consistent snapshot and restore should roll back every partial database change.');
 $assert(is_string($backupControllerSource) && str_contains($backupControllerSource, "!== 'RESTORE'") && str_contains($backupControllerSource, "validate(\$request->input('_token'))"), 'Restore should require exact destructive confirmation and a valid CSRF token.');
@@ -2056,6 +2107,7 @@ $assert(is_string($bootstrap) && str_contains($bootstrap, "'/dhl/pickupsheet'"),
 $assert(is_string($bootstrap) && str_contains($bootstrap, "'/dhl/pickupsheet/submissions/page'"), 'Pickupsheet should expose a protected AJAX pagination endpoint.');
 $assert(is_string($bootstrap) && str_contains($bootstrap, "'/dhl/pickupsheet/dashboard/user-activity/page'") && str_contains($bootstrap, "'/dhl/pickupsheet/dashboard/audit-logs/page'") && str_contains($bootstrap, "'/dhl/pickupsheet/dashboard/recent-sheets/page'"), 'Each qualified dashboard table should expose a protected AJAX fragment route.');
 $assert(is_string($bootstrap) && str_contains($bootstrap, "'/dhl/pickupsheet/submissions/users'"), 'Pickupsheet should expose administrator-only account management.');
+$assert(is_string($bootstrap) && str_contains($bootstrap, "'/dhl/pickupsheet/submissions/users/delete'") && str_contains($bootstrap, "'/dhl/pickupsheet/submissions/users/login-methods'"), 'Pickupsheet should expose protected local-account deletion and sign-in preference routes.');
 $assert(is_string($bootstrap) && str_contains($bootstrap, "'/dhl/pickupsheet/dashboard'"), 'Pickupsheet should expose the administrator KPI control panel.');
 $assert(is_string($bootstrap) && str_contains($bootstrap, "'/dhl/pickupsheet/admin/backup'") && str_contains($bootstrap, "'/dhl/pickupsheet/admin/backup/restore'"), 'Pickupsheet should expose administrator-only backup and restore routes.');
 $assert(is_string($bootstrap) && str_contains($bootstrap, "'/dhl/pickupsheet/customers'"), 'Pickupsheet should expose the administrator-only customer CRM.');
