@@ -1276,6 +1276,21 @@ button, a, input, select, textarea { -webkit-tap-highlight-color: transparent; }
 .records-idp-managed span { color: var(--dhl-red); font-size: 0.65rem; font-weight: 850; letter-spacing: 0.08em; text-transform: uppercase; }
 .records-idp-managed h2 { margin: 6px 0 8px; color: #241b00; font-size: clamp(1.35rem, 3vw, 2rem); }
 .records-idp-managed p { max-width: 760px; margin: 0; color: #655000; line-height: 1.6; }
+.records-login-methods { margin-bottom: 24px; padding: 24px; border: 1px solid rgba(69, 50, 0, 0.32); background: #fff; }
+.records-login-methods-heading { display: flex; align-items: end; justify-content: space-between; gap: 24px; margin-bottom: 18px; }
+.records-login-methods-heading span { color: var(--dhl-red); font-size: 0.65rem; font-weight: 850; letter-spacing: 0.08em; text-transform: uppercase; }
+.records-login-methods-heading h2 { margin: 6px 0 0; color: #241b00; font-size: clamp(1.4rem, 3vw, 2rem); }
+.records-login-methods-heading small { color: #655000; }
+.records-login-method-grid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 14px; }
+.records-login-method-grid article { padding: 20px; border: 1px solid #b7b7b7; border-top: 4px solid #8a8a8a; background: #f3f3f3; }
+.records-login-method-grid article[data-enabled="true"] { border-color: #15733d; border-top-color: #15733d; background: #f1fff6; }
+.records-login-method-grid article > div { display: flex; align-items: center; justify-content: space-between; gap: 16px; }
+.records-login-method-grid strong { color: #171718; font-size: 1rem; }
+.records-login-method-grid span { color: #a6000a; font-size: 0.67rem; font-weight: 900; letter-spacing: 0.08em; text-transform: uppercase; }
+.records-login-method-grid article[data-enabled="true"] span { color: #0d6a34; }
+.records-login-method-grid p { margin: 12px 0 16px; color: #565656; font-size: 0.76rem; line-height: 1.55; }
+.records-login-method-grid code { display: block; overflow-wrap: anywhere; color: #242424; font-size: 0.7rem; }
+.records-login-method-note { margin: 16px 0 0; color: #655000; font-size: 0.73rem; line-height: 1.55; }
 .records-users-layout {
     display: grid;
     grid-template-columns: minmax(260px, 0.7fr) minmax(0, 1.3fr);
@@ -1289,8 +1304,7 @@ button, a, input, select, textarea { -webkit-tap-highlight-color: transparent; }
 }
 .records-role-guide > span,
 .records-user-list-heading span,
-.records-user-create legend,
-.records-user-card label > span {
+.records-user-create legend {
     color: #493800;
     font-size: 0.68rem;
     font-weight: 850;
@@ -1305,7 +1319,7 @@ button, a, input, select, textarea { -webkit-tap-highlight-color: transparent; }
 .records-user-create fieldset { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 20px; }
 .records-user-create legend { grid-column: 1 / -1; margin-bottom: 4px; }
 .records-user-create label,
-.records-user-card label { display: grid; gap: 8px; }
+.records-user-table label { display: grid; gap: 7px; }
 .records-user-create button { grid-column: 1 / -1; justify-self: end; }
 .records-user-list { margin-top: 42px; }
 .records-user-list-heading {
@@ -1317,28 +1331,39 @@ button, a, input, select, textarea { -webkit-tap-highlight-color: transparent; }
 }
 .records-user-list-heading h2 { margin: 7px 0 0; color: #241b00; font-size: clamp(1.7rem, 4vw, 2.8rem); }
 .records-user-list-heading > strong { color: #493800; font-size: 0.78rem; text-transform: uppercase; }
-.records-user-card {
-    display: grid;
-    grid-template-columns: repeat(4, minmax(160px, 1fr));
-    gap: 16px;
-    align-items: end;
-    margin-bottom: 14px;
-    padding: 20px;
-}
-.records-user-identity { grid-column: 1 / -1; display: flex; align-items: center; justify-content: space-between; gap: 20px; }
-.records-user-identity strong { display: block; color: #241b00; font-size: 1.15rem; }
-.records-user-identity small { display: block; margin-top: 4px; color: #655000; font-size: 0.72rem; }
-.records-user-identity span { color: #168a45; font-size: 0.65rem; font-weight: 850; letter-spacing: 0.08em; text-transform: uppercase; }
-.records-user-identity span[data-active="false"] { color: var(--dhl-red); }
-.records-user-active { display: flex !important; min-height: 48px; align-items: center; gap: 9px !important; white-space: nowrap; }
-.pickup-form .records-user-active input { width: 18px; min-height: 18px; accent-color: var(--dhl-red); }
-.records-user-card button { min-height: 48px; white-space: nowrap; }
+.records-user-table-wrap { overflow-x: auto; border: 1px solid rgba(69, 50, 0, 0.4); background: #fff; box-shadow: 0 16px 40px rgba(54, 40, 0, 0.1); }
+.records-user-table { width: 100%; min-width: 1280px; border-collapse: collapse; }
+.records-user-table th { padding: 13px 15px; border-right: 1px solid #39393b; background: #171718; color: #fff; font-size: 0.64rem; font-weight: 850; letter-spacing: 0.08em; text-align: left; text-transform: uppercase; }
+.records-user-table th:last-child { border-right: 0; }
+.records-user-table td { padding: 16px 15px; border-right: 1px solid rgba(69, 50, 0, 0.16); border-bottom: 1px solid rgba(69, 50, 0, 0.24); color: #241b00; vertical-align: top; }
+.records-user-table td:last-child { border-right: 0; }
+.records-user-table tbody tr:nth-child(odd) td { background: #fff; }
+.records-user-table tbody tr:nth-child(even) td { background: #fff1a8; }
+.records-user-table tbody tr[data-active="false"] td { background-image: linear-gradient(rgba(212, 5, 17, 0.055), rgba(212, 5, 17, 0.055)); }
+.records-user-table tbody tr:last-child td { border-bottom: 0; }
+.records-user-table input,
+.records-user-table select { width: 100%; min-height: 44px; border: 1px solid rgba(69, 50, 0, 0.44); border-radius: 0; outline: 0; background: rgba(255, 255, 255, 0.88); color: #241b00; padding: 10px 11px; }
+.records-user-table input:focus,
+.records-user-table select:focus { border-color: var(--dhl-red); box-shadow: 0 0 0 3px rgba(212, 5, 17, 0.13); }
+.records-user-table label > span,
+.records-table-mobile-label { color: #655000; font-size: 0.61rem; font-weight: 850; letter-spacing: 0.05em; text-transform: uppercase; }
+.records-user-table-identity strong { display: block; color: #171718; font-size: 1rem; }
+.records-user-table-identity small { display: block; margin-top: 3px; color: #655000; font-size: 0.68rem; }
+.records-user-name-fields,
+.records-user-password-fields { display: grid; gap: 10px; margin-top: 13px; }
+.records-user-name-fields { grid-template-columns: repeat(2, minmax(112px, 1fr)); }
+.records-user-table-status { display: block; margin-top: 9px; color: #0d6a34; font-size: 0.62rem; font-weight: 850; letter-spacing: 0.05em; text-transform: uppercase; }
+.records-user-table-status[data-active="false"] { color: #a6000a; }
+.records-user-history { display: grid; gap: 12px; min-width: 155px; margin: 0; }
+.records-user-history div { display: grid; gap: 4px; }
+.records-user-history dt { color: #655000; font-size: 0.6rem; font-weight: 850; letter-spacing: 0.05em; text-transform: uppercase; }
+.records-user-history dd { margin: 0; color: #241b00; font-size: 0.69rem; line-height: 1.45; }
+.records-user-table button { min-height: 44px; padding-inline: 16px; white-space: nowrap; }
+.pickup-login-unavailable { margin: 20px 0 0; padding: 16px; border: 1px solid rgba(212, 5, 17, 0.35); background: #fff0f1; color: #8b0009; font-size: 0.78rem; line-height: 1.55; }
 
 @media (max-width: 1050px) {
     .records-admin-password { grid-template-columns: repeat(2, minmax(0, 1fr)); }
     .records-admin-password > div { grid-column: 1 / -1; }
-    .records-user-card { grid-template-columns: repeat(2, minmax(0, 1fr)); }
-    .records-user-card button { justify-self: end; }
 }
 
 @media (max-width: 700px) {
@@ -1347,10 +1372,11 @@ button, a, input, select, textarea { -webkit-tap-highlight-color: transparent; }
     .records-admin-password { grid-template-columns: 1fr; padding: 20px 16px; }
     .records-admin-password > div { grid-column: auto; }
     .records-admin-password button { width: 100%; }
-    .records-user-create fieldset,
-    .records-user-card { grid-template-columns: 1fr; }
-    .records-user-create button,
-    .records-user-card button { width: 100%; justify-self: stretch; }
+    .records-login-methods { padding: 20px 16px; }
+    .records-login-methods-heading { align-items: flex-start; flex-direction: column; gap: 8px; }
+    .records-login-method-grid { grid-template-columns: 1fr; }
+    .records-user-create fieldset { grid-template-columns: 1fr; }
+    .records-user-create button { width: 100%; justify-self: stretch; }
     .records-user-list-heading { align-items: flex-start; flex-direction: column; gap: 10px; }
 }
 

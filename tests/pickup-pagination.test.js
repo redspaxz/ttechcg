@@ -29,7 +29,6 @@ let popstateHandler;
 let pushedUrl;
 let fetchRequest;
 let resolveFetch;
-let scrollOptions;
 const pager = {
     dataset: {
         ajaxPagerId: 'submitted-sheets',
@@ -46,7 +45,6 @@ const pager = {
     addEventListener(event, handler) {
         if (event === 'click') clickHandler = handler;
     },
-    scrollIntoView(options) { scrollOptions = options; },
 };
 const filterForm = {
     action: 'https://ttechcg.com/dhl/pickupsheet/submissions',
@@ -153,7 +151,7 @@ vm.runInNewContext(script, context);
     assert.equal(spinnerStates.at(-1), true, 'spinner should hide after loading');
     assert.equal(content.attributes.get('aria-busy'), 'false', 'table region should clear its busy state');
     assert.match(pushedUrl, /submissions\?page=2$/);
-    assert.equal(scrollOptions.block, 'start', 'a loaded page should return the user to the start of the table');
+    assert.equal(pushedUrl.includes('page=2'), true, 'the loaded page should update history without moving the viewport');
 
     let filterPrevented = false;
     filterHandler({ preventDefault() { filterPrevented = true; } });

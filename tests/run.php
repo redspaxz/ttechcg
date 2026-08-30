@@ -915,6 +915,27 @@ $jumpCloudAuthController = new PickupsheetAuthController(
     $jumpCloudConfig,
     $oidcProvider,
 );
+$jumpCloudOnlyConfig = array_merge($jumpCloudConfig, ['local_login_enabled' => false]);
+$jumpCloudOnlyAuthController = new PickupsheetAuthController(
+    $view,
+    $pickupCsrf,
+    $recordsAccess,
+    $recordsSession,
+    $disabledRateLimiter,
+    $testSecurityLogger,
+    $jumpCloudOnlyConfig,
+    $oidcProvider,
+);
+$noDirectLoginConfig = array_merge($config, ['local_login_enabled' => false]);
+$noDirectLoginAuthController = new PickupsheetAuthController(
+    $view,
+    $pickupCsrf,
+    $recordsAccess,
+    $recordsSession,
+    $disabledRateLimiter,
+    $testSecurityLogger,
+    $noDirectLoginConfig,
+);
 $cloudflareConfig = array_merge($jumpCloudConfig, ['cloudflare_access_configured' => true]);
 $cloudflareAuthController = new PickupsheetAuthController(
     $view,
@@ -944,6 +965,18 @@ $jumpCloudPickupController = new PickupsheetController(
 $jumpCloudLoginPage = $jumpCloudAuthController->login(new Request('GET', '/dhl/pickupsheet/login'));
 $assert($jumpCloudLoginPage->status() === 200 && str_contains($jumpCloudLoginPage->body(), 'Continue with JumpCloud'), 'Configured Pickupsheet login should offer JumpCloud SSO.');
 $assert(str_contains($jumpCloudLoginPage->body(), 'Or sign in with a local account') && str_contains($jumpCloudLoginPage->body(), 'autocomplete="current-password"'), 'The local credential form should remain available alongside JumpCloud.');
+$jumpCloudOnlyLoginPage = $jumpCloudOnlyAuthController->login(new Request('GET', '/dhl/pickupsheet/login'));
+$assert($jumpCloudOnlyLoginPage->status() === 200 && str_contains($jumpCloudOnlyLoginPage->body(), 'Continue with JumpCloud') && !str_contains($jumpCloudOnlyLoginPage->body(), 'autocomplete="current-password"'), 'Disabling local login should leave only the configured JumpCloud method visible.');
+$disabledLocalLogin = $jumpCloudOnlyAuthController->authenticate(new Request('POST', '/dhl/pickupsheet/login', [], [
+    '_token' => $pickupCsrf->token(),
+    'username' => $recordsUsername,
+    'password' => $recordsPassword,
+]));
+$assert($disabledLocalLogin->status() === 403 && str_contains($disabledLocalLogin->body(), 'Local sign-in is disabled'), 'The local credential endpoint should fail closed when local login is disabled.');
+$jumpCloudOnlyStart = $jumpCloudOnlyAuthController->jumpCloudStart(new Request('GET', '/dhl/pickupsheet/auth/jumpcloud'));
+$assert($jumpCloudOnlyStart->status() === 302 && str_starts_with((string) ($jumpCloudOnlyStart->headers()['Location'] ?? ''), 'https://oauth.id.jumpcloud.com/oauth2/auth?'), 'JumpCloud should remain usable when it is the only enabled direct login method.');
+$noDirectLoginPage = $noDirectLoginAuthController->login(new Request('GET', '/dhl/pickupsheet/login'));
+$assert($noDirectLoginPage->status() === 503 && str_contains($noDirectLoginPage->body(), 'No direct sign-in method is enabled') && !str_contains($noDirectLoginPage->body(), '<form class="pickup-login-form"'), 'Disabling every direct login method should show a fail-closed configuration response.');
 $jumpCloudLocalLogin = $jumpCloudAuthController->authenticate(new Request('POST', '/dhl/pickupsheet/login', [], [
     '_token' => $pickupCsrf->token(),
     'username' => $recordsUsername,
@@ -1429,7 +1462,8 @@ $assert($createManagedUser->status() === 303, 'An administrator should be able t
 $managedAccount = $recordsUserRepository->all()[0] ?? null;
 $assert($managedAccount?->role === 'operator' && $managedAccount->active && $managedAccount->fullName() === 'Marc Operator', 'A created lower-tier account should persist required names, role, and active status.');
 $adminUsersWithAccount = $pickupController->users(new Request('GET', '/dhl/pickupsheet/submissions/users', [], [], '', $recordsServer));
-$assert(str_contains($adminUsersWithAccount->body(), 'managed-operator'), 'The management page should list a created lower-tier account.');
+$assert(str_contains($adminUsersWithAccount->body(), 'managed-operator') && str_contains($adminUsersWithAccount->body(), 'class="records-user-table"') && str_contains($adminUsersWithAccount->body(), 'Account history'), 'The management page should list detailed lower-tier accounts in an editable table.');
+$assert(str_contains($adminUsersWithAccount->body(), 'PICKUPSHEET_LOCAL_LOGIN_ENABLED=true') && str_contains($adminUsersWithAccount->body(), 'JUMPCLOUD_OIDC_ENABLED=false'), 'The administrator workspace should display the effective local and JumpCloud login configuration.');
 $usersView = file_get_contents(dirname(__DIR__) . '/views/pickupsheet/users.php');
 $assert(is_string($usersView) && !str_contains($usersView, 'passwordHash'), 'The management view must never access or render a stored password hash.');
 $managedPrincipal = $recordsAccess->authenticateCredentials('managed-operator', 'managed-password-123');
@@ -1489,7 +1523,7 @@ $disableManagedViewer = $pickupController->updateUser(new Request('POST', '/dhl/
 $assert($disableManagedViewer->status() === 303, 'An administrator should be able to disable a lower-tier account.');
 $assert($recordsAccess->authenticateCredentials('managed-viewer', 'new-managed-password-456') === null, 'A disabled managed account should immediately reject new logins.');
 $inactiveAccountPage = $pickupController->users(new Request('GET', '/dhl/pickupsheet/submissions/users'));
-$assert(str_contains($inactiveAccountPage->body(), '>Inactive</span>') && str_contains($inactiveAccountPage->body(), '<option value="0" selected>Inactive</option>'), 'The admin area should clearly display and select an inactive account status.');
+$assert(str_contains($inactiveAccountPage->body(), '>Access blocked</span>') && str_contains($inactiveAccountPage->body(), '<option value="0" selected>Inactive</option>'), 'The admin account table should clearly display and select an inactive account status.');
 $_SESSION['_pickupsheet_identity'] = $staleManagedIdentity;
 $disabledManagedList = $pickupController->submissions(new Request('GET', '/dhl/pickupsheet/submissions'));
 $assert($disabledManagedList->status() === 302, 'Disabling a managed account should invalidate its existing portal session immediately.');
@@ -1630,8 +1664,8 @@ $assert(is_string($dhlAsset) && !str_contains($dhlAsset, '<text'), 'The disquali
 $partnerSources = file_get_contents(dirname(__DIR__) . '/public/assets/partners/README.md');
 $assert(is_string($partnerSources) && str_contains($partnerSources, 'www.dhl.com/content/dam/dhl/global/core/images/logos/dhl-logo.svg'), 'The official DHL artwork source should be documented.');
 $assert(!str_contains($home, 'href="/dhl/pickupsheet"'), 'Pickupsheet should not be discoverable from the public site chrome or homepage.');
-$assert(str_contains($home, 'styles.css?v=20260830-app-pagination'), 'Application pagination styles should use a cache-safe stylesheet version.');
-$assert(str_contains($home, 'app.js?v=20260830-app-pagination'), 'Application pagination behavior should use a cache-safe script version.');
+$assert(str_contains($home, 'styles.css?v=20260830-auth-accounts'), 'Authentication and account-table styles should use a cache-safe stylesheet version.');
+$assert(str_contains($home, 'app.js?v=20260830-auth-accounts'), 'Steady-view pagination behavior should use a cache-safe script version.');
 $assert(str_contains($home, 'analytics.js?v=20260825-security-hardening'), 'The current consent-aware Google Analytics loader should render on every page.');
 $assert(str_contains($home, 'data-analytics-accept'), 'The site should offer an explicit analytics acceptance control.');
 $assert(str_contains($home, 'data-analytics-decline'), 'The site should offer an explicit analytics decline control.');
@@ -1797,10 +1831,11 @@ $credentialGenerator = file_get_contents(dirname(__DIR__) . '/bin/generate-recor
 $assert(is_string($credentialGenerator) && str_contains($credentialGenerator, "['viewer', 'operator', 'admin']"), 'The credential generator should restrict accounts to defined RBAC roles.');
 $assert(is_string($credentialGenerator) && str_contains($credentialGenerator, "PICKUPSHEET_RBAC_USERS='"), 'The credential generator should provide a cPanel-ready RBAC environment value.');
 $assert(is_string($environmentExample) && str_contains($environmentExample, 'RUN_MIGRATIONS=true'), 'The environment example should explicitly document migration execution.');
+$assert(is_string($environmentExample) && str_contains($environmentExample, 'PICKUPSHEET_LOCAL_LOGIN_ENABLED=true'), 'The environment example should expose the independent local-login switch with a safe compatibility default.');
 $assert(is_string($environmentExample) && str_contains($environmentExample, 'JUMPCLOUD_OIDC_ENABLED=false'), 'The environment example should keep JumpCloud disabled until credentials are supplied.');
 $assert(is_string($environmentExample) && str_contains($environmentExample, 'JUMPCLOUD_OIDC_REDIRECT_URI=https://ttechcg.com/dhl/pickupsheet/auth/jumpcloud/callback'), 'The environment example should document the exact JumpCloud callback URI.');
 $assert(is_string($environmentExample) && str_contains($environmentExample, 'JUMPCLOUD_RBAC_ADMIN_GROUP=Pickupsheet Admins'), 'The environment example should map JumpCloud groups to Pickupsheet roles.');
-$assert(is_string($environmentExample) && !str_contains($environmentExample, 'JUMPCLOUD_OIDC_LOCAL_LOGIN'), 'Local and JumpCloud login should remain available together without a deployment switch.');
+$assert(is_string($environmentExample) && str_contains($environmentExample, 'Keep at least one direct method'), 'The environment example should warn administrators against disabling every direct sign-in method accidentally.');
 $assert(is_string($environmentExample) && str_contains($environmentExample, 'CLOUDFLARE_ACCESS_ENABLED=false'), 'The environment example should keep the Cloudflare Access handoff disabled until its trust values are supplied.');
 $assert(is_string($environmentExample) && str_contains($environmentExample, 'PICKUPSHEET_GEO_RESTRICTION_ENABLED=true'), 'The environment example should explicitly enable production country enforcement.');
 $assert(is_string($environmentExample) && str_contains($environmentExample, 'PICKUPSHEET_ALLOWED_COUNTRIES=CM,NG'), 'The Pickupsheet production country allowlist should contain only Cameroon and Nigeria.');
@@ -1847,7 +1882,8 @@ $assert(is_string($styles) && str_contains($styles, '.ajax-pager-loading'), 'App
 $assert(is_string($styles) && str_contains($styles, '@keyframes pickup-records-spin'), 'The loading overlay should provide spinner animation.');
 $assert(is_string($styles) && str_contains($styles, '.pickup-pagination'), 'Qualified tables should provide responsive pagination controls.');
 $assert(is_string($styles) && str_contains($styles, '.records-users-layout'), 'Administrator account management should have a dedicated responsive layout.');
-$assert(is_string($styles) && str_contains($styles, '.records-user-card'), 'Managed accounts should render as editable account cards.');
+$assert(is_string($styles) && str_contains($styles, '.records-user-table') && str_contains($styles, 'tbody tr:nth-child(even) td'), 'Managed accounts should render in a detailed table with alternating row colors.');
+$assert(is_string($styles) && str_contains($styles, '.records-login-method-grid'), 'The administrator workspace should style the effective authentication-method status.');
 $assert(is_string($styles) && str_contains($styles, '/* Pickupsheet login portal */'), 'Pickupsheet should have a dedicated responsive login portal.');
 $assert(is_string($styles) && str_contains($styles, '.pickup-admin-workspace') && str_contains($styles, '.pickup-kpi-grid'), 'The administrator should have a dedicated KPI control-panel layout.');
 $assert(is_string($styles) && str_contains($styles, '.shipment-editor > *') && str_contains($styles, 'max-width: 1180px;'), 'The cash-shipment editor should be centered within the available screen width.');
@@ -1868,6 +1904,7 @@ $assert(is_string($script) && str_contains($script, "document.querySelectorAll('
 $assert(is_string($script) && str_contains($script, 'await fetch(pageEndpoint'), 'Pagination should load table fragments asynchronously.');
 $assert(is_string($script) && str_contains($script, "spinner.hidden = !loading"), 'AJAX pagination should toggle its loading spinner.');
 $assert(is_string($script) && str_contains($script, "window.history.pushState"), 'AJAX pagination should preserve browser history.');
+$assert(is_string($script) && !str_contains($script, 'scrollIntoView'), 'AJAX pagination should update in place without moving the user\'s viewport.');
 
 $analyticsScript = file_get_contents(dirname(__DIR__) . '/public/assets/analytics.js');
 $googleTagScript = file_get_contents(dirname(__DIR__) . '/public/assets/google-tag.js');

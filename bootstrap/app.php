@@ -138,6 +138,7 @@ $recordsSession = new RecordsSession($recordsSessionActivityRepository);
 $jumpCloud = JumpCloudOidcProvider::fromEnvironment();
 $cloudflareAccess = CloudflareAccessProvider::fromEnvironment();
 $config['jumpcloud_oidc_configured'] = $jumpCloud->isConfigured();
+$config['jumpcloud_login_enabled'] = $jumpCloud->isConfigured();
 $config['jumpcloud_role_groups'] = $jumpCloud->roleGroups();
 $config['cloudflare_access_configured'] = $cloudflareAccess->isConfigured();
 $recordsUserService = new RecordsUserService($recordsUserRepository, $recordsAccess->environmentUsernames());

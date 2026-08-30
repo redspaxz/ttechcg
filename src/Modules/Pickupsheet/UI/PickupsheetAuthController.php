@@ -80,6 +80,13 @@ final class PickupsheetAuthController
         $username = $_SESSION['_pickup_login_username'] ?? '';
         unset($_SESSION['_pickup_login_error'], $_SESSION['_pickup_login_flash'], $_SESSION['_pickup_login_username']);
 
+        $localLoginEnabled = $this->localLoginEnabled();
+        $jumpCloudEnabled = $this->jumpCloudConfigured();
+        $loginMethodsAvailable = $localLoginEnabled || $jumpCloudEnabled;
+        if (!$loginMethodsAvailable && !is_string($error)) {
+            $error = 'No direct sign-in method is enabled. Contact the system administrator.';
+        }
+
         $body = $this->view->render('pickupsheet/login', [
             'pageTitle' => 'Pickupsheet login',
             'pageDescription' => 'Sign in to the secure Pickupsheet workspace.',
@@ -92,14 +99,21 @@ final class PickupsheetAuthController
             'error' => is_string($error) ? $error : null,
             'flash' => is_string($flash) ? $flash : null,
             'username' => is_string($username) ? $username : '',
-            'jumpCloudEnabled' => $this->jumpCloudConfigured(),
+            'localLoginEnabled' => $localLoginEnabled,
+            'jumpCloudEnabled' => $jumpCloudEnabled,
+            'loginMethodsAvailable' => $loginMethodsAvailable,
         ]);
 
-        return Response::html($body, 200, $this->privateHeaders());
+        return Response::html($body, $loginMethodsAvailable ? 200 : 503, $this->privateHeaders());
     }
 
     public function authenticate(Request $request): Response
     {
+        if (!$this->localLoginEnabled()) {
+            $this->securityLogger->event('pickupsheet.login', $request, 'unavailable', ['method' => 'local']);
+            return Response::html('Local sign-in is disabled.', 403, $this->privateHeaders());
+        }
+
         if (!$this->csrf->validate($request->input('_token'))) {
             $this->securityLogger->event('pickupsheet.login_csrf', $request, 'denied');
             return Response::html('Invalid or expired form token.', 419, $this->privateHeaders());
@@ -263,6 +277,11 @@ final class PickupsheetAuthController
     private function jumpCloudConfigured(): bool
     {
         return $this->jumpCloud?->isConfigured() === true;
+    }
+
+    private function localLoginEnabled(): bool
+    {
+        return (bool) ($this->config['local_login_enabled'] ?? true);
     }
 
     private function cloudflareAccessConfigured(): bool

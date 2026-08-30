@@ -188,7 +188,7 @@ document.querySelectorAll('[data-ajax-pager]').forEach((pager) => {
         return Number.isInteger(page) && page > 0 ? page : 1;
     };
 
-    const loadUrl = async (browserUrl, updateHistory = true, shouldScroll = true) => {
+    const loadUrl = async (browserUrl, updateHistory = true) => {
         if (!content || !endpoint) return;
         const requestedPage = pageFromUrl(browserUrl);
 
@@ -217,12 +217,6 @@ document.querySelectorAll('[data-ajax-pager]').forEach((pager) => {
             const actualPage = Number.parseInt(pageState?.dataset.ajaxCurrentPage || String(requestedPage), 10);
             pager.dataset.currentPage = String(Number.isInteger(actualPage) && actualPage > 0 ? actualPage : requestedPage);
             browserUrl.searchParams.set(pageParameter, pager.dataset.currentPage);
-            if (shouldScroll) {
-                pager.scrollIntoView({
-                    behavior: window.matchMedia('(prefers-reduced-motion: reduce)').matches ? 'auto' : 'smooth',
-                    block: 'start',
-                });
-            }
             if (updateHistory) {
                 window.history.pushState({ ajaxPager: pagerId }, '', browserUrl);
             }
@@ -282,7 +276,7 @@ if (ajaxPagerControllers.size > 0) {
         const browserUrl = new URL(window.location.href);
         ajaxPagerControllers.forEach((controller) => {
             const page = controller.pageFromUrl(browserUrl);
-            if (page !== controller.currentPage()) controller.loadUrl(new URL(browserUrl), false, false);
+            if (page !== controller.currentPage()) controller.loadUrl(new URL(browserUrl), false);
         });
     });
 }

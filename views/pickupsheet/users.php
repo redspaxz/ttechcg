@@ -8,7 +8,9 @@ $errors = is_array($errors ?? null) ? $errors : [];
 $old = is_array($old ?? null) ? $old : [];
 $cloudflareIdentity = ($recordsIdentityProvider ?? 'local') === 'cloudflare_access';
 $jumpCloudIdentity = ($recordsIdentityProvider ?? 'local') === 'jumpcloud' || $cloudflareIdentity;
-$jumpCloudEnabled = (bool) ($config['jumpcloud_oidc_configured'] ?? false) || $jumpCloudIdentity;
+$localLoginEnabled = (bool) ($config['local_login_enabled'] ?? true);
+$jumpCloudDirectEnabled = (bool) ($config['jumpcloud_login_enabled'] ?? $config['jumpcloud_oidc_configured'] ?? false);
+$jumpCloudEnabled = $jumpCloudDirectEnabled || $jumpCloudIdentity;
 $jumpCloudGroups = is_array($config['jumpcloud_role_groups'] ?? null) ? $config['jumpcloud_role_groups'] : [];
 ?>
 <section class="pickup-view-workspace">
@@ -28,7 +30,7 @@ $jumpCloudGroups = is_array($config['jumpcloud_role_groups'] ?? null) ? $config[
             <div>
                 <p class="eyebrow eyebrow-red">Administrator access</p>
                 <h1>Manage users</h1>
-                <p><?= $jumpCloudEnabled ? 'JumpCloud group membership controls SSO roles. Local accounts can also be created and managed below.' : 'Create users, reset account passwords, and control the Pickupsheet access hierarchy.' ?></p>
+                <p><?= $jumpCloudEnabled ? ($localLoginEnabled ? 'JumpCloud group membership controls SSO roles. Local accounts can also be created and managed below.' : 'JumpCloud group membership controls SSO roles. Local accounts remain manageable below, but local sign-in is disabled.') : 'Create users, reset account passwords, and control the Pickupsheet access hierarchy.' ?></p>
             </div>
         </header>
 
@@ -38,6 +40,26 @@ $jumpCloudGroups = is_array($config['jumpcloud_role_groups'] ?? null) ? $config[
         <?php if ($errors !== []): ?>
             <div class="notice notice-error" role="alert"><?php foreach ($errors as $error): ?><span><?= $e($error) ?></span><?php endforeach; ?></div>
         <?php endif; ?>
+
+        <section class="records-login-methods" aria-labelledby="login-methods-title">
+            <div class="records-login-methods-heading">
+                <div><span>Authentication configuration</span><h2 id="login-methods-title">Sign-in methods</h2></div>
+                <small>Managed in the server <code>.env</code> file</small>
+            </div>
+            <div class="records-login-method-grid">
+                <article data-enabled="<?= $localLoginEnabled ? 'true' : 'false' ?>">
+                    <div><strong>Local login</strong><span><?= $localLoginEnabled ? 'Enabled' : 'Disabled' ?></span></div>
+                    <p>Username or email and password authentication for locally managed accounts.</p>
+                    <code>PICKUPSHEET_LOCAL_LOGIN_ENABLED=<?= $localLoginEnabled ? 'true' : 'false' ?></code>
+                </article>
+                <article data-enabled="<?= $jumpCloudDirectEnabled ? 'true' : 'false' ?>">
+                    <div><strong>JumpCloud login</strong><span><?= $jumpCloudDirectEnabled ? 'Enabled' : 'Disabled' ?></span></div>
+                    <p>Direct OIDC sign-in using approved JumpCloud groups and directory identities.</p>
+                    <code>JUMPCLOUD_OIDC_ENABLED=<?= $jumpCloudDirectEnabled ? 'true' : 'false' ?></code>
+                </article>
+            </div>
+            <p class="records-login-method-note">Keep at least one direct method enabled unless Cloudflare Access is the required identity boundary. Changes take effect after the server configuration reloads.</p>
+        </section>
 
         <?php if ($jumpCloudIdentity): ?>
             <section class="pickup-form records-idp-managed">
@@ -86,28 +108,38 @@ $jumpCloudGroups = is_array($config['jumpcloud_role_groups'] ?? null) ? $config[
                 <strong><?= $e(count($accounts)) ?> account<?= count($accounts) === 1 ? '' : 's' ?></strong>
             </div>
 
-            <?php if ($accounts === []): ?>
-                <div class="pickup-empty-state"><h2>No lower-tier accounts yet.</h2><p>Create an operator or viewer using the form above.</p></div>
-            <?php endif; ?>
-
-            <?php foreach ($accounts as $account): ?>
-                <form class="pickup-form records-user-card" method="post" action="<?= $e($basePath) ?>/dhl/pickupsheet/submissions/users/update">
-                    <input type="hidden" name="_token" value="<?= $e($csrfToken) ?>">
-                    <input type="hidden" name="id" value="<?= $e($account->id) ?>">
-                    <div class="records-user-identity">
-                        <div><strong><?= $e($account->fullName()) ?></strong><small><?= $e($account->username) ?></small></div>
-                        <span data-active="<?= $account->active ? 'true' : 'false' ?>"><?= $account->active ? 'Active' : 'Inactive' ?></span>
-                    </div>
-                    <label><span>First name</span><input name="first_name" value="<?= $e($account->firstName) ?>" maxlength="49" autocomplete="given-name" required></label>
-                    <label><span>Last name</span><input name="last_name" value="<?= $e($account->lastName) ?>" maxlength="49" autocomplete="family-name" required></label>
-                    <label><span>Email or username</span><input name="username" value="<?= $e($account->username) ?>" minlength="3" maxlength="100" autocomplete="username" autocapitalize="none" spellcheck="false" required></label>
-                    <label><span>Role</span><select name="role" required><option value="viewer" <?= $account->role === 'viewer' ? 'selected' : '' ?>>Viewer</option><option value="operator" <?= $account->role === 'operator' ? 'selected' : '' ?>>Operator</option></select></label>
-                    <label><span>Account status</span><select name="active" required><option value="1" <?= $account->active ? 'selected' : '' ?>>Active</option><option value="0" <?= !$account->active ? 'selected' : '' ?>>Inactive</option></select></label>
-                    <label><span>Reset password <small>Optional</small></span><input type="password" name="password" minlength="12" maxlength="128" autocomplete="new-password"></label>
-                    <label><span>Confirm new password</span><input type="password" name="password_confirmation" minlength="12" maxlength="128" autocomplete="new-password"></label>
-                    <button class="button button-dark" type="submit">Save changes</button>
-                </form>
-            <?php endforeach; ?>
+            <div class="records-user-table-wrap">
+                <table class="records-user-table">
+                    <thead><tr><th>Account details</th><th>Login ID</th><th>Role</th><th>Status</th><th>Password reset</th><th>Account history</th><th>Action</th></tr></thead>
+                    <tbody>
+                    <?php if ($accounts === []): ?>
+                        <tr><td colspan="7"><div class="pickup-empty-state"><h2>No lower-tier accounts yet.</h2><p>Create an operator or viewer using the form above.</p></div></td></tr>
+                    <?php endif; ?>
+                    <?php foreach ($accounts as $account): ?>
+                        <?php $accountFormId = 'records-user-' . (int) $account->id; ?>
+                        <tr data-active="<?= $account->active ? 'true' : 'false' ?>">
+                            <td>
+                                <form id="<?= $e($accountFormId) ?>" method="post" action="<?= $e($basePath) ?>/dhl/pickupsheet/submissions/users/update">
+                                    <input type="hidden" name="_token" value="<?= $e($csrfToken) ?>">
+                                    <input type="hidden" name="id" value="<?= $e($account->id) ?>">
+                                </form>
+                                <div class="records-user-table-identity"><strong><?= $e($account->fullName()) ?></strong><small>Local account #<?= $e($account->id) ?></small></div>
+                                <div class="records-user-name-fields">
+                                    <label><span>First name</span><input form="<?= $e($accountFormId) ?>" name="first_name" value="<?= $e($account->firstName) ?>" maxlength="49" autocomplete="given-name" aria-label="First name for <?= $e($account->fullName()) ?>" required></label>
+                                    <label><span>Last name</span><input form="<?= $e($accountFormId) ?>" name="last_name" value="<?= $e($account->lastName) ?>" maxlength="49" autocomplete="family-name" aria-label="Last name for <?= $e($account->fullName()) ?>" required></label>
+                                </div>
+                            </td>
+                            <td><label><span class="records-table-mobile-label">Email or username</span><input form="<?= $e($accountFormId) ?>" name="username" value="<?= $e($account->username) ?>" minlength="3" maxlength="100" autocomplete="username" autocapitalize="none" spellcheck="false" aria-label="Email or username for <?= $e($account->fullName()) ?>" required></label></td>
+                            <td><label><span class="records-table-mobile-label">Role</span><select form="<?= $e($accountFormId) ?>" name="role" aria-label="Role for <?= $e($account->fullName()) ?>" required><option value="viewer" <?= $account->role === 'viewer' ? 'selected' : '' ?>>Viewer</option><option value="operator" <?= $account->role === 'operator' ? 'selected' : '' ?>>Operator</option></select></label></td>
+                            <td><label><span class="records-table-mobile-label">Status</span><select form="<?= $e($accountFormId) ?>" name="active" aria-label="Status for <?= $e($account->fullName()) ?>" required><option value="1" <?= $account->active ? 'selected' : '' ?>>Active</option><option value="0" <?= !$account->active ? 'selected' : '' ?>>Inactive</option></select></label><span class="records-user-table-status" data-active="<?= $account->active ? 'true' : 'false' ?>"><?= $account->active ? 'Can sign in' : 'Access blocked' ?></span></td>
+                            <td><div class="records-user-password-fields"><label><span>New password <small>Optional</small></span><input form="<?= $e($accountFormId) ?>" type="password" name="password" minlength="12" maxlength="128" autocomplete="new-password"></label><label><span>Confirm password</span><input form="<?= $e($accountFormId) ?>" type="password" name="password_confirmation" minlength="12" maxlength="128" autocomplete="new-password"></label></div></td>
+                            <td><dl class="records-user-history"><div><dt>Created</dt><dd><time datetime="<?= $e($account->createdAt) ?>"><?= $e($account->createdAt) ?> UTC</time></dd></div><div><dt>Updated</dt><dd><time datetime="<?= $e($account->updatedAt) ?>"><?= $e($account->updatedAt) ?> UTC</time></dd></div></dl></td>
+                            <td><button class="button button-dark" type="submit" form="<?= $e($accountFormId) ?>">Save changes</button></td>
+                        </tr>
+                    <?php endforeach; ?>
+                    </tbody>
+                </table>
+            </div>
         </section>
     </div>
 </section>
