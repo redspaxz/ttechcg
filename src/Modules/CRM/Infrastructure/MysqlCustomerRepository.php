@@ -183,6 +183,28 @@ final class MysqlCustomerRepository implements CustomerRepository
         ], $statement->fetchAll());
     }
 
+    public function rewardRedemptions(string $customerKey, int $limit): array
+    {
+        $this->ensureSchema();
+        $statement = $this->connection->prepare(
+            'SELECT points_delta, reason, actor_id, created_at
+             FROM pickup_customer_reward_adjustments
+             WHERE customer_key = :customer_key AND points_delta < 0
+             ORDER BY created_at DESC, id DESC
+             LIMIT :limit',
+        );
+        $statement->bindValue(':customer_key', $customerKey);
+        $statement->bindValue(':limit', max(1, min($limit, 50)), PDO::PARAM_INT);
+        $statement->execute();
+
+        return array_map(static fn (array $row): array => [
+            'pointsDelta' => (int) $row['points_delta'],
+            'reason' => (string) $row['reason'],
+            'actorId' => (string) $row['actor_id'],
+            'createdAt' => (string) $row['created_at'],
+        ], $statement->fetchAll());
+    }
+
     public function addRewardAdjustment(
         string $customerKey,
         int $pointsDelta,
@@ -203,7 +225,7 @@ final class MysqlCustomerRepository implements CustomerRepository
 
             $balanceStatement = $this->connection->prepare(
                 'SELECT
-                    (SELECT COUNT(*)
+                    (SELECT FLOOR(COALESCE(SUM(ps.weight_kg), 0) * 10)
                      FROM pickup_shipments ps
                      INNER JOIN pickup_sheets p ON p.id = ps.pickup_sheet_id
                      WHERE p.deleted_at IS NULL
@@ -275,13 +297,16 @@ final class MysqlCustomerRepository implements CustomerRepository
                        c.source, c.created_at, c.updated_at,
                        COALESCE(metrics.shipment_count, 0) AS shipment_count,
                        COALESCE(metrics.total_cash_xaf, 0) AS total_cash_xaf,
+                       COALESCE(metrics.cargo_reward_points, 0) AS cargo_reward_points,
                        metrics.first_shipment_on, metrics.last_shipment_on,
-                       COALESCE(rewards.adjustment_points, 0) AS reward_adjustment_points
+                       COALESCE(rewards.adjustment_points, 0) AS reward_adjustment_points,
+                       COALESCE(rewards.earned_adjustment_points, 0) AS reward_earned_adjustment_points
                 FROM pickup_customers c
                 LEFT JOIN (
                     SELECT SHA2(LOWER(TRIM(ps.consignor)), 256) AS customer_key,
                            COUNT(*) AS shipment_count,
                            COALESCE(SUM(ps.amount_xaf), 0) AS total_cash_xaf,
+                           FLOOR(COALESCE(SUM(ps.weight_kg), 0) * 10) AS cargo_reward_points,
                            MIN(p.collection_date) AS first_shipment_on,
                            MAX(p.collection_date) AS last_shipment_on
                     FROM pickup_shipments ps
@@ -290,7 +315,9 @@ final class MysqlCustomerRepository implements CustomerRepository
                     GROUP BY SHA2(LOWER(TRIM(ps.consignor)), 256)
                 ) metrics ON metrics.customer_key = c.customer_key
                 LEFT JOIN (
-                    SELECT customer_key, COALESCE(SUM(points_delta), 0) AS adjustment_points
+                    SELECT customer_key,
+                           COALESCE(SUM(points_delta), 0) AS adjustment_points,
+                           COALESCE(SUM(CASE WHEN points_delta > 0 THEN points_delta ELSE 0 END), 0) AS earned_adjustment_points
                     FROM pickup_customer_reward_adjustments
                     GROUP BY customer_key
                 ) rewards ON rewards.customer_key = c.customer_key";
@@ -319,6 +346,8 @@ final class MysqlCustomerRepository implements CustomerRepository
             isset($row['created_at']) ? (string) $row['created_at'] : null,
             isset($row['updated_at']) ? (string) $row['updated_at'] : null,
             (int) ($row['reward_adjustment_points'] ?? 0),
+            (int) ($row['reward_earned_adjustment_points'] ?? 0),
+            (int) ($row['cargo_reward_points'] ?? 0),
         );
     }
 

@@ -240,10 +240,12 @@ final class CustomerController
         unset($_SESSION['_crm_old'], $_SESSION['_crm_errors'], $_SESSION['_crm_flash']);
         $shipments = [];
         $rewardAdjustments = [];
+        $rewardRedemptions = [];
         if ($customer !== null) {
             try {
                 $shipments = $this->service->recentShipments($customer->customerKey, 20);
                 $rewardAdjustments = $this->service->rewardAdjustments($customer->customerKey, 20);
+                $rewardRedemptions = $this->service->rewardRedemptions($customer->customerKey, 20);
             } catch (RuntimeException $exception) {
                 error_log($exception->__toString());
                 $errors = [...(is_array($errors) ? $errors : []), 'Shipment or reward history could not be loaded.'];
@@ -255,6 +257,7 @@ final class CustomerController
             'customer' => $customer,
             'shipments' => $shipments,
             'rewardAdjustments' => $rewardAdjustments,
+            'rewardRedemptions' => $rewardRedemptions,
             'old' => is_array($old) ? $old : [],
             'errors' => is_array($errors) ? $errors : [],
             'flash' => is_string($flash) ? $flash : null,

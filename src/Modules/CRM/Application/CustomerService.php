@@ -75,6 +75,15 @@ final class CustomerService
         return $this->repository->rewardAdjustments($customerKey, max(1, min($limit, 50)));
     }
 
+    /** @return list<array{pointsDelta: int, reason: string, actorId: string, createdAt: string}> */
+    public function rewardRedemptions(string $customerKey, int $limit = 20): array
+    {
+        if (preg_match('/^[a-f0-9]{64}$/', $customerKey) !== 1) {
+            return [];
+        }
+        return $this->repository->rewardRedemptions($customerKey, max(1, min($limit, 50)));
+    }
+
     public function adjustRewards(
         string $customerKey,
         string $operation,
@@ -182,6 +191,8 @@ final class CustomerService
             $existing?->createdAt,
             $existing?->updatedAt,
             $existing?->rewardAdjustmentPoints ?? 0,
+            $existing?->rewardEarnedAdjustmentPoints ?? 0,
+            $existing?->cargoWeightRewardPoints ?? 0,
         );
 
         return $this->repository->save($customer, $actorId);

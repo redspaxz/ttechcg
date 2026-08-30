@@ -9,6 +9,7 @@ use App\Modules\Contact\Infrastructure\DemoInquiryRepository;
 use App\Modules\Contact\Infrastructure\UnavailableInquiryRepository;
 use App\Modules\Contact\UI\ContactController;
 use App\Modules\CRM\Application\CustomerService;
+use App\Modules\CRM\Domain\CustomerProfile;
 use App\Modules\CRM\Infrastructure\DemoCustomerRepository;
 use App\Modules\CRM\UI\CustomerController;
 use App\Modules\Pickupsheet\Application\PickupSheetService;
@@ -505,6 +506,24 @@ $assert(
     DhlTrackingUrl::forAwb(' 1234567890 ') === 'https://www.dhl.com/cm-en/home/tracking.html?tracking-id=1234567890&submit=1&inputsource=marketingstage',
     'DHL tracking links should substitute the trimmed AWB into the Cameroon tracking URL.',
 );
+
+$bronzeCustomer = new CustomerProfile(null, str_repeat('a', 64), 'Bronze Customer', cargoWeightRewardPoints: 99);
+$silverCustomer = new CustomerProfile(null, str_repeat('b', 64), 'Silver Customer', cargoWeightRewardPoints: 75, rewardEarnedAdjustmentPoints: 25);
+$goldCustomer = new CustomerProfile(null, str_repeat('c', 64), 'Gold Customer', cargoWeightRewardPoints: 250);
+$platinumCustomer = new CustomerProfile(null, str_repeat('d', 64), 'Platinum Customer', cargoWeightRewardPoints: 500);
+$redeemedCustomer = new CustomerProfile(
+    null,
+    str_repeat('e', 64),
+    'Redeemed Customer',
+    rewardAdjustmentPoints: 19,
+    rewardEarnedAdjustmentPoints: 24,
+    cargoWeightRewardPoints: 1,
+);
+$assert($bronzeCustomer->loyaltyTier() === 'Bronze', 'Customers with fewer than 100 lifetime points should be Bronze.');
+$assert($silverCustomer->loyaltyTier() === 'Silver', 'Customers with 100 lifetime points should be Silver.');
+$assert($goldCustomer->loyaltyTier() === 'Gold', 'Customers with 250 lifetime points should be Gold.');
+$assert($platinumCustomer->loyaltyTier() === 'Platinum', 'Customers with 500 lifetime points should be Platinum.');
+$assert($redeemedCustomer->rewardBalance() === 20 && $redeemedCustomer->lifetimeEarnedPoints() === 25, 'Redemptions should reduce only the available balance, not lifetime earned points.');
 $oidcSettings = [
     'enabled' => true,
     'issuer' => 'https://oauth.id.jumpcloud.com/',
@@ -1158,7 +1177,10 @@ $assert($customerDirectory->status() === 200 && str_contains($customerDirectory-
 $assert(str_contains($customerDirectory->body(), 'Controller Client') && str_contains($customerDirectory->body(), '14,000 XAF'), 'CRM should synchronize shipment consignors and their operational value.');
 $assert($customerProfile->status() === 200 && str_contains($customerProfile->body(), 'Recent shipments') && str_contains($customerProfile->body(), $savedReference), 'A synchronized customer profile should show linked shipment history.');
 $assert(str_contains($customerProfile->body(), 'href="' . $trackingHref . '" target="_blank" rel="noopener noreferrer"'), 'CRM shipment history should link each AWB to DHL tracking.');
-$assert(str_contains($customerDirectory->body(), '1 point') && str_contains($customerProfile->body(), '1 point per active shipment'), 'Each active shipment should automatically earn one customer reward point.');
+$assert(str_contains($customerProfile->body(), 'Total Points Balance') && str_contains($customerProfile->body(), 'Lifetime Earned Points') && str_contains($customerProfile->body(), 'Loyalty Tier'), 'Customer loyalty should present the three requested reward metrics.');
+$assert(str_contains($customerProfile->body(), '<span>Loyalty Tier</span><strong>Bronze</strong>'), 'A new shipment customer should begin in the Bronze loyalty tier.');
+$assert(str_contains($customerDirectory->body(), '12 points') && str_contains($customerProfile->body(), '10 points per 1 kg shipped'), 'The recorded 1.25 kg shipment should automatically earn 12 whole reward points.');
+$assert(str_contains($customerProfile->body(), 'Redemption log') && str_contains($customerProfile->body(), 'No points have been redeemed.'), 'Customer loyalty should expose an empty dedicated redemption log before the first redemption.');
 $invalidCustomerCsrf = $customerController->save(new Request('POST', '/dhl/pickupsheet/customers/save', [], [
     '_token' => 'invalid-token',
     'customer_key' => $customerKey,
@@ -1203,7 +1225,8 @@ $bonusReward = $customerController->adjustRewards(new Request('POST', '/dhl/pick
 ]));
 $assert($bonusReward->status() === 303, 'An administrator should add customer bonus points.');
 $bonusRewardProfile = $customerController->edit(new Request('GET', '/dhl/pickupsheet/customers/edit', ['customer' => $customerKey]));
-$assert(str_contains($bonusRewardProfile->body(), '25') && str_contains($bonusRewardProfile->body(), '+24') && str_contains($bonusRewardProfile->body(), 'Customer loyalty bonus'), 'The reward balance and append-only bonus history should include shipment points and manual bonuses.');
+$assert(str_contains($bonusRewardProfile->body(), '36') && str_contains($bonusRewardProfile->body(), '+24') && str_contains($bonusRewardProfile->body(), 'Customer loyalty bonus'), 'The reward balance and append-only bonus history should include cargo-weight points and manual bonuses.');
+$assert(str_contains($bonusRewardProfile->body(), '<span>Lifetime Earned Points</span><strong>36</strong>'), 'Positive bonuses should increase lifetime earned points.');
 $redeemReward = $customerController->adjustRewards(new Request('POST', '/dhl/pickupsheet/customers/rewards', [], [
     '_token' => $pickupCsrf->token(),
     'customer_key' => $customerKey,
@@ -1213,19 +1236,21 @@ $redeemReward = $customerController->adjustRewards(new Request('POST', '/dhl/pic
 ]));
 $assert($redeemReward->status() === 303, 'An administrator should record a customer reward redemption.');
 $redeemedRewardProfile = $customerController->edit(new Request('GET', '/dhl/pickupsheet/customers/edit', ['customer' => $customerKey]));
-$assert(str_contains($redeemedRewardProfile->body(), '20') && str_contains($redeemedRewardProfile->body(), '-5') && str_contains($redeemedRewardProfile->body(), 'Redeemed service reward'), 'A redemption should reduce the reward balance and remain in adjustment history.');
+$assert(str_contains($redeemedRewardProfile->body(), '31') && str_contains($redeemedRewardProfile->body(), '-5') && str_contains($redeemedRewardProfile->body(), 'Redeemed service reward'), 'A redemption should reduce the reward balance and remain in adjustment history.');
+$assert(str_contains($redeemedRewardProfile->body(), '<span>Total Points Balance</span><strong>31</strong>') && str_contains($redeemedRewardProfile->body(), '<span>Lifetime Earned Points</span><strong>36</strong>'), 'Redeeming points should reduce the total balance without reducing lifetime earnings.');
+$assert(str_contains($redeemedRewardProfile->body(), '<h3>Redemption log</h3>') && str_contains($redeemedRewardProfile->body(), '<strong>5 points</strong>') && str_contains($redeemedRewardProfile->body(), 'Redeemed service reward'), 'The dedicated redemption log should show the redeemed amount, reason, time, and administrator.');
 $overdrawReward = $customerController->adjustRewards(new Request('POST', '/dhl/pickupsheet/customers/rewards', [], [
     '_token' => $pickupCsrf->token(),
     'customer_key' => $customerKey,
     'operation' => 'redeem',
-    'points' => '21',
+    'points' => '32',
     'reason' => 'Invalid overdraw attempt',
 ]));
 $overdrawRewardProfile = $customerController->edit(new Request('GET', '/dhl/pickupsheet/customers/edit', ['customer' => $customerKey]));
 $assert($overdrawReward->status() === 303 && str_contains($overdrawRewardProfile->body(), 'cannot exceed the available reward balance'), 'Reward redemptions must not make a customer balance negative.');
 $crmAuditDashboard = $pickupController->dashboard(new Request('GET', '/dhl/pickupsheet/dashboard'));
 $assert(str_contains($crmAuditDashboard->body(), 'pickupsheet.crm_customer_save') && str_contains($crmAuditDashboard->body(), 'Customer status: attention'), 'CRM customer changes should appear in the detailed administrator audit log.');
-$assert(str_contains($crmAuditDashboard->body(), 'pickupsheet.crm_reward_adjustment') && str_contains($crmAuditDashboard->body(), 'Reward balance: 20') && !str_contains($crmAuditDashboard->body(), 'Customer loyalty bonus'), 'Reward adjustments should appear in the detailed administrator audit log without storing the adjustment reason.');
+$assert(str_contains($crmAuditDashboard->body(), 'pickupsheet.crm_reward_adjustment') && str_contains($crmAuditDashboard->body(), 'Reward balance: 31') && !str_contains($crmAuditDashboard->body(), 'Customer loyalty bonus'), 'Reward adjustments should appear in the detailed administrator audit log without storing the adjustment reason.');
 $recordsSession->login($viewerPrincipal);
 $viewerCustomerDirectory = $customerController->index(new Request('GET', '/dhl/pickupsheet/customers'));
 $assert($viewerCustomerDirectory->status() === 403, 'A viewer must not access administrator CRM data.');
@@ -1464,7 +1489,7 @@ $assert(is_string($dhlAsset) && !str_contains($dhlAsset, '<text'), 'The disquali
 $partnerSources = file_get_contents(dirname(__DIR__) . '/public/assets/partners/README.md');
 $assert(is_string($partnerSources) && str_contains($partnerSources, 'www.dhl.com/content/dam/dhl/global/core/images/logos/dhl-logo.svg'), 'The official DHL artwork source should be documented.');
 $assert(!str_contains($home, 'href="/dhl/pickupsheet"'), 'Pickupsheet should not be discoverable from the public site chrome or homepage.');
-$assert(str_contains($home, 'styles.css?v=20260830-awb-tracking'), 'AWB tracking-link styles should use a cache-safe stylesheet version.');
+$assert(str_contains($home, 'styles.css?v=20260830-loyalty-rewards'), 'Loyalty reward styles should use a cache-safe stylesheet version.');
 $assert(str_contains($home, 'app.js?v=20260827-jumpcloud-rbac'), 'The JumpCloud RBAC update should use a cache-safe application script version.');
 $assert(str_contains($home, 'analytics.js?v=20260825-security-hardening'), 'The current consent-aware Google Analytics loader should render on every page.');
 $assert(str_contains($home, 'data-analytics-accept'), 'The site should offer an explicit analytics acceptance control.');
@@ -1619,7 +1644,7 @@ $assert(str_contains($privacy, 'successful staff login, last-activity, and logou
 $assert(str_contains($privacy, 'event action, result, protected route, request identifier, and pseudonymous client identifier'), 'The privacy notice should disclose the detailed user audit fields.');
 $assert(str_contains($privacy, 'Shipment consignor names are synchronized into the administrator-only customer directory'), 'The privacy notice should disclose shipment-to-CRM synchronization.');
 $assert(str_contains($privacy, 'contact name, business email, phone, address, city') && str_contains($privacy, 'CRM and reward access is limited to Pickupsheet administrators'), 'The privacy notice should disclose CRM fields and the administrator-only access boundary.');
-$assert(str_contains($privacy, 'Each active shipment contributes one customer reward point') && str_contains($privacy, 'required reason, UTC time, and pseudonymous administrator identifier'), 'The privacy notice should disclose automatic reward points and adjustment-ledger fields.');
+$assert(str_contains($privacy, '10 points per kilogram shipped') && str_contains($privacy, 'required reason, UTC time, and pseudonymous administrator identifier'), 'The privacy notice should disclose weight-based reward points and adjustment-ledger fields.');
 $assert(str_contains($privacy, "visitor's country code from the source IP address") && str_contains($privacy, 'restrict portal access to Cameroon and Nigeria'), 'The privacy notice should disclose country-level Pickupsheet access enforcement.');
 
 $environmentExample = file_get_contents(dirname(__DIR__) . '/.env.example');
@@ -1780,6 +1805,8 @@ $assert(is_string($customerMigration) && str_contains($customerMigration, 'next_
 $customerRepositorySource = file_get_contents(dirname(__DIR__) . '/src/Modules/CRM/Infrastructure/MysqlCustomerRepository.php');
 $assert(is_string($customerRepositorySource) && str_contains($customerRepositorySource, 'SHA2(LOWER(TRIM(ps.consignor)), 256)'), 'CRM should connect normalized shipment consignors to customer profiles.');
 $assert(is_string($customerRepositorySource) && str_contains($customerRepositorySource, 'COALESCE(SUM(ps.amount_xaf), 0)'), 'CRM should calculate customer shipment value from operational data.');
+$assert(is_string($customerRepositorySource) && str_contains($customerRepositorySource, 'FLOOR(COALESCE(SUM(ps.weight_kg), 0) * 10)'), 'CRM should award 10 whole reward points per aggregate kilogram of active cargo.');
+$assert(is_string($customerRepositorySource) && str_contains($customerRepositorySource, 'points_delta < 0'), 'CRM redemption logs should query only negative point adjustments.');
 $customerRewardsMigration = file_get_contents(dirname(__DIR__) . '/database/migrations/013_create_pickup_customer_rewards.sql');
 $assert(is_string($customerRewardsMigration) && str_contains($customerRewardsMigration, 'CREATE TABLE IF NOT EXISTS pickup_customer_reward_adjustments'), 'MySQL should create the customer reward adjustment ledger idempotently.');
 $assert(is_string($customerRewardsMigration) && str_contains($customerRewardsMigration, 'points_delta INT NOT NULL') && str_contains($customerRewardsMigration, 'actor_id CHAR(24) NOT NULL'), 'Reward adjustments should store signed changes with pseudonymous administrator attribution.');

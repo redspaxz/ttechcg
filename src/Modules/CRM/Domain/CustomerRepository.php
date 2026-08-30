@@ -40,6 +40,16 @@ interface CustomerRepository
      */
     public function rewardAdjustments(string $customerKey, int $limit): array;
 
+    /**
+     * @return list<array{
+     *     pointsDelta: int,
+     *     reason: string,
+     *     actorId: string,
+     *     createdAt: string
+     * }>
+     */
+    public function rewardRedemptions(string $customerKey, int $limit): array;
+
     public function addRewardAdjustment(
         string $customerKey,
         int $pointsDelta,

@@ -162,6 +162,20 @@ final class DemoCustomerRepository implements CustomerRepository
         return array_slice(array_reverse($customerAdjustments), 0, max(1, min($limit, 50)));
     }
 
+    public function rewardRedemptions(string $customerKey, int $limit): array
+    {
+        $adjustments = $_SESSION[self::REWARDS_SESSION_KEY] ?? [];
+        $adjustments = is_array($adjustments) ? $adjustments : [];
+        $redemptions = array_values(array_filter(
+            $adjustments,
+            static fn (mixed $adjustment): bool => is_array($adjustment)
+                && ($adjustment['customerKey'] ?? '') === $customerKey
+                && (int) ($adjustment['pointsDelta'] ?? 0) < 0,
+        ));
+
+        return array_slice(array_reverse($redemptions), 0, max(1, min($limit, 50)));
+    }
+
     public function addRewardAdjustment(
         string $customerKey,
         int $pointsDelta,
@@ -198,7 +212,7 @@ final class DemoCustomerRepository implements CustomerRepository
         return is_array($profiles) ? $profiles : [];
     }
 
-    /** @return array<string, array{displayName: string, shipmentCount: int, totalCashXaf: int, firstShipmentOn: ?string, lastShipmentOn: ?string}> */
+    /** @return array<string, array{displayName: string, shipmentCount: int, totalCashXaf: int, totalWeightGrams: int, firstShipmentOn: ?string, lastShipmentOn: ?string}> */
     private function metrics(): array
     {
         $metrics = [];
@@ -212,11 +226,13 @@ final class DemoCustomerRepository implements CustomerRepository
                     'displayName' => trim($shipment->consignor),
                     'shipmentCount' => 0,
                     'totalCashXaf' => 0,
+                    'totalWeightGrams' => 0,
                     'firstShipmentOn' => null,
                     'lastShipmentOn' => null,
                 ];
                 $metrics[$key]['shipmentCount']++;
                 $metrics[$key]['totalCashXaf'] += $shipment->amountXaf;
+                $metrics[$key]['totalWeightGrams'] += $this->weightToGrams($shipment->weightKg);
                 $metrics[$key]['firstShipmentOn'] = $metrics[$key]['firstShipmentOn'] === null
                     ? $sheet->collectionDate
                     : min($metrics[$key]['firstShipmentOn'], $sheet->collectionDate);
@@ -252,6 +268,8 @@ final class DemoCustomerRepository implements CustomerRepository
             isset($profile['createdAt']) ? (string) $profile['createdAt'] : null,
             isset($profile['updatedAt']) ? (string) $profile['updatedAt'] : null,
             $this->rewardAdjustmentPoints((string) $profile['customerKey']),
+            $this->rewardEarnedAdjustmentPoints((string) $profile['customerKey']),
+            intdiv((int) ($metrics['totalWeightGrams'] ?? 0), 100),
         );
     }
 
@@ -265,6 +283,28 @@ final class DemoCustomerRepository implements CustomerRepository
                     : 0,
             is_array($adjustments) ? $adjustments : [],
         ));
+    }
+
+    private function rewardEarnedAdjustmentPoints(string $customerKey): int
+    {
+        $adjustments = $_SESSION[self::REWARDS_SESSION_KEY] ?? [];
+        return array_sum(array_map(
+            static fn (mixed $adjustment): int => is_array($adjustment)
+                && ($adjustment['customerKey'] ?? '') === $customerKey
+                    ? max(0, (int) ($adjustment['pointsDelta'] ?? 0))
+                    : 0,
+            is_array($adjustments) ? $adjustments : [],
+        ));
+    }
+
+    private function weightToGrams(string $weightKg): int
+    {
+        if (preg_match('/^(\d+)(?:\.(\d{1,3}))?$/', trim($weightKg), $matches) !== 1) {
+            return 0;
+        }
+
+        $fraction = str_pad($matches[2] ?? '', 3, '0');
+        return ((int) $matches[1] * 1000) + (int) $fraction;
     }
 
     private function key(string $name): string

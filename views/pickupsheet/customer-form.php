@@ -8,6 +8,7 @@ $old = is_array($old ?? null) ? $old : [];
 $errors = is_array($errors ?? null) ? $errors : [];
 $shipments = is_array($shipments ?? null) ? $shipments : [];
 $rewardAdjustments = is_array($rewardAdjustments ?? null) ? $rewardAdjustments : [];
+$rewardRedemptions = is_array($rewardRedemptions ?? null) ? $rewardRedemptions : [];
 $value = static fn (string $field, mixed $fallback = ''): mixed => array_key_exists($field, $old) ? $old[$field] : $fallback;
 $status = (string) $value('status', $customer?->status ?? 'lead');
 $trackingUrl = static fn (mixed $awbNumber): string => \App\Modules\Pickupsheet\Domain\DhlTrackingUrl::forAwb((string) $awbNumber);
@@ -40,11 +41,11 @@ $trackingUrl = static fn (mixed $awbNumber): string => \App\Modules\Pickupsheet\
             </section>
 
             <section class="pickup-customer-rewards" aria-labelledby="customer-rewards-title">
-                <div class="pickup-card-heading"><div><span>Customer loyalty</span><h2 id="customer-rewards-title">Reward points</h2></div><small>1 point per active shipment</small></div>
+                <div class="pickup-card-heading"><div><span>Customer loyalty</span><h2 id="customer-rewards-title">Reward points</h2></div><small>10 points per 1 kg shipped</small></div>
                 <div class="pickup-reward-summary">
-                    <article><span>Available balance</span><strong><?= $e(number_format($customer->rewardBalance())) ?></strong><small>Reward points</small></article>
-                    <article><span>Shipment points</span><strong><?= $e(number_format($customer->shipmentRewardPoints())) ?></strong><small><?= $e(number_format($customer->shipmentCount)) ?> eligible shipments</small></article>
-                    <article><span>Adjustments</span><strong><?= $customer->rewardAdjustmentPoints > 0 ? '+' : '' ?><?= $e(number_format($customer->rewardAdjustmentPoints)) ?></strong><small>Bonuses less redemptions</small></article>
+                    <article><span>Total Points Balance</span><strong><?= $e(number_format($customer->rewardBalance())) ?></strong><small>Available to redeem</small></article>
+                    <article><span>Lifetime Earned Points</span><strong><?= $e(number_format($customer->lifetimeEarnedPoints())) ?></strong><small>Cargo weight and bonus points</small></article>
+                    <article><span>Loyalty Tier</span><strong><?= $e($customer->loyaltyTier()) ?></strong><small>Based on lifetime earned points</small></article>
                 </div>
                 <div class="pickup-reward-layout">
                     <form class="pickup-reward-form" method="post" action="<?= $e($basePath) ?>/dhl/pickupsheet/customers/rewards">
@@ -65,6 +66,16 @@ $trackingUrl = static fn (mixed $awbNumber): string => \App\Modules\Pickupsheet\
                             <?php endforeach; ?></ol>
                         <?php endif; ?>
                     </div>
+                </div>
+                <div class="pickup-redemption-log">
+                    <div><span>Audit trail</span><h3>Redemption log</h3><p>Latest 20 point redemptions for this customer.</p></div>
+                    <?php if ($rewardRedemptions === []): ?>
+                        <p class="pickup-redemption-empty">No points have been redeemed.</p>
+                    <?php else: ?>
+                        <div class="pickup-redemption-table-wrap"><table><thead><tr><th>Points redeemed</th><th>Reason</th><th>Redeemed at</th><th>Administrator</th></tr></thead><tbody>
+                            <?php foreach ($rewardRedemptions as $redemption): ?><tr><td><strong><?= $e(number_format(abs((int) ($redemption['pointsDelta'] ?? 0)))) ?> points</strong></td><td><?= $e($redemption['reason'] ?? '') ?></td><td><?= $e($redemption['createdAt'] ?? '') ?> UTC</td><td><?= $e(substr((string) ($redemption['actorId'] ?? ''), 0, 10)) ?></td></tr><?php endforeach; ?>
+                        </tbody></table></div>
+                    <?php endif; ?>
                 </div>
             </section>
         <?php endif; ?>
