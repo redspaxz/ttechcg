@@ -13,7 +13,7 @@ $e = static fn (mixed $value): string => htmlspecialchars((string) $value, ENT_Q
     <meta name="viewport" content="width=device-width, initial-scale=1">
     <meta name="robots" content="noindex, nofollow">
     <title><?= $e($pageTitle ?? 'Pickup sheet') ?> | Pickupsheet</title>
-    <link rel="stylesheet" href="<?= $e($assetBase) ?>/print.css?v=20260825-print-dialog">
+    <link rel="stylesheet" href="<?= $e($assetBase) ?>/print.css?v=20260830-awb-tracking">
     <script src="<?= $e($assetBase) ?>/print.js?v=20260825-print-dialog" defer></script>
 </head>
 <body>

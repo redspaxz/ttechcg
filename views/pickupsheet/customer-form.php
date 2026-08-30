@@ -10,6 +10,7 @@ $shipments = is_array($shipments ?? null) ? $shipments : [];
 $rewardAdjustments = is_array($rewardAdjustments ?? null) ? $rewardAdjustments : [];
 $value = static fn (string $field, mixed $fallback = ''): mixed => array_key_exists($field, $old) ? $old[$field] : $fallback;
 $status = (string) $value('status', $customer?->status ?? 'lead');
+$trackingUrl = static fn (mixed $awbNumber): string => \App\Modules\Pickupsheet\Domain\DhlTrackingUrl::forAwb((string) $awbNumber);
 ?>
 <section class="pickup-view-workspace pickup-crm-workspace">
     <div class="container pickup-workspace-header">
@@ -104,7 +105,7 @@ $status = (string) $value('status', $customer?->status ?? 'lead');
                 <div class="pickup-card-heading"><div><span>Operational history</span><h2 id="customer-history-title">Recent shipments</h2></div><small>Latest 20</small></div>
                 <div class="pickup-crm-table-wrap"><table><thead><tr><th>Date</th><th>Reference</th><th>AWB</th><th>Destination</th><th>Amount</th><th>Status</th></tr></thead><tbody>
                     <?php if ($shipments === []): ?><tr><td colspan="6">No shipment history is linked to this customer.</td></tr><?php endif; ?>
-                    <?php foreach ($shipments as $shipment): ?><tr><td><?= $e($shipment['collectionDate'] ?? '') ?></td><td><a href="<?= $e($basePath) ?>/dhl/pickupsheet/submissions?reference=<?= $e(rawurlencode((string) ($shipment['referenceNumber'] ?? ''))) ?>"><?= $e($shipment['referenceNumber'] ?? '') ?></a></td><td><?= $e($shipment['awbNumber'] ?? '') ?></td><td><?= $e($shipment['destination'] ?? '') ?></td><td><?= $e(number_format((int) ($shipment['amountXaf'] ?? 0))) ?> XAF</td><td><?= $e(ucfirst((string) ($shipment['status'] ?? 'open'))) ?></td></tr><?php endforeach; ?>
+                    <?php foreach ($shipments as $shipment): ?><tr><td><?= $e($shipment['collectionDate'] ?? '') ?></td><td><a href="<?= $e($basePath) ?>/dhl/pickupsheet/submissions?reference=<?= $e(rawurlencode((string) ($shipment['referenceNumber'] ?? ''))) ?>"><?= $e($shipment['referenceNumber'] ?? '') ?></a></td><td><a class="pickup-awb-link" href="<?= $e($trackingUrl($shipment['awbNumber'] ?? '')) ?>" target="_blank" rel="noopener noreferrer" aria-label="Track AWB <?= $e($shipment['awbNumber'] ?? '') ?> with DHL"><?= $e($shipment['awbNumber'] ?? '') ?></a></td><td><?= $e($shipment['destination'] ?? '') ?></td><td><?= $e(number_format((int) ($shipment['amountXaf'] ?? 0))) ?> XAF</td><td><?= $e(ucfirst((string) ($shipment['status'] ?? 'open'))) ?></td></tr><?php endforeach; ?>
                 </tbody></table></div>
             </section>
         <?php endif; ?>

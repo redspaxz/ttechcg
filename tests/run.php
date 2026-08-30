@@ -12,6 +12,7 @@ use App\Modules\CRM\Application\CustomerService;
 use App\Modules\CRM\Infrastructure\DemoCustomerRepository;
 use App\Modules\CRM\UI\CustomerController;
 use App\Modules\Pickupsheet\Application\PickupSheetService;
+use App\Modules\Pickupsheet\Domain\DhlTrackingUrl;
 use App\Modules\Pickupsheet\Infrastructure\DemoPickupSheetRepository;
 use App\Modules\Pickupsheet\Infrastructure\UnavailablePickupSheetRepository;
 use App\Modules\Pickupsheet\UI\PickupsheetAuthController;
@@ -499,6 +500,11 @@ $oidcHttpClient = new class implements OidcHttpClient {
         return str_ends_with($url, '/.well-known/jwks.json') ? $this->jwks : $this->userInfo;
     }
 };
+
+$assert(
+    DhlTrackingUrl::forAwb(' 1234567890 ') === 'https://www.dhl.com/cm-en/home/tracking.html?tracking-id=1234567890&submit=1&inputsource=marketingstage',
+    'DHL tracking links should substitute the trimmed AWB into the Cameroon tracking URL.',
+);
 $oidcSettings = [
     'enabled' => true,
     'issuer' => 'https://oauth.id.jumpcloud.com/',
@@ -985,11 +991,13 @@ $assert($savedControllerSheet->status === 'open' && !$savedControllerSheet->isPa
 $assert(($savedControllerSheet->shipments[0]->checkedBy ?? '') === 'Records Administrator', 'The server should ignore a submitted checker and persist the authenticated account name.');
 $assert((bool) preg_match('/^[0-9]{2}:[0-9]{2}$/', $savedControllerSheet->shipments[0]->collectionTime ?? ''), 'The controller should persist the server-generated submission time.');
 $savedReference = $savedControllerSheet->referenceNumber;
+$trackingHref = htmlspecialchars(DhlTrackingUrl::forAwb('1234567890'), ENT_QUOTES, 'UTF-8');
 
 $openSubmissions = $pickupController->submissions(new Request('GET', '/dhl/pickupsheet/submissions', [], [], '', $recordsServer));
 $assert(str_contains($openSubmissions->body(), $savedReference), 'The direct table should show each sheet reference.');
 $assert(!str_contains($openSubmissions->body(), 'dhl-logo.svg'), 'The submitted-sheets screen should not display the DHL logo.');
 $assert(str_contains($openSubmissions->body(), 'Controller Client'), 'The direct table should show shipment rows.');
+$assert(str_contains($openSubmissions->body(), 'href="' . $trackingHref . '" target="_blank" rel="noopener noreferrer"'), 'Submitted AWBs should open their exact DHL tracking URL safely in a new tab.');
 $assert(str_contains($openSubmissions->body(), 'Print / PDF'), 'Each submitted sheet should provide a print-to-PDF action.');
 $assert(str_contains($openSubmissions->body(), 'Export Excel'), 'Each submitted sheet should provide an Excel export action.');
 $assert(str_contains($openSubmissions->body(), 'Manage access'), 'An administrator should receive the account-management action.');
@@ -1004,6 +1012,7 @@ $assert(($openSubmissions->headers()['Cache-Control'] ?? '') === 'private, no-st
 $pageFragment = $pickupController->submissionsPage(new Request('GET', '/dhl/pickupsheet/submissions/page', ['page' => '1'], [], '', $recordsServer));
 $assert($pageFragment->status() === 200, 'A valid Pickupsheet session should load a paginated AJAX fragment.');
 $assert(str_contains($pageFragment->body(), 'Controller Client'), 'The AJAX page fragment should contain its shipment records.');
+$assert(str_contains($pageFragment->body(), 'href="' . $trackingHref . '"'), 'AJAX-loaded AWBs should retain their DHL tracking links.');
 $assert(!str_contains($pageFragment->body(), '<!doctype html>'), 'The AJAX endpoint should return only the replaceable records fragment.');
 $recordsSession->logout();
 $deniedPageFragment = $pickupController->submissionsPage(new Request('GET', '/dhl/pickupsheet/submissions/page', ['page' => '1'], [], '', [
@@ -1148,6 +1157,7 @@ $customerProfile = $customerController->edit(new Request('GET', '/dhl/pickupshee
 $assert($customerDirectory->status() === 200 && str_contains($customerDirectory->body(), 'Customer CRM'), 'An administrator should open the customer CRM.');
 $assert(str_contains($customerDirectory->body(), 'Controller Client') && str_contains($customerDirectory->body(), '14,000 XAF'), 'CRM should synchronize shipment consignors and their operational value.');
 $assert($customerProfile->status() === 200 && str_contains($customerProfile->body(), 'Recent shipments') && str_contains($customerProfile->body(), $savedReference), 'A synchronized customer profile should show linked shipment history.');
+$assert(str_contains($customerProfile->body(), 'href="' . $trackingHref . '" target="_blank" rel="noopener noreferrer"'), 'CRM shipment history should link each AWB to DHL tracking.');
 $assert(str_contains($customerDirectory->body(), '1 point') && str_contains($customerProfile->body(), '1 point per active shipment'), 'Each active shipment should automatically earn one customer reward point.');
 $invalidCustomerCsrf = $customerController->save(new Request('POST', '/dhl/pickupsheet/customers/save', [], [
     '_token' => 'invalid-token',
@@ -1323,7 +1333,7 @@ $printResponse = $pickupController->print(new Request('GET', '/dhl/pickupsheet/s
 $printStyles = file_get_contents(dirname(__DIR__) . '/public/assets/print.css');
 $printScript = file_get_contents(dirname(__DIR__) . '/public/assets/print.js');
 $assert($printResponse->status() === 200, 'A direct pickup sheet should render for printing.');
-$assert(str_contains($printResponse->body(), 'print.css?v=20260825-print-dialog'), 'The print view should load its CSP-compatible external stylesheet.');
+$assert(str_contains($printResponse->body(), 'print.css?v=20260830-awb-tracking'), 'The print view should load its cache-safe external stylesheet.');
 $assert(str_contains($printResponse->body(), 'print.js?v=20260825-print-dialog'), 'The print view should load its CSP-compatible external behavior.');
 $assert(str_contains($printResponse->body(), 'data-print-pickup'), 'The print view should provide a manual print-dialog trigger.');
 $assert(!str_contains($printResponse->body(), 'onclick='), 'The print view should not rely on CSP-blocked inline event handlers.');
@@ -1334,6 +1344,7 @@ $assert(str_contains($printResponse->body(), $savedReference), 'The printable sh
 $assert(str_contains($printResponse->body(), 'PICK-UP SHEET'), 'The printable sheet should reproduce the original uppercase form heading.');
 $assert(str_contains($printResponse->body(), 'CONTROLLER AGENT'), 'The printable sheet should uppercase the agent value in its generated content.');
 $assert(str_contains($printResponse->body(), 'CONTROLLER CLIENT'), 'The printable sheet should uppercase consignor values in its generated content.');
+$assert(str_contains($printResponse->body(), 'href="' . $trackingHref . '" target="_blank" rel="noopener noreferrer"'), 'Printable AWBs should retain clickable DHL tracking links in saved PDFs.');
 $assert(str_contains($printResponse->body(), 'RECORDS ADMINISTRATOR'), 'The printable sheet should uppercase the authenticated checker name in its generated content.');
 $assert(str_contains($printResponse->body(), '29/07/2026'), 'The printable sheet should use the original day/month/year date format.');
 $assert(str_contains($printResponse->body(), 'paper-empty-row'), 'The printable sheet should retain blank continuation rows like the original form.');
@@ -1453,7 +1464,7 @@ $assert(is_string($dhlAsset) && !str_contains($dhlAsset, '<text'), 'The disquali
 $partnerSources = file_get_contents(dirname(__DIR__) . '/public/assets/partners/README.md');
 $assert(is_string($partnerSources) && str_contains($partnerSources, 'www.dhl.com/content/dam/dhl/global/core/images/logos/dhl-logo.svg'), 'The official DHL artwork source should be documented.');
 $assert(!str_contains($home, 'href="/dhl/pickupsheet"'), 'Pickupsheet should not be discoverable from the public site chrome or homepage.');
-$assert(str_contains($home, 'styles.css?v=20260830-customer-rewards'), 'Customer reward styles should use a cache-safe stylesheet version.');
+$assert(str_contains($home, 'styles.css?v=20260830-awb-tracking'), 'AWB tracking-link styles should use a cache-safe stylesheet version.');
 $assert(str_contains($home, 'app.js?v=20260827-jumpcloud-rbac'), 'The JumpCloud RBAC update should use a cache-safe application script version.');
 $assert(str_contains($home, 'analytics.js?v=20260825-security-hardening'), 'The current consent-aware Google Analytics loader should render on every page.');
 $assert(str_contains($home, 'data-analytics-accept'), 'The site should offer an explicit analytics acceptance control.');

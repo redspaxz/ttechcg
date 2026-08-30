@@ -13,6 +13,7 @@ $date = DateTimeImmutable::createFromFormat('!Y-m-d', $pickupSheet->collectionDa
 $collectionDate = $date instanceof DateTimeImmutable ? $date->format('d/m/Y') : $pickupSheet->collectionDate;
 $minimumRows = 22;
 $blankRows = max(0, $minimumRows - $pickupSheet->shipmentCount());
+$trackingUrl = static fn (mixed $awbNumber): string => \App\Modules\Pickupsheet\Domain\DhlTrackingUrl::forAwb((string) $awbNumber);
 ?>
 <div class="print-actions">
     <button type="button" data-print-pickup>Print / Save as PDF</button>
@@ -61,7 +62,7 @@ $blankRows = max(0, $minimumRows - $pickupSheet->shipmentCount());
         <?php foreach ($pickupSheet->shipments as $shipment): ?>
             <tr>
                 <td><?= $upper($shipment->consignor) ?></td>
-                <td><?= $e($shipment->awbNumber) ?></td>
+                <td><a class="pickup-awb-link" href="<?= $e($trackingUrl($shipment->awbNumber)) ?>" target="_blank" rel="noopener noreferrer" aria-label="Track AWB <?= $e($shipment->awbNumber) ?> with DHL"><?= $e($shipment->awbNumber) ?></a></td>
                 <td><?= $upper($shipment->destination) ?></td>
                 <td><?= $e(number_format($shipment->amountXaf)) ?></td>
                 <td><?= $e($shipment->pieces) ?></td>

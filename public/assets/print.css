@@ -118,6 +118,13 @@ body { margin: 0; background: #5b5b5b; color: #151515; }
     vertical-align: middle;
 }
 .paper-shipment-table tbody tr { break-inside: avoid; page-break-inside: avoid; }
+.pickup-awb-link {
+    color: #000;
+    font-weight: inherit;
+    text-decoration: underline;
+    text-decoration-thickness: 0.2mm;
+    text-underline-offset: 0.5mm;
+}
 .paper-col-consignor { width: 25.5%; }
 .paper-col-awb { width: 16.5%; }
 .paper-col-destination { width: 9.5%; }
@@ -194,4 +201,5 @@ body { margin: 0; background: #5b5b5b; color: #151515; }
         text-align: left !important;
         vertical-align: middle !important;
     }
+    .pickup-awb-link { color: #000 !important; }
 }

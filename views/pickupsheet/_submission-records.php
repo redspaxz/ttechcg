@@ -21,6 +21,7 @@ $totalXaf = array_reduce(
     0,
 );
 $pageUrl = static fn (int $target): string => ($basePath ?? '') . '/dhl/pickupsheet/submissions?page=' . $target;
+$trackingUrl = static fn (mixed $awbNumber): string => \App\Modules\Pickupsheet\Domain\DhlTrackingUrl::forAwb((string) $awbNumber);
 ?>
 <?php if (!$pickupOperational): ?>
     <div class="notice notice-error" role="alert">Pickup-sheet storage is unavailable. Check the MySQL connection.</div>
@@ -79,7 +80,7 @@ $pageUrl = static fn (int $target): string => ($basePath ?? '') . '/dhl/pickupsh
                                 <tr>
                                     <td><?= $e($shipment->lineNumber) ?></td>
                                     <td><?= $e($shipment->consignor) ?></td>
-                                    <td><?= $e($shipment->awbNumber) ?></td>
+                                    <td><a class="pickup-awb-link" href="<?= $e($trackingUrl($shipment->awbNumber)) ?>" target="_blank" rel="noopener noreferrer" aria-label="Track AWB <?= $e($shipment->awbNumber) ?> with DHL"><?= $e($shipment->awbNumber) ?></a></td>
                                     <td><?= $e($shipment->destination) ?></td>
                                     <td><?= $e(number_format($shipment->amountXaf)) ?></td>
                                     <td><?= $e($shipment->pieces) ?></td>
