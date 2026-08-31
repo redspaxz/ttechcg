@@ -471,7 +471,7 @@ final class MysqlPickupSheetRepository implements PickupSheetRepository
              INNER JOIN pickup_sheets p ON p.id = ps.pickup_sheet_id
              WHERE p.deleted_at IS NULL AND TRIM(ps.consignor) <> \'\'
              GROUP BY LOWER(TRIM(ps.consignor))
-             ORDER BY COUNT(*) DESC, consignor ASC
+             ORDER BY consignor ASC
              LIMIT :limit',
         );
         $statement->bindValue(':limit', max(1, min($limit, 50)), PDO::PARAM_INT);

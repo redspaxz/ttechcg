@@ -186,18 +186,12 @@ final class DemoPickupSheetRepository implements PickupSheetRepository
                     continue;
                 }
                 $key = strtolower($sender);
-                $senders[$key] ??= ['name' => $sender, 'count' => 0];
-                $senders[$key]['count']++;
+                $senders[$key] ??= $sender;
             }
         }
-        usort($senders, static function (array $left, array $right): int {
-            $countOrder = $right['count'] <=> $left['count'];
-            return $countOrder !== 0 ? $countOrder : strcasecmp($left['name'], $right['name']);
-        });
-        return array_values(array_map(
-            static fn (array $sender): string => $sender['name'],
-            array_slice($senders, 0, max(1, min($limit, 50))),
-        ));
+        $names = array_values($senders);
+        usort($names, static fn (string $left, string $right): int => strcasecmp($left, $right));
+        return array_slice($names, 0, max(1, min($limit, 50)));
     }
 
     public function findByReference(string $referenceNumber): ?PickupSheet

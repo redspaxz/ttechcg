@@ -308,7 +308,10 @@ $assert(($topSenders[0]['sender'] ?? '') === 'Sender 01' && ($topSenders[0]['shi
 $assert(($topSenders[1]['sender'] ?? '') === 'Sender 02' && ($topSenders[1]['shipmentCount'] ?? 0) === 3, 'Sender performance should sort shipment counts from most to least.');
 $assert(!in_array('Legacy Leader', array_column($topSenders, 'sender'), true), 'Sender performance should exclude shipments older than the rolling twelve-month window.');
 $consignorSuggestions = $senderPerformanceService->consignorSuggestions(50);
-$assert(($consignorSuggestions[0] ?? '') === 'Sender 01' && count(array_filter($consignorSuggestions, static fn (string $name): bool => strtolower($name) === 'sender 01')) === 1, 'Consignor suggestions should rank frequent names first and group casing variants.');
+$sortedConsignorSuggestions = $consignorSuggestions;
+usort($sortedConsignorSuggestions, static fn (string $left, string $right): int => strcasecmp($left, $right));
+$assert($consignorSuggestions === $sortedConsignorSuggestions && ($consignorSuggestions[0] ?? '') === 'Legacy Leader', 'Consignor suggestions should be listed in case-insensitive A-Z order.');
+$assert(count(array_filter($consignorSuggestions, static fn (string $name): bool => strtolower($name) === 'sender 01')) === 1, 'Consignor suggestions should group casing variants.');
 $assert(in_array('Legacy Leader', $consignorSuggestions, true), 'Consignor suggestions should include previously used names outside the performance-chart window.');
 $_SESSION['_demo_pickup_sheets'] = $existingDemoPickupSheets;
 
@@ -1948,7 +1951,7 @@ $assert(str_contains($product, 'href="/dhl/pickupsheet/submissions"'), 'The dire
 $assert(str_contains($product, 'action="/dhl/pickupsheet"'), 'The pickup form should submit to its new DHL-namespaced route.');
 $assert(str_contains($product, 'shipments[0][consignor]'), 'The pickup form should collect a consignor for each row.');
 $assert(str_contains($product, 'data-consignor-input') && str_contains($product, 'aria-autocomplete="list"'), 'The consignor field should expose an accessible suggestion popup while preserving text entry.');
-$assert(str_contains($product, '<option value="Acme &amp; Sons"></option>') && str_contains($product, 'or enter a new name'), 'Consignor suggestions should be escaped safely and explain that new names remain valid.');
+$assert(str_contains($product, '<option value="Acme &amp; Sons"></option>') && str_contains($product, 'listed A-Z, or enter a new name'), 'Consignor suggestions should be escaped safely and explain their order and manual-entry fallback.');
 $assert(str_contains($product, 'shipments[0][awb_number]'), 'The pickup form should collect the AWB number from the PDF.');
 $assert(str_contains($product, 'shipments[0][destination]'), 'The pickup form should collect the destination code from the PDF.');
 $assert(str_contains($product, 'shipments[0][amount]'), 'The pickup form should collect cash amounts from the PDF.');
@@ -2165,7 +2168,7 @@ $assert(str_contains($pickupMysqlRepository, 'pickup_sheet_lifecycle_audit'), 'P
 $assert(str_contains($pickupMysqlRepository, 'GROUP BY LOWER(TRIM(ps.consignor))'), 'MySQL sender performance should group sender name casing consistently.');
 $assert(str_contains($pickupMysqlRepository, 'p.collection_date >= :minimum_date') && str_contains($pickupMysqlRepository, 'p.collection_date <= :maximum_date'), 'MySQL sender performance should use a bounded rolling collection-date window.');
 $assert(str_contains($pickupMysqlRepository, 'ORDER BY shipment_count DESC, sender ASC'), 'MySQL sender performance should rank the most frequent senders first with deterministic ties.');
-$assert(str_contains($pickupMysqlRepository, 'public function consignorSuggestions') && str_contains($pickupMysqlRepository, 'ORDER BY COUNT(*) DESC, consignor ASC'), 'MySQL should provide frequency-ranked consignor suggestions for new pickup sheets.');
+$assert(str_contains($pickupMysqlRepository, 'public function consignorSuggestions') && str_contains($pickupMysqlRepository, 'ORDER BY consignor ASC'), 'MySQL should provide alphabetically ordered consignor suggestions for new pickup sheets.');
 $assert(str_contains($pickupMysqlRepository, 'p.deleted_at IS NULL') && str_contains($pickupMysqlRepository, "TRIM(ps.consignor) <> \\'\\'"), 'Consignor suggestions should exclude deleted sheets and blank names.');
 $sessionActivityMigration = file_get_contents(dirname(__DIR__) . '/database/migrations/010_create_pickup_records_session_activity.sql');
 $assert(is_string($sessionActivityMigration) && str_contains($sessionActivityMigration, 'CREATE TABLE IF NOT EXISTS pickup_records_session_activity'), 'MySQL should persist successful staff session activity idempotently.');
