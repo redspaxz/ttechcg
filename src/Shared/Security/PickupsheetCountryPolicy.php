@@ -8,7 +8,8 @@ use App\Shared\Http\Request;
 
 final class PickupsheetCountryPolicy
 {
-    private const ALLOWED_COUNTRY = 'CM';
+    /** @var array<string, true> */
+    private const ALLOWED_COUNTRIES = ['CM' => true, 'NG' => true];
 
     public function __construct(private readonly bool $enabled)
     {
@@ -32,7 +33,7 @@ final class PickupsheetCountryPolicy
         }
 
         $country = strtoupper($request->trustedCloudflareHeader('CF-IPCountry'));
-        return hash_equals(self::ALLOWED_COUNTRY, $country);
+        return isset(self::ALLOWED_COUNTRIES[$country]);
     }
 
     private function protects(string $path): bool
