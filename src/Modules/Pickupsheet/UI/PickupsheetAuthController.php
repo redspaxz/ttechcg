@@ -452,13 +452,16 @@ final class PickupsheetAuthController
 
     private function destination(Request $request, RecordsPrincipal $principal): string
     {
+        if ($principal->can('list')) {
+            return $request->basePath . '/dhl/pickupsheet/submissions';
+        }
         if ($principal->can('dashboard')) {
             return $request->basePath . '/dhl/pickupsheet/dashboard';
         }
         if ($principal->can('create')) {
             return $request->basePath . '/dhl/pickupsheet/';
         }
-        return $request->basePath . '/dhl/pickupsheet/submissions';
+        return $request->basePath . '/dhl/pickupsheet/login';
     }
 
     /** @return array<string, string> */

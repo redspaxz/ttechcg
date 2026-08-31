@@ -1068,7 +1068,7 @@ $jumpCloudLocalLogin = $jumpCloudAuthController->authenticate(new Request('POST'
     'username' => $recordsUsername,
     'password' => $recordsPassword,
 ]));
-$assert($jumpCloudLocalLogin->status() === 303 && ($jumpCloudLocalLogin->headers()['Location'] ?? '') === '/dhl/pickupsheet/dashboard', 'A local administrator should remain usable while JumpCloud is configured.');
+$assert($jumpCloudLocalLogin->status() === 303 && ($jumpCloudLocalLogin->headers()['Location'] ?? '') === '/dhl/pickupsheet/submissions', 'A local administrator should land on submitted sheets while JumpCloud is configured.');
 $recordsSession->logout();
 $jumpCloudDenied = $jumpCloudAuthController->jumpCloudCallback(new Request('GET', '/dhl/pickupsheet/auth/jumpcloud/callback', ['error' => 'access_denied']));
 $jumpCloudRetryPage = $jumpCloudAuthController->login(new Request('GET', '/dhl/pickupsheet/login'));
@@ -1088,7 +1088,7 @@ $jumpCloudCallback = $jumpCloudAuthController->jumpCloudCallback(new Request('GE
     'state' => (string) ($jumpCloudStartQuery['state'] ?? ''),
 ], [], '', ['REMOTE_ADDR' => '203.0.113.30']));
 $assert($jumpCloudStart->status() === 302 && str_starts_with($jumpCloudStartLocation, 'https://oauth.id.jumpcloud.com/oauth2/auth?'), 'The Pickupsheet SSO route should redirect to JumpCloud.');
-$assert($jumpCloudCallback->status() === 303 && ($jumpCloudCallback->headers()['Location'] ?? '') === '/dhl/pickupsheet/dashboard', 'A JumpCloud admin group member should enter the Pickupsheet dashboard.');
+$assert($jumpCloudCallback->status() === 303 && ($jumpCloudCallback->headers()['Location'] ?? '') === '/dhl/pickupsheet/submissions', 'A JumpCloud admin group member should land on submitted sheets.');
 $jumpCloudUsersPage = $jumpCloudPickupController->users(new Request('GET', '/dhl/pickupsheet/submissions/users'));
 $assert(str_contains($jumpCloudUsersPage->body(), 'Password and access managed centrally') && str_contains($jumpCloudUsersPage->body(), 'Olivia N. Operator') && !str_contains($jumpCloudUsersPage->body(), 'name="current_password"') && str_contains($jumpCloudUsersPage->body(), 'Create local account'), 'JumpCloud administrators should see their directory name and retain local account management.');
 $jumpCloudPasswordReset = $jumpCloudPickupController->resetAdminPassword(new Request('POST', '/dhl/pickupsheet/submissions/users/admin-password', [], [
@@ -1103,7 +1103,7 @@ $recordsSession->logout();
 $cloudflareLogin = $cloudflareAuthController->login(new Request('GET', '/dhl/pickupsheet/login', [], [], '', [
     'HTTP_CF_ACCESS_JWT_ASSERTION' => $validCloudflareToken,
 ]));
-$assert($cloudflareLogin->status() === 303 && ($cloudflareLogin->headers()['Location'] ?? '') === '/dhl/pickupsheet/dashboard', 'An existing Cloudflare Access session should skip the Pickupsheet login page.');
+$assert($cloudflareLogin->status() === 303 && ($cloudflareLogin->headers()['Location'] ?? '') === '/dhl/pickupsheet/submissions', 'An existing Cloudflare Access session should skip login and land on submitted sheets.');
 $cloudflareSessionPrincipal = $recordsSession->principal($recordsAccess);
 $assert($cloudflareSessionPrincipal?->identityProvider === 'cloudflare_access' && $cloudflareSessionPrincipal->fullName() === 'Ada N. Administrator', 'The automatic Cloudflare handoff should establish the exact JumpCloud-backed application identity.');
 $cloudflareUsersPage = $jumpCloudPickupController->users(new Request('GET', '/dhl/pickupsheet/submissions/users'));
@@ -1136,7 +1136,7 @@ $adminLogin = $pickupAuthController->authenticate(new Request('POST', '/dhl/pick
     'username' => $recordsUsername,
     'password' => $recordsPassword,
 ], '', ['REMOTE_ADDR' => '203.0.113.20']));
-$assert($adminLogin->status() === 303 && ($adminLogin->headers()['Location'] ?? '') === '/dhl/pickupsheet/dashboard', 'An administrator should enter the admin dashboard after login.');
+$assert($adminLogin->status() === 303 && ($adminLogin->headers()['Location'] ?? '') === '/dhl/pickupsheet/submissions', 'An administrator should land on submitted sheets after login.');
 
 $emptyDashboard = $pickupController->dashboard(new Request('GET', '/dhl/pickupsheet/dashboard'));
 $assert($emptyDashboard->status() === 200 && str_contains($emptyDashboard->body(), 'Activity dashboard') && str_contains($emptyDashboard->body(), 'pickup-dashboard-shell'), 'The administrator should receive the compact Pickupsheet control panel.');
@@ -1224,6 +1224,7 @@ $assert($completeMfaEnrollment->status() === 303 && ($completeMfaEnrollment->hea
 $assert($recordsSession->principal($recordsAccess)?->role === 'admin' && is_string($firstIssuedRecoveryCode), 'Successful second-factor enrollment should establish the local administrator session and issue recovery codes.');
 $mfaRecoveryPage = $mfaAuthController->recoveryCodes(new Request('GET', '/dhl/pickupsheet/login/2fa/recovery-codes'));
 $assert($mfaRecoveryPage->status() === 200 && substr_count($mfaRecoveryPage->body(), '<code>') === 10 && str_contains($mfaRecoveryPage->body(), 'will not be displayed again'), 'New recovery codes should be displayed exactly once after enrollment.');
+$assert(str_contains($mfaRecoveryPage->body(), 'href="/dhl/pickupsheet/submissions"'), 'The recovery-code continuation should use submitted sheets as the landing page.');
 $recordsSession->logout();
 $mfaAuthController->authenticate(new Request('POST', '/dhl/pickupsheet/login', [], [
     '_token' => $pickupCsrf->token(),
