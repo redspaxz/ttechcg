@@ -263,6 +263,7 @@ $router->get('/dhl/pickupsheet/customers/redemptions/page', fn (Request $request
 $router->post('/dhl/pickupsheet/customers/save', fn (Request $request): Response => $customerController->save($request));
 $router->post('/dhl/pickupsheet/customers/rewards', fn (Request $request): Response => $customerController->adjustRewards($request));
 $router->get('/dhl/pickupsheet', fn (Request $request): Response => $pickupsheetController->index($request));
+$router->get('/dhl/pickupsheet/consignors/search', fn (Request $request): Response => $pickupsheetController->searchConsignors($request));
 $router->post('/dhl/pickupsheet', fn (Request $request): Response => $pickupsheetController->store($request));
 $router->get('/dhl/pickupsheet/submissions', fn (Request $request): Response => $pickupsheetController->submissions($request));
 $router->get('/dhl/pickupsheet/submissions/page', fn (Request $request): Response => $pickupsheetController->submissionsPage($request));

@@ -307,12 +307,13 @@ $assert(count($topSenders) === 10, 'Sender performance should be limited to the 
 $assert(($topSenders[0]['sender'] ?? '') === 'Sender 01' && ($topSenders[0]['shipmentCount'] ?? 0) === 4, 'Sender performance should group name casing and rank the most frequent sender first.');
 $assert(($topSenders[1]['sender'] ?? '') === 'Sender 02' && ($topSenders[1]['shipmentCount'] ?? 0) === 3, 'Sender performance should sort shipment counts from most to least.');
 $assert(!in_array('Legacy Leader', array_column($topSenders, 'sender'), true), 'Sender performance should exclude shipments older than the rolling twelve-month window.');
-$consignorSuggestions = $senderPerformanceService->consignorSuggestions(50);
+$consignorSuggestions = $senderPerformanceService->consignorSuggestions('', 50);
 $sortedConsignorSuggestions = $consignorSuggestions;
 usort($sortedConsignorSuggestions, static fn (string $left, string $right): int => strcasecmp($left, $right));
 $assert($consignorSuggestions === $sortedConsignorSuggestions && ($consignorSuggestions[0] ?? '') === 'Legacy Leader', 'Consignor suggestions should be listed in case-insensitive A-Z order.');
 $assert(count(array_filter($consignorSuggestions, static fn (string $name): bool => strtolower($name) === 'sender 01')) === 1, 'Consignor suggestions should group casing variants.');
 $assert(in_array('Legacy Leader', $consignorSuggestions, true), 'Consignor suggestions should include previously used names outside the performance-chart window.');
+$assert($senderPerformanceService->consignorSuggestions('02', 12) === ['Sender 02'], 'Consignor suggestions should search saved names by a case-insensitive substring.');
 $_SESSION['_demo_pickup_sheets'] = $existingDemoPickupSheets;
 
 $pickupConsentFailed = false;
@@ -1250,6 +1251,8 @@ $deniedSubmissions = $pickupController->submissions(new Request('GET', '/dhl/pic
 ]));
 $assert($deniedSubmissions->status() === 302, 'Submitted sheets should redirect users without a Pickupsheet session.');
 $assert(($deniedSubmissions->headers()['Location'] ?? '') === '/dhl/pickupsheet/login', 'Protected records should use the login portal instead of a Basic-auth challenge.');
+$deniedConsignorSearch = $pickupController->searchConsignors(new Request('GET', '/dhl/pickupsheet/consignors/search', ['q' => 'client']));
+$assert($deniedConsignorSearch->status() === 302, 'Consignor search should require a valid Pickupsheet session.');
 $deniedExport = $pickupController->export(new Request('GET', '/dhl/pickupsheet/submissions/export', ['reference' => 'PS-20260729-AAAAAAAAAAAAAAAA'], [], '', [
     'PHP_AUTH_USER' => $recordsUsername,
     'PHP_AUTH_PW' => 'incorrect-password',
@@ -1296,6 +1299,11 @@ $assert(($savedControllerSheet->shipments[0]->checkedBy ?? '') === 'Records Admi
 $assert((bool) preg_match('/^[0-9]{2}:[0-9]{2}$/', $savedControllerSheet->shipments[0]->collectionTime ?? ''), 'The controller should persist the server-generated submission time.');
 $savedReference = $savedControllerSheet->referenceNumber;
 $trackingHref = htmlspecialchars(DhlTrackingUrl::forAwb('1234567890'), ENT_QUOTES, 'UTF-8');
+
+$consignorSearch = $pickupController->searchConsignors(new Request('GET', '/dhl/pickupsheet/consignors/search', ['q' => 'controller'], [], '', $recordsServer));
+$consignorSearchPayload = json_decode($consignorSearch->body(), true);
+$assert($consignorSearch->status() === 200 && ($consignorSearchPayload['suggestions'] ?? []) === ['Controller Client'], 'Authenticated consignor search should return matching saved names.');
+$assert(($consignorSearch->headers()['Cache-Control'] ?? '') === 'private, no-store, max-age=0', 'Consignor search responses should not be stored in shared or browser caches.');
 
 $openSubmissions = $pickupController->submissions(new Request('GET', '/dhl/pickupsheet/submissions', [], [], '', $recordsServer));
 $assert(str_contains($openSubmissions->body(), $savedReference), 'The direct table should show each sheet reference.');
@@ -1855,8 +1863,8 @@ $assert(is_string($dhlAsset) && !str_contains($dhlAsset, '<text'), 'The disquali
 $partnerSources = file_get_contents(dirname(__DIR__) . '/public/assets/partners/README.md');
 $assert(is_string($partnerSources) && str_contains($partnerSources, 'www.dhl.com/content/dam/dhl/global/core/images/logos/dhl-logo.svg'), 'The official DHL artwork source should be documented.');
 $assert(!str_contains($home, 'href="/dhl/pickupsheet"'), 'Pickupsheet should not be discoverable from the public site chrome or homepage.');
-$assert(str_contains($home, 'styles.css?v=20260831-local-mfa'), 'Authentication and account-table styles should use a cache-safe stylesheet version.');
-$assert(str_contains($home, 'app.js?v=20260831-local-mfa'), 'Authentication interactions should use a cache-safe script version.');
+$assert(str_contains($home, 'styles.css?v=20260831-consignor-autocomplete'), 'Authentication and autocomplete styles should use a cache-safe stylesheet version.');
+$assert(str_contains($home, 'app.js?v=20260831-consignor-autocomplete'), 'Authentication and autocomplete interactions should use a cache-safe script version.');
 $assert(str_contains($home, 'analytics.js?v=20260825-security-hardening'), 'The current consent-aware Google Analytics loader should render on every page.');
 $assert(str_contains($home, 'data-analytics-accept'), 'The site should offer an explicit analytics acceptance control.');
 $assert(str_contains($home, 'data-analytics-decline'), 'The site should offer an explicit analytics decline control.');
@@ -1951,6 +1959,7 @@ $assert(str_contains($product, 'href="/dhl/pickupsheet/submissions"'), 'The dire
 $assert(str_contains($product, 'action="/dhl/pickupsheet"'), 'The pickup form should submit to its new DHL-namespaced route.');
 $assert(str_contains($product, 'shipments[0][consignor]'), 'The pickup form should collect a consignor for each row.');
 $assert(str_contains($product, 'data-consignor-input') && str_contains($product, 'aria-autocomplete="list"'), 'The consignor field should expose an accessible suggestion popup while preserving text entry.');
+$assert(str_contains($product, 'data-search-endpoint="/dhl/pickupsheet/consignors/search"'), 'The consignor autocomplete should identify its protected saved-name search endpoint.');
 $assert(str_contains($product, '<option value="Acme &amp; Sons"></option>') && str_contains($product, 'listed A-Z, or enter a new name'), 'Consignor suggestions should be escaped safely and explain their order and manual-entry fallback.');
 $assert(str_contains($product, 'shipments[0][awb_number]'), 'The pickup form should collect the AWB number from the PDF.');
 $assert(str_contains($product, 'shipments[0][destination]'), 'The pickup form should collect the destination code from the PDF.');
@@ -2087,6 +2096,8 @@ $assert(is_string($styles) && str_contains($styles, '.shipment-editor > *') && s
 $assert(is_string($styles) && str_contains($styles, '.shipment-editor-heading > div { grid-column: 2; text-align: center; }'), 'The Cash Shipments heading should remain visually centered beside its row action.');
 $assert(is_string($styles) && str_contains($styles, '.shipment-table {') && str_contains($styles, 'min-width: 0;'), 'Shipment tables should shrink to the available desktop width instead of forcing horizontal overflow.');
 $assert(is_string($styles) && str_contains($styles, '.shipment-table-edit th:nth-child(10) { width: 8%; }'), 'Editable shipment columns should use a proportional fit-to-screen layout.');
+$assert(is_string($styles) && str_contains($styles, '.consignor-autocomplete-popup[data-open]') && str_contains($styles, 'transition: opacity 150ms ease'), 'The consignor suggestion popup should animate into view without changing table layout.');
+$assert(is_string($styles) && str_contains($styles, '@keyframes consignor-option-enter') && str_contains($styles, '.consignor-autocomplete-option[aria-selected="true"]'), 'Autocomplete options should animate and expose a visible keyboard selection state.');
 
 $script = file_get_contents(dirname(__DIR__) . '/public/assets/app.js');
 $assert(is_string($script) && str_contains($script, "event.key === 'Escape'"), 'The mobile navigation should close with Escape.');
@@ -2105,6 +2116,10 @@ $assert(is_string($script) && str_contains($script, "document.querySelectorAll('
 $assert(is_string($script) && str_contains($script, "event.target.matches('[data-user-delete-form]')") && str_contains($script, 'Permanently delete'), 'Local account deletion should require an explicit browser confirmation.');
 $assert(is_string($script) && str_contains($script, "document.querySelector('[data-copy-recovery-codes]')") && str_contains($script, "event.target.matches('[data-user-mfa-reset-form]')"), 'Local 2FA should support secure recovery-code handling and explicit administrator reset confirmation.');
 $assert(is_string($script) && str_contains($script, "document.querySelector('[data-login-method-form]')") && str_contains($script, "'X-Requested-With': 'XMLHttpRequest'"), 'Sign-in toggles should save asynchronously without refreshing account management.');
+$assert(is_string($script) && str_contains($script, 'consignorSuggestionNames') && str_contains($script, "input.removeAttribute('list')"), 'JavaScript should enhance the native consignor datalist without removing its no-script fallback from the HTML.');
+$assert(is_string($script) && str_contains($script, "event.key === 'ArrowDown'") && str_contains($script, "aria-activedescendant") && str_contains($script, 'selectConsignorSuggestion'), 'The animated consignor autocomplete should support accessible keyboard navigation and selection.');
+$assert(is_string($script) && str_contains($script, '.filter((name) => query === \'\' || name.toLowerCase().includes(query))') && str_contains($script, '.slice(0, 12)'), 'The consignor popup should filter its A-Z source and keep the visible choice list bounded.');
+$assert(is_string($script) && str_contains($script, 'consignorSearchEndpoint') && str_contains($script, "endpoint.searchParams.set('q', query)") && str_contains($script, '}, 180);'), 'The consignor autocomplete should debounce protected server searches while retaining immediate local matches.');
 $assert(is_string($script) && !str_contains($script, 'scrollIntoView'), 'AJAX pagination should update in place without moving the user\'s viewport.');
 
 $analyticsScript = file_get_contents(dirname(__DIR__) . '/public/assets/analytics.js');
@@ -2136,6 +2151,7 @@ $assert(is_string($cpanelDeployment) && str_contains($cpanelDeployment, 'test -w
 $verificationWorkflow = file_get_contents(dirname(__DIR__) . '/.github/workflows/verify.yml');
 $assert(is_string($verificationWorkflow) && str_contains($verificationWorkflow, 'actions/checkout@11d5960a326750d5838078e36cf38b85af677262'), 'CI dependencies should be pinned to an immutable commit.');
 $assert(is_string($verificationWorkflow) && !str_contains($verificationWorkflow, 'actions/checkout@v4'), 'CI should not execute a mutable action tag.');
+$assert(is_string($verificationWorkflow) && str_contains($verificationWorkflow, 'node tests/consignor-autocomplete.test.js'), 'CI should exercise the animated consignor autocomplete behavior.');
 
 $database = file_get_contents(dirname(__DIR__) . '/src/Shared/Infrastructure/Database.php');
 $assert(is_string($database) && str_contains($database, "extension_loaded('pdo_mysql')"), 'The application should use PDO MySQL.');
@@ -2169,6 +2185,7 @@ $assert(str_contains($pickupMysqlRepository, 'GROUP BY LOWER(TRIM(ps.consignor))
 $assert(str_contains($pickupMysqlRepository, 'p.collection_date >= :minimum_date') && str_contains($pickupMysqlRepository, 'p.collection_date <= :maximum_date'), 'MySQL sender performance should use a bounded rolling collection-date window.');
 $assert(str_contains($pickupMysqlRepository, 'ORDER BY shipment_count DESC, sender ASC'), 'MySQL sender performance should rank the most frequent senders first with deterministic ties.');
 $assert(str_contains($pickupMysqlRepository, 'public function consignorSuggestions') && str_contains($pickupMysqlRepository, 'ORDER BY consignor ASC'), 'MySQL should provide alphabetically ordered consignor suggestions for new pickup sheets.');
+$assert(str_contains($pickupMysqlRepository, 'LOCATE(:query_value, LOWER(TRIM(ps.consignor))) > 0'), 'MySQL consignor autocomplete should safely search normalized saved names by substring.');
 $assert(str_contains($pickupMysqlRepository, 'p.deleted_at IS NULL') && str_contains($pickupMysqlRepository, "TRIM(ps.consignor) <> \\'\\'"), 'Consignor suggestions should exclude deleted sheets and blank names.');
 $sessionActivityMigration = file_get_contents(dirname(__DIR__) . '/database/migrations/010_create_pickup_records_session_activity.sql');
 $assert(is_string($sessionActivityMigration) && str_contains($sessionActivityMigration, 'CREATE TABLE IF NOT EXISTS pickup_records_session_activity'), 'MySQL should persist successful staff session activity idempotently.');
@@ -2284,5 +2301,6 @@ $assert(is_string($bootstrap) && str_contains($bootstrap, 'rawurlencode($referen
 $assert(is_string($bootstrap) && str_contains($bootstrap, "'/dhl/pickupsheet/login'"), 'Pickupsheet should expose its dedicated session login portal.');
 $assert(is_string($bootstrap) && str_contains($bootstrap, "'/dhl/pickupsheet/login/2fa'") && str_contains($bootstrap, "'/dhl/pickupsheet/login/2fa/recovery-codes'"), 'Pickupsheet should expose local 2FA verification and one-time recovery-code routes.');
 $assert(is_string($bootstrap) && str_contains($bootstrap, "'/dhl/pickupsheet/logout'"), 'Pickupsheet should expose a CSRF-protected logout route.');
+$assert(is_string($bootstrap) && str_contains($bootstrap, "'/dhl/pickupsheet/consignors/search'"), 'Pickupsheet should expose its protected consignor autocomplete route.');
 
 echo "All application tests passed.\n";

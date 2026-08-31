@@ -81,9 +81,13 @@ final class PickupSheetService
     }
 
     /** @return list<string> */
-    public function consignorSuggestions(int $limit = 50): array
+    public function consignorSuggestions(string $query = '', int $limit = 50): array
     {
-        return $this->repository->consignorSuggestions(max(1, min($limit, 50)));
+        $query = trim($query);
+        if (strlen($query) > 160) {
+            throw new InvalidArgumentException('The consignor search is too long.');
+        }
+        return $this->repository->consignorSuggestions($query, max(1, min($limit, 50)));
     }
 
     /** @param array<string, mixed> $input */

@@ -72,7 +72,7 @@ $renderShipmentRow = static function (int|string $index, mixed $row = []) use ($
         <form class="pickup-form" method="post" action="<?= $e($basePath) ?>/dhl/pickupsheet" data-pickup-form>
             <input type="hidden" name="_token" value="<?= $e($csrfToken) ?>">
             <label class="honeypot" aria-hidden="true">Website<input name="website" tabindex="-1" autocomplete="off"></label>
-            <datalist id="consignor-suggestions" data-consignor-suggestions>
+            <datalist id="consignor-suggestions" data-consignor-suggestions data-search-endpoint="<?= $e($basePath) ?>/dhl/pickupsheet/consignors/search">
                 <?php foreach ($consignorSuggestions as $consignor): ?><option value="<?= $e($consignor) ?>"></option><?php endforeach; ?>
             </datalist>
 

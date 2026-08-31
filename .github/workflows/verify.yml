@@ -50,3 +50,4 @@ jobs:
           node --check public/assets/print.js
           node tests/analytics-consent.test.js
           node tests/pickup-pagination.test.js
+          node tests/consignor-autocomplete.test.js

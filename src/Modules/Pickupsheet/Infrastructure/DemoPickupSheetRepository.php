@@ -176,13 +176,14 @@ final class DemoPickupSheetRepository implements PickupSheetRepository
         return array_slice($senders, 0, max(1, min($limit, 10)));
     }
 
-    public function consignorSuggestions(int $limit): array
+    public function consignorSuggestions(string $query, int $limit): array
     {
         $senders = [];
+        $normalizedQuery = strtolower(trim($query));
         foreach ($this->recent(PHP_INT_MAX) as $sheet) {
             foreach ($sheet->shipments as $shipment) {
                 $sender = trim($shipment->consignor);
-                if ($sender === '') {
+                if ($sender === '' || ($normalizedQuery !== '' && !str_contains(strtolower($sender), $normalizedQuery))) {
                     continue;
                 }
                 $key = strtolower($sender);

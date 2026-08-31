@@ -92,6 +92,29 @@ final class PickupsheetController
         return Response::html($body, 200, $this->privateHeaders());
     }
 
+    public function searchConsignors(Request $request): Response
+    {
+        $authorization = $this->authorizeRecords($request, 'create');
+        if ($authorization instanceof Response) {
+            return $authorization;
+        }
+        $rateLimitResponse = $this->rateLimit($request, 'pickup-consignor-search', 180, 300);
+        if ($rateLimitResponse !== null) {
+            return $rateLimitResponse;
+        }
+
+        try {
+            return Response::json([
+                'suggestions' => $this->service->consignorSuggestions($request->queryString('q'), 12),
+            ], 200, $this->privateHeaders());
+        } catch (InvalidArgumentException $exception) {
+            return Response::json(['suggestions' => [], 'message' => $exception->getMessage()], 422, $this->privateHeaders());
+        } catch (RuntimeException $exception) {
+            error_log('Pickup consignor search failed: ' . $exception->getMessage());
+            return Response::json(['suggestions' => []], 503, $this->privateHeaders());
+        }
+    }
+
     public function store(Request $request): Response
     {
         $authorization = $this->authorizeRecords($request, 'create');

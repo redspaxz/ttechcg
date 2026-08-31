@@ -69,6 +69,11 @@ if (pickupForm) {
     const addButton = pickupForm.querySelector('[data-add-shipment]');
     const countOutput = pickupForm.querySelector('[data-shipment-count]');
     const totalOutput = pickupForm.querySelector('[data-shipment-total]');
+    const consignorSuggestionList = pickupForm.querySelector('[data-consignor-suggestions]');
+    const consignorSuggestionNames = Array.from(consignorSuggestionList?.querySelectorAll('option') ?? [])
+        .map((option) => option.value.trim())
+        .filter(Boolean);
+    const consignorSearchEndpoint = consignorSuggestionList?.dataset?.searchEndpoint || '';
     const maximumRows = 50;
     const fieldLabels = {
         consignor: 'consignor',
@@ -101,6 +106,203 @@ if (pickupForm) {
         if (countOutput) countOutput.textContent = String(shipmentCount);
         if (totalOutput) totalOutput.textContent = numberFormatter.format(total);
     };
+
+    let consignorPopup = null;
+    let activeConsignorInput = null;
+    let visibleConsignorSuggestions = [];
+    let activeConsignorSuggestion = -1;
+    let consignorSearchTimer = null;
+    let consignorSearchRequest = null;
+
+    const closeConsignorSuggestions = () => {
+        window.clearTimeout(consignorSearchTimer);
+        consignorSearchTimer = null;
+        consignorSearchRequest?.abort();
+        consignorSearchRequest = null;
+        if (activeConsignorInput) {
+            activeConsignorInput.setAttribute('aria-expanded', 'false');
+            activeConsignorInput.removeAttribute('aria-activedescendant');
+        }
+        consignorPopup?.removeAttribute('data-open');
+        consignorPopup?.setAttribute('aria-hidden', 'true');
+        activeConsignorInput = null;
+        visibleConsignorSuggestions = [];
+        activeConsignorSuggestion = -1;
+    };
+
+    const positionConsignorPopup = () => {
+        if (!consignorPopup || !activeConsignorInput) return;
+        const inputBounds = activeConsignorInput.getBoundingClientRect();
+        const viewportPadding = 12;
+        const width = Math.min(Math.max(inputBounds.width, 260), window.innerWidth - (viewportPadding * 2));
+        const left = Math.min(
+            Math.max(inputBounds.left, viewportPadding),
+            window.innerWidth - width - viewportPadding,
+        );
+        const popupHeight = Math.min(consignorPopup.scrollHeight, 300);
+        const spaceBelow = window.innerHeight - inputBounds.bottom;
+        const openAbove = spaceBelow < Math.min(popupHeight + 16, 230) && inputBounds.top > popupHeight;
+
+        consignorPopup.style.width = `${width}px`;
+        consignorPopup.style.left = `${left}px`;
+        consignorPopup.style.top = `${openAbove ? Math.max(viewportPadding, inputBounds.top - popupHeight - 8) : inputBounds.bottom + 8}px`;
+        consignorPopup.dataset.placement = openAbove ? 'above' : 'below';
+    };
+
+    const setActiveConsignorSuggestion = (index) => {
+        if (!consignorPopup || visibleConsignorSuggestions.length === 0) return;
+        activeConsignorSuggestion = (index + visibleConsignorSuggestions.length) % visibleConsignorSuggestions.length;
+        const options = Array.from(consignorPopup.querySelectorAll('[data-consignor-suggestion]'));
+        options.forEach((option, optionIndex) => option.setAttribute('aria-selected', String(optionIndex === activeConsignorSuggestion)));
+        const activeOption = options[activeConsignorSuggestion];
+        if (activeOption && activeConsignorInput) {
+            activeConsignorInput.setAttribute('aria-activedescendant', activeOption.id);
+            const optionTop = activeOption.offsetTop;
+            const optionBottom = optionTop + activeOption.offsetHeight;
+            if (optionTop < consignorPopup.scrollTop) consignorPopup.scrollTop = optionTop;
+            if (optionBottom > consignorPopup.scrollTop + consignorPopup.clientHeight) {
+                consignorPopup.scrollTop = optionBottom - consignorPopup.clientHeight;
+            }
+        }
+    };
+
+    const selectConsignorSuggestion = (name) => {
+        if (!activeConsignorInput) return;
+        const input = activeConsignorInput;
+        input.value = name;
+        closeConsignorSuggestions();
+        updateSummary();
+        input.dispatchEvent(new Event('change', { bubbles: true }));
+        input.focus({ preventScroll: true });
+    };
+
+    const showConsignorSuggestions = (input, source = consignorSuggestionNames) => {
+        if (!consignorPopup) return;
+        const query = input.value.trim().toLowerCase();
+        const matches = source
+            .filter((name) => query === '' || name.toLowerCase().includes(query))
+            .slice(0, 12);
+        if (matches.length === 0) {
+            closeConsignorSuggestions();
+            return;
+        }
+        if (activeConsignorInput && activeConsignorInput !== input) closeConsignorSuggestions();
+        activeConsignorInput = input;
+        visibleConsignorSuggestions = matches;
+        activeConsignorSuggestion = -1;
+        consignorPopup.replaceChildren();
+        matches.forEach((name, index) => {
+            const option = document.createElement('button');
+            option.type = 'button';
+            option.id = `consignor-suggestion-${index}`;
+            option.className = 'consignor-autocomplete-option';
+            option.dataset.consignorSuggestion = name;
+            option.setAttribute('role', 'option');
+            option.setAttribute('aria-selected', 'false');
+            option.setAttribute('tabindex', '-1');
+            option.textContent = name;
+            option.addEventListener('pointerdown', (event) => {
+                event.preventDefault();
+                selectConsignorSuggestion(name);
+            });
+            option.addEventListener('pointermove', () => setActiveConsignorSuggestion(index));
+            consignorPopup.append(option);
+        });
+        input.setAttribute('aria-expanded', 'true');
+        consignorPopup.setAttribute('aria-hidden', 'false');
+        positionConsignorPopup();
+        window.requestAnimationFrame(() => {
+            if (activeConsignorInput === input) consignorPopup?.setAttribute('data-open', '');
+        });
+    };
+
+    const searchConsignorSuggestions = (input) => {
+        showConsignorSuggestions(input);
+        const query = input.value.trim();
+        window.clearTimeout(consignorSearchTimer);
+        consignorSearchRequest?.abort();
+        consignorSearchRequest = null;
+        if (consignorSearchEndpoint === '' || query === '') return;
+        activeConsignorInput = input;
+        consignorSearchTimer = window.setTimeout(async () => {
+            const request = new AbortController();
+            consignorSearchRequest = request;
+            try {
+                const endpoint = new URL(consignorSearchEndpoint, window.location.href);
+                endpoint.searchParams.set('q', query);
+                const response = await fetch(endpoint, {
+                    credentials: 'same-origin',
+                    headers: { 'X-Requested-With': 'XMLHttpRequest' },
+                    signal: request.signal,
+                });
+                if (response.redirected && response.url && new URL(response.url).pathname.endsWith('/dhl/pickupsheet/login')) {
+                    window.location.assign(response.url);
+                    return;
+                }
+                if (!response.ok) return;
+                const payload = await response.json();
+                const suggestions = Array.isArray(payload.suggestions)
+                    ? Array.from(new Set(payload.suggestions.filter((name) => typeof name === 'string' && name.trim() !== '')))
+                        .sort((left, right) => left.localeCompare(right, undefined, { sensitivity: 'base' }))
+                    : [];
+                if (activeConsignorInput === input && input.value.trim() === query) {
+                    showConsignorSuggestions(input, suggestions);
+                }
+            } catch (error) {
+                if (error?.name !== 'AbortError') {
+                    // Keep the immediate local matches when background search is unavailable.
+                }
+            } finally {
+                if (consignorSearchRequest === request) consignorSearchRequest = null;
+            }
+        }, 180);
+    };
+
+    const initializeConsignorInput = (input) => {
+        if (!input || input.dataset.consignorAutocompleteReady === 'true' || (consignorSuggestionNames.length === 0 && consignorSearchEndpoint === '')) return;
+        input.dataset.consignorAutocompleteReady = 'true';
+        input.removeAttribute('list');
+        input.setAttribute('role', 'combobox');
+        input.setAttribute('aria-haspopup', 'listbox');
+        input.setAttribute('aria-controls', 'consignor-autocomplete-listbox');
+        input.setAttribute('aria-expanded', 'false');
+        input.addEventListener('focus', () => searchConsignorSuggestions(input));
+        input.addEventListener('input', () => searchConsignorSuggestions(input));
+        input.addEventListener('keydown', (event) => {
+            if (event.key === 'ArrowDown' || event.key === 'ArrowUp') {
+                event.preventDefault();
+                if (activeConsignorInput !== input || !consignorPopup?.hasAttribute('data-open')) {
+                    showConsignorSuggestions(input);
+                }
+                setActiveConsignorSuggestion(activeConsignorSuggestion + (event.key === 'ArrowDown' ? 1 : -1));
+            } else if (event.key === 'Enter' && activeConsignorInput === input && activeConsignorSuggestion >= 0) {
+                event.preventDefault();
+                selectConsignorSuggestion(visibleConsignorSuggestions[activeConsignorSuggestion]);
+            } else if (event.key === 'Escape') {
+                closeConsignorSuggestions();
+            } else if (event.key === 'Tab') {
+                closeConsignorSuggestions();
+            }
+        });
+    };
+
+    if (consignorSuggestionNames.length > 0 || consignorSearchEndpoint !== '') {
+        consignorPopup = document.createElement('div');
+        consignorPopup.id = 'consignor-autocomplete-listbox';
+        consignorPopup.className = 'consignor-autocomplete-popup';
+        consignorPopup.setAttribute('role', 'listbox');
+        consignorPopup.setAttribute('aria-label', 'Consignor suggestions');
+        consignorPopup.setAttribute('aria-hidden', 'true');
+        document.body.append(consignorPopup);
+        pickupForm.querySelectorAll('[data-consignor-input]').forEach(initializeConsignorInput);
+        document.addEventListener('pointerdown', (event) => {
+            if (activeConsignorInput && event.target !== activeConsignorInput && !consignorPopup?.contains(event.target)) {
+                closeConsignorSuggestions();
+            }
+        });
+        document.addEventListener('scroll', positionConsignorPopup, { passive: true, capture: true });
+        window.addEventListener('resize', positionConsignorPopup, { passive: true });
+    }
 
     const reindexRows = () => {
         const currentRows = rows();
@@ -136,12 +338,17 @@ if (pickupForm) {
             .replaceAll('__NUMBER__', String(index + 1));
         rowsContainer.insertAdjacentHTML('beforeend', markup);
         reindexRows();
-        rows().at(-1)?.querySelector('[data-field="consignor"]')?.focus();
+        const consignorInput = rows().at(-1)?.querySelector('[data-field="consignor"]');
+        initializeConsignorInput(consignorInput);
+        consignorInput?.focus();
     });
 
     rowsContainer?.addEventListener('click', (event) => {
         const removeButton = event.target.closest('[data-remove-shipment]');
         if (!removeButton || rows().length === 1) return;
+        if (activeConsignorInput && removeButton.closest('[data-shipment-row]')?.contains(activeConsignorInput)) {
+            closeConsignorSuggestions();
+        }
         removeButton.closest('[data-shipment-row]')?.remove();
         reindexRows();
     });
@@ -153,7 +360,10 @@ if (pickupForm) {
         updateSummary();
     });
 
-    pickupForm.addEventListener('submit', reindexRows);
+    pickupForm.addEventListener('submit', () => {
+        closeConsignorSuggestions();
+        reindexRows();
+    });
     reindexRows();
 }
 

@@ -462,7 +462,7 @@ final class MysqlPickupSheetRepository implements PickupSheetRepository
         ], $statement->fetchAll());
     }
 
-    public function consignorSuggestions(int $limit): array
+    public function consignorSuggestions(string $query, int $limit): array
     {
         $this->ensureLifecycleSchema();
         $statement = $this->connection->prepare(
@@ -470,10 +470,14 @@ final class MysqlPickupSheetRepository implements PickupSheetRepository
              FROM pickup_shipments ps
              INNER JOIN pickup_sheets p ON p.id = ps.pickup_sheet_id
              WHERE p.deleted_at IS NULL AND TRIM(ps.consignor) <> \'\'
+               AND (:query_empty = 1 OR LOCATE(:query_value, LOWER(TRIM(ps.consignor))) > 0)
              GROUP BY LOWER(TRIM(ps.consignor))
              ORDER BY consignor ASC
              LIMIT :limit',
         );
+        $normalizedQuery = strtolower(trim($query));
+        $statement->bindValue(':query_empty', $normalizedQuery === '' ? 1 : 0, PDO::PARAM_INT);
+        $statement->bindValue(':query_value', $normalizedQuery);
         $statement->bindValue(':limit', max(1, min($limit, 50)), PDO::PARAM_INT);
         $statement->execute();
 

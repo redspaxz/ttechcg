@@ -32,7 +32,7 @@ interface PickupSheetRepository
     public function topSenders(int $months, int $limit): array;
 
     /** @return list<string> */
-    public function consignorSuggestions(int $limit): array;
+    public function consignorSuggestions(string $query, int $limit): array;
 
     public function findByReference(string $referenceNumber): ?PickupSheet;
 }
