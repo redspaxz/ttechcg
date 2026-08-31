@@ -143,11 +143,28 @@ final class Request
 
     public function trustedCloudflareHeader(string $name): string
     {
-        $remoteAddress = $this->validatedIp($this->serverString('REMOTE_ADDR'));
-        if ($remoteAddress === null || !CloudflareRequestTrust::contains($remoteAddress)) {
+        if (!$this->hasTrustedCloudflareConnection()) {
             return '';
         }
         return $this->header($name);
+    }
+
+    private function hasTrustedCloudflareConnection(): bool
+    {
+        foreach (['REMOTE_ADDR', 'CONN_REMOTE_ADDR'] as $addressKey) {
+            $address = $this->validatedIp($this->serverString($addressKey));
+            if ($address !== null && CloudflareRequestTrust::contains($address)) {
+                return true;
+            }
+        }
+
+        foreach (['TTECHCG_TRUSTED_CLOUDFLARE_PROXY', 'REDIRECT_TTECHCG_TRUSTED_CLOUDFLARE_PROXY'] as $markerKey) {
+            if (hash_equals('1', $this->serverString($markerKey))) {
+                return true;
+            }
+        }
+
+        return false;
     }
 
     private function serverString(string $key): string

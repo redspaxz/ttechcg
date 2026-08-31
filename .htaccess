@@ -4,6 +4,10 @@ LimitRequestBody 13631488
 
 <IfModule mod_rewrite.c>
     RewriteEngine On
+    # cPanel/LiteSpeed may restore REMOTE_ADDR to the visitor address. Mark the
+    # request as trusted only when the underlying TCP peer is a Cloudflare edge.
+    RewriteCond expr "%{CONN_REMOTE_ADDR} -ipmatch '173.245.48.0/20' || %{CONN_REMOTE_ADDR} -ipmatch '103.21.244.0/22' || %{CONN_REMOTE_ADDR} -ipmatch '103.22.200.0/22' || %{CONN_REMOTE_ADDR} -ipmatch '103.31.4.0/22' || %{CONN_REMOTE_ADDR} -ipmatch '141.101.64.0/18' || %{CONN_REMOTE_ADDR} -ipmatch '108.162.192.0/18' || %{CONN_REMOTE_ADDR} -ipmatch '190.93.240.0/20' || %{CONN_REMOTE_ADDR} -ipmatch '188.114.96.0/20' || %{CONN_REMOTE_ADDR} -ipmatch '197.234.240.0/22' || %{CONN_REMOTE_ADDR} -ipmatch '198.41.128.0/17' || %{CONN_REMOTE_ADDR} -ipmatch '162.158.0.0/15' || %{CONN_REMOTE_ADDR} -ipmatch '104.16.0.0/13' || %{CONN_REMOTE_ADDR} -ipmatch '104.24.0.0/14' || %{CONN_REMOTE_ADDR} -ipmatch '172.64.0.0/13' || %{CONN_REMOTE_ADDR} -ipmatch '131.0.72.0/22' || %{CONN_REMOTE_ADDR} -ipmatch '2400:cb00::/32' || %{CONN_REMOTE_ADDR} -ipmatch '2606:4700::/32' || %{CONN_REMOTE_ADDR} -ipmatch '2803:f800::/32' || %{CONN_REMOTE_ADDR} -ipmatch '2405:b500::/32' || %{CONN_REMOTE_ADDR} -ipmatch '2405:8100::/32' || %{CONN_REMOTE_ADDR} -ipmatch '2a06:98c0::/29' || %{CONN_REMOTE_ADDR} -ipmatch '2c0f:f248::/32'"
+    RewriteRule ^ - [E=TTECHCG_TRUSTED_CLOUDFLARE_PROXY:1]
     RewriteCond %{HTTPS} !=on
     RewriteRule ^ https://ttechcg.com%{REQUEST_URI} [R=308,L,NE]
     RewriteCond %{HTTP:Authorization} ^(.+)$
