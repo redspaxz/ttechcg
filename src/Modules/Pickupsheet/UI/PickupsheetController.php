@@ -706,6 +706,44 @@ final class PickupsheetController
         return Response::redirect($request->basePath . '/dhl/pickupsheet/submissions/users');
     }
 
+    public function setUserStatus(Request $request): Response
+    {
+        $authorization = $this->authorizeRecords($request, 'manage');
+        if ($authorization instanceof Response) {
+            return $authorization;
+        }
+
+        $writeDenied = $this->recordsUserWriteGuard($request);
+        if ($writeDenied !== null) {
+            return $writeDenied;
+        }
+
+        try {
+            $active = $request->input('active');
+            if ($active === '0' && $request->input('confirm_status') !== '1') {
+                throw new InvalidArgumentException('Confirm that this managed account should be disabled.');
+            }
+            $account = $this->recordsUserService->setStatus($request->input('id'), $active, $authorization);
+            $statusLabel = $account->active ? 'enabled' : 'disabled';
+            $_SESSION['_records_users_flash'] = sprintf('Account %s %s.', $account->username, $statusLabel);
+            $this->securityLogger->event('pickupsheet.records_user_status', $request, 'accepted', [
+                'actor_id' => $this->actorId($authorization),
+                'target_id' => substr(hash('sha256', $account->username), 0, 24),
+                'target_role' => $account->role,
+                'active' => $account->active,
+            ]);
+        } catch (InvalidArgumentException $exception) {
+            $_SESSION['_records_users_errors'] = [$exception->getMessage()];
+            $this->securityLogger->event('pickupsheet.records_user_status', $request, 'denied');
+        } catch (RuntimeException $exception) {
+            error_log($exception->__toString());
+            $_SESSION['_records_users_errors'] = ['The managed account status could not be changed. Check the MySQL connection and try again.'];
+            $this->securityLogger->event('pickupsheet.records_user_status', $request, 'failed');
+        }
+
+        return Response::redirect($request->basePath . '/dhl/pickupsheet/submissions/users');
+    }
+
     public function deleteUser(Request $request): Response
     {
         $authorization = $this->authorizeRecords($request, 'manage');

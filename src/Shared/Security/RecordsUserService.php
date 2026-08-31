@@ -129,6 +129,32 @@ final class RecordsUserService
         return $updated;
     }
 
+    public function setStatus(string $accountId, string $active, RecordsPrincipal $actor): RecordsUserAccount
+    {
+        $account = $this->account($accountId, $actor);
+        $enabled = $this->accountStatus($active);
+        if ($account->active === $enabled) {
+            return $account;
+        }
+
+        $updated = $this->repository->update(
+            $account->id,
+            $account->username,
+            $account->firstName,
+            $account->lastName,
+            $account->role,
+            $enabled,
+            null,
+            $this->actorId($actor),
+        );
+
+        if ($updated === null) {
+            throw new InvalidArgumentException('The managed account no longer exists.');
+        }
+
+        return $updated;
+    }
+
     public function delete(string $accountId, RecordsPrincipal $actor): RecordsUserAccount
     {
         $this->assertAdmin($actor);

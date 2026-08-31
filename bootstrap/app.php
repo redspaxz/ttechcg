@@ -274,6 +274,7 @@ $router->post('/dhl/pickupsheet/submissions/delete', fn (Request $request): Resp
 $router->get('/dhl/pickupsheet/submissions/users', fn (Request $request): Response => $pickupsheetController->users($request));
 $router->post('/dhl/pickupsheet/submissions/users', fn (Request $request): Response => $pickupsheetController->createUser($request));
 $router->post('/dhl/pickupsheet/submissions/users/update', fn (Request $request): Response => $pickupsheetController->updateUser($request));
+$router->post('/dhl/pickupsheet/submissions/users/status', fn (Request $request): Response => $pickupsheetController->setUserStatus($request));
 $router->post('/dhl/pickupsheet/submissions/users/delete', fn (Request $request): Response => $pickupsheetController->deleteUser($request));
 $router->post('/dhl/pickupsheet/submissions/users/mfa/reset', fn (Request $request): Response => $pickupsheetController->resetUserMfa($request));
 $router->post('/dhl/pickupsheet/submissions/users/login-methods', fn (Request $request): Response => $pickupsheetController->updateLoginMethods($request));

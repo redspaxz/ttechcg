@@ -1488,7 +1488,7 @@ $assert(str_contains($customerDirectory->body(), 'Controller Client') && str_con
 $assert(str_contains($customerDirectory->body(), 'data-ajax-pager-id="customer-directory"') && str_contains($customerDirectory->body(), 'data-ajax-pager-form="customer-directory"'), 'The customer directory and its filters should use progressive AJAX pagination.');
 $customerDirectoryFragment = $customerController->page(new Request('GET', '/dhl/pickupsheet/customers/page', ['page' => '1']));
 $assert($customerDirectoryFragment->status() === 200 && str_contains($customerDirectoryFragment->body(), 'Customer directory') && str_contains($customerDirectoryFragment->body(), 'data-ajax-current-page="1"'), 'The customer directory endpoint should return a normal-link-compatible page fragment.');
-$assert($customerProfile->status() === 200 && str_contains($customerProfile->body(), 'Recent shipments') && str_contains($customerProfile->body(), $savedReference), 'A synchronized customer profile should show linked shipment history.');
+$assert($customerProfile->status() === 200 && str_contains($customerProfile->body(), 'Recent shipments') && str_contains($customerProfile->body(), 'pickup-customer-history-content') && str_contains($customerProfile->body(), $savedReference), 'A synchronized customer profile should show linked shipment history inside its compact AJAX card content.');
 $assert(str_contains($customerProfile->body(), 'data-ajax-pager-id="customer-shipments"') && str_contains($customerProfile->body(), 'data-ajax-pager-id="customer-redemptions"'), 'Qualified customer history tables should paginate independently without a full page refresh.');
 $customerShipmentFragment = $customerController->shipmentPage(new Request('GET', '/dhl/pickupsheet/customers/shipments/page', ['customer' => $customerKey, 'shipment_page' => '1']));
 $customerRedemptionFragment = $customerController->redemptionPage(new Request('GET', '/dhl/pickupsheet/customers/redemptions/page', ['customer' => $customerKey, 'redemption_page' => '1']));
@@ -1661,8 +1661,30 @@ $managedAccount = $recordsUserRepository->all()[0] ?? null;
 $assert($managedAccount?->role === 'operator' && $managedAccount->active && $managedAccount->fullName() === 'Marc Operator', 'A created lower-tier account should persist required names, role, and active status.');
 $adminUsersWithAccount = $pickupController->users(new Request('GET', '/dhl/pickupsheet/submissions/users', [], [], '', $recordsServer));
 $assert(str_contains($adminUsersWithAccount->body(), 'managed-operator') && str_contains($adminUsersWithAccount->body(), 'class="records-user-table"') && str_contains($adminUsersWithAccount->body(), 'data-user-edit-toggle="user-editor-1"'), 'The management page should list read-only lower-tier account details with an explicit Edit action.');
-$assert(str_contains($adminUsersWithAccount->body(), 'data-user-editor hidden') && str_contains($adminUsersWithAccount->body(), 'data-user-delete-form'), 'Account forms should remain hidden until requested and expose a separate protected Delete action.');
+$assert(str_contains($adminUsersWithAccount->body(), 'data-user-editor hidden') && str_contains($adminUsersWithAccount->body(), 'data-user-status-form') && str_contains($adminUsersWithAccount->body(), '>Disable</button>') && str_contains($adminUsersWithAccount->body(), 'data-user-delete-form'), 'Account forms should remain hidden until requested and expose separate protected Disable and Delete actions.');
 $assert(str_contains($adminUsersWithAccount->body(), 'PICKUPSHEET_LOCAL_LOGIN_ENABLED=true') && str_contains($adminUsersWithAccount->body(), 'JUMPCLOUD_OIDC_ENABLED=false'), 'The administrator workspace should display the effective local and JumpCloud login configuration.');
+$unconfirmedAccountDisable = $pickupController->setUserStatus(new Request('POST', '/dhl/pickupsheet/submissions/users/status', [], [
+    '_token' => $pickupCsrf->token(),
+    'id' => (string) $managedAccount->id,
+    'active' => '0',
+    'confirm_status' => '0',
+], '', $recordsServer));
+$assert($unconfirmedAccountDisable->status() === 303 && $recordsUserRepository->findById($managedAccount->id)?->active === true, 'The direct managed-account Disable action should require explicit confirmation.');
+$confirmedAccountDisable = $pickupController->setUserStatus(new Request('POST', '/dhl/pickupsheet/submissions/users/status', [], [
+    '_token' => $pickupCsrf->token(),
+    'id' => (string) $managedAccount->id,
+    'active' => '0',
+    'confirm_status' => '1',
+], '', $recordsServer));
+$disabledAccountPage = $pickupController->users(new Request('GET', '/dhl/pickupsheet/submissions/users', [], [], '', $recordsServer));
+$assert($confirmedAccountDisable->status() === 303 && $recordsUserRepository->findById($managedAccount->id)?->active === false && str_contains($disabledAccountPage->body(), '>Enable</button>'), 'A confirmed Disable action should immediately deactivate the account and expose an Enable action.');
+$enableManagedAccount = $pickupController->setUserStatus(new Request('POST', '/dhl/pickupsheet/submissions/users/status', [], [
+    '_token' => $pickupCsrf->token(),
+    'id' => (string) $managedAccount->id,
+    'active' => '1',
+    'confirm_status' => '0',
+], '', $recordsServer));
+$assert($enableManagedAccount->status() === 303 && $recordsUserRepository->findById($managedAccount->id)?->active === true, 'An administrator should re-enable a disabled managed account directly from the list.');
 $managedMfaSetup = $mfaService->beginEnrollment('managed-operator');
 $mfaService->confirmEnrollment(
     'local-user:' . $managedAccount->id,
@@ -1900,8 +1922,8 @@ $assert(is_string($dhlAsset) && !str_contains($dhlAsset, '<text'), 'The disquali
 $partnerSources = file_get_contents(dirname(__DIR__) . '/public/assets/partners/README.md');
 $assert(is_string($partnerSources) && str_contains($partnerSources, 'www.dhl.com/content/dam/dhl/global/core/images/logos/dhl-logo.svg'), 'The official DHL artwork source should be documented.');
 $assert(!str_contains($home, 'href="/dhl/pickupsheet"'), 'Pickupsheet should not be discoverable from the public site chrome or homepage.');
-$assert(str_contains($home, 'styles.css?v=20260831-autocomplete-progressive'), 'Progressive autocomplete styles should use a cache-safe stylesheet version.');
-$assert(str_contains($home, 'app.js?v=20260831-autocomplete-progressive'), 'Progressive AJAX autocomplete interactions should use a cache-safe script version.');
+$assert(str_contains($home, 'styles.css?v=20260831-managed-user-disable'), 'Managed-user status controls and prior Pickupsheet refinements should use a cache-safe stylesheet version.');
+$assert(str_contains($home, 'app.js?v=20260831-managed-user-disable'), 'Managed-user status confirmation and progressive AJAX interactions should use a cache-safe script version.');
 $assert(str_contains($home, 'analytics.js?v=20260825-security-hardening'), 'The current consent-aware Google Analytics loader should render on every page.');
 $assert(str_contains($home, 'data-analytics-accept'), 'The site should offer an explicit analytics acceptance control.');
 $assert(str_contains($home, 'data-analytics-decline'), 'The site should offer an explicit analytics decline control.');
@@ -2136,6 +2158,10 @@ $assert(is_string($styles) && str_contains($styles, '.shipment-table-edit th:nth
 $assert(is_string($styles) && str_contains($styles, '.consignor-autocomplete-popup[data-open]') && str_contains($styles, 'transition: opacity 150ms ease'), 'The consignor suggestion popup should animate into view without changing table layout.');
 $assert(is_string($styles) && str_contains($styles, '@keyframes consignor-option-enter') && str_contains($styles, '.consignor-autocomplete-option:not([data-js-animated])') && str_contains($styles, '.consignor-autocomplete-option[aria-selected="true"]'), 'Autocomplete options should retain an animation fallback and expose a visible keyboard selection state.');
 $assert(is_string($styles) && str_contains($styles, 'scrollbar-width: none') && str_contains($styles, '.consignor-autocomplete-popup::-webkit-scrollbar'), 'The autocomplete should hide browser scrollbars while retaining its scrollable results region.');
+$assert(is_string($styles) && str_contains($styles, '.pickup-customer-history-content > .pickup-card-heading') && str_contains($styles, 'padding: 18px 20px;'), 'The AJAX-wrapped Recent shipments heading should retain compact card padding.');
+$assert(is_string($styles) && str_contains($styles, '.pickup-customer-history .pickup-crm-table-wrap td { padding: 13px 15px; }') && str_contains($styles, '.pickup-customer-history .pickup-pagination { gap: 14px; padding: 16px 20px 18px; }'), 'Recent shipment rows and pagination should use a compact, consistent spacing rhythm.');
+$assert(is_string($styles) && str_contains($styles, '.pickup-workspace-header {') && str_contains($styles, 'position: sticky;') && str_contains($styles, 'z-index: 1150;') && str_contains($styles, 'top: 0;'), 'Pickupsheet workspace headers should remain visible while their pages scroll.');
+$assert(is_string($styles) && str_contains($styles, '.pickup-admin-workspace > .pickup-workspace-header') && str_contains($styles, 'box-shadow: 0 0 0 100vmax #0b0b0c;'), 'Sticky administrator headers should retain their full-width dark background.');
 
 $script = file_get_contents(dirname(__DIR__) . '/public/assets/app.js');
 $assert(is_string($script) && str_contains($script, "event.key === 'Escape'"), 'The mobile navigation should close with Escape.');
@@ -2152,6 +2178,7 @@ $assert(is_string($script) && str_contains($script, "spinner.hidden = !loading")
 $assert(is_string($script) && str_contains($script, "window.history.pushState"), 'AJAX pagination should preserve browser history.');
 $assert(is_string($script) && str_contains($script, "document.querySelectorAll('[data-user-edit-toggle]')") && str_contains($script, 'preventScroll: true'), 'Local account editors should open on demand without moving the viewport.');
 $assert(is_string($script) && str_contains($script, "event.target.matches('[data-user-delete-form]')") && str_contains($script, 'Permanently delete'), 'Local account deletion should require an explicit browser confirmation.');
+$assert(is_string($script) && str_contains($script, "event.target.matches('[data-user-status-form]')") && str_contains($script, 'Their current session and future local sign-ins will be blocked') && str_contains($script, "confirmation.value = '1'"), 'Direct managed-account disabling should require explicit browser confirmation.');
 $assert(is_string($script) && str_contains($script, "document.querySelector('[data-copy-recovery-codes]')") && str_contains($script, "event.target.matches('[data-user-mfa-reset-form]')"), 'Local 2FA should support secure recovery-code handling and explicit administrator reset confirmation.');
 $assert(is_string($script) && str_contains($script, "document.querySelector('[data-login-method-form]')") && str_contains($script, "'X-Requested-With': 'XMLHttpRequest'"), 'Sign-in toggles should save asynchronously without refreshing account management.');
 $assert(is_string($script) && str_contains($script, 'consignorSuggestionNames') && str_contains($script, "input.removeAttribute('list')"), 'JavaScript should enhance the native consignor datalist without removing its no-script fallback from the HTML.');
@@ -2323,7 +2350,7 @@ $assert(is_string($bootstrap) && str_contains($bootstrap, "'/dhl/pickupsheet'"),
 $assert(is_string($bootstrap) && str_contains($bootstrap, "'/dhl/pickupsheet/submissions/page'"), 'Pickupsheet should expose a protected AJAX pagination endpoint.');
 $assert(is_string($bootstrap) && str_contains($bootstrap, "'/dhl/pickupsheet/dashboard/user-activity/page'") && str_contains($bootstrap, "'/dhl/pickupsheet/dashboard/audit-logs/page'") && str_contains($bootstrap, "'/dhl/pickupsheet/dashboard/recent-sheets/page'"), 'Each qualified dashboard table should expose a protected AJAX fragment route.');
 $assert(is_string($bootstrap) && str_contains($bootstrap, "'/dhl/pickupsheet/submissions/users'"), 'Pickupsheet should expose administrator-only account management.');
-$assert(is_string($bootstrap) && str_contains($bootstrap, "'/dhl/pickupsheet/submissions/users/delete'") && str_contains($bootstrap, "'/dhl/pickupsheet/submissions/users/login-methods'"), 'Pickupsheet should expose protected local-account deletion and sign-in preference routes.');
+$assert(is_string($bootstrap) && str_contains($bootstrap, "'/dhl/pickupsheet/submissions/users/status'") && str_contains($bootstrap, "'/dhl/pickupsheet/submissions/users/delete'") && str_contains($bootstrap, "'/dhl/pickupsheet/submissions/users/login-methods'"), 'Pickupsheet should expose protected local-account status, deletion, and sign-in preference routes.');
 $assert(is_string($bootstrap) && str_contains($bootstrap, "'/dhl/pickupsheet/submissions/users/mfa/reset'"), 'Pickupsheet should expose the administrator-only managed-account 2FA reset route.');
 $assert(is_string($bootstrap) && str_contains($bootstrap, "'/dhl/pickupsheet/dashboard'"), 'Pickupsheet should expose the administrator KPI control panel.');
 $assert(is_string($bootstrap) && str_contains($bootstrap, "'/dhl/pickupsheet/admin/backup'") && str_contains($bootstrap, "'/dhl/pickupsheet/admin/backup/restore'"), 'Pickupsheet should expose administrator-only backup and restore routes.');

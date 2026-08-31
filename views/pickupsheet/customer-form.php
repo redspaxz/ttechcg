@@ -112,7 +112,7 @@ $status = (string) $value('status', $customer?->status ?? 'lead');
         <?php if ($customer !== null): ?>
             <section class="pickup-customer-history ajax-pager" aria-labelledby="customer-history-title" data-ajax-pager data-ajax-pager-id="customer-shipments" data-page-endpoint="<?= $e($basePath) ?>/dhl/pickupsheet/customers/shipments/page" data-page-param="shipment_page" data-current-page="<?= $e($shipments['page'] ?? 1) ?>" data-error-message="Shipment history could not be loaded. Please try again.">
                 <div class="ajax-pager-loading" data-ajax-pager-spinner role="status" hidden><span class="pickup-loading-spinner" aria-hidden="true"></span><span>Loading shipments...</span></div>
-                <div data-ajax-pager-content aria-live="polite" aria-busy="false">
+                <div class="pickup-customer-history-content" data-ajax-pager-content aria-live="polite" aria-busy="false">
                     <?php require __DIR__ . '/_customer-shipments.php'; ?>
                 </div>
             </section>

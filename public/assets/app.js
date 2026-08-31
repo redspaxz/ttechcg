@@ -676,6 +676,18 @@ document.addEventListener('submit', (event) => {
         const confirmation = event.target.querySelector('[data-confirm-delete]');
         if (confirmation) confirmation.value = '1';
     }
+    if (event.target.matches('[data-user-status-form]')) {
+        const targetActive = event.target.querySelector('[data-user-target-active]')?.value === '1';
+        if (!targetActive) {
+            const accountName = event.target.dataset.accountName || 'this managed account';
+            if (!window.confirm(`Disable ${accountName}? Their current session and future local sign-ins will be blocked.`)) {
+                event.preventDefault();
+                return;
+            }
+            const confirmation = event.target.querySelector('[data-confirm-user-status]');
+            if (confirmation) confirmation.value = '1';
+        }
+    }
     if (event.target.matches('[data-user-mfa-reset-form]')) {
         const accountName = event.target.dataset.accountName || 'this local account';
         if (!window.confirm(`Reset two-factor authentication for ${accountName}? They must enroll again at the next sign-in.`)) {
