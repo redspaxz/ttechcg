@@ -86,6 +86,7 @@ final class PickupsheetController
             'recordsUsername' => $authorization->username,
             'recordsFullName' => $authorization->fullName(),
             'recordsIdentityProvider' => $authorization->identityProvider,
+            'canCrmView' => $authorization->can('crm_view'),
             'consignorSuggestions' => $consignorSuggestions,
         ]);
 
@@ -1048,6 +1049,7 @@ final class PickupsheetController
             'canPrint' => $principal->can('print'),
             'canExport' => $principal->can('export'),
             'canManage' => $principal->can('manage'),
+            'canCrmView' => $principal->can('crm_view'),
             'canEdit' => $principal->can('edit'),
             'canMarkPaid' => $principal->can('mark_paid'),
             'canDelete' => $principal->can('delete'),

@@ -40,6 +40,7 @@ $renderShipmentRow = static function (int|string $index, mixed $row = []) use ($
         <div class="pickup-header-links">
             <span class="pickup-session-user" title="<?= $e($recordsUsername ?? '') ?>"><?= $e($checkerName) ?> · <?= $e($recordsRole ?? '') ?></span>
             <?php if (($recordsRole ?? '') === 'admin'): ?><a class="pickup-back" href="<?= $e($basePath) ?>/dhl/pickupsheet/dashboard">Dashboard <span aria-hidden="true">↗</span></a><?php endif; ?>
+            <?php if ((bool) ($canCrmView ?? false)): ?><a class="pickup-back" href="<?= $e($basePath) ?>/dhl/pickupsheet/customers">Customer CRM <span aria-hidden="true">↗</span></a><?php endif; ?>
             <a class="pickup-back" href="<?= $e($basePath) ?>/dhl/pickupsheet/submissions">Submitted sheets <span aria-hidden="true">↗</span></a>
             <form method="post" action="<?= $e($basePath) ?>/dhl/pickupsheet/logout"><input type="hidden" name="_token" value="<?= $e($csrfToken) ?>"><button class="pickup-link-button" type="submit">Sign out</button></form>
         </div>

@@ -2420,6 +2420,7 @@ button, a, input, select, textarea { -webkit-tap-highlight-color: transparent; }
 .pickup-customer-form select,
 .pickup-customer-form textarea { width: 100%; min-height: 48px; padding: 11px 13px; border: 1px solid rgba(69, 50, 0, 0.38); border-radius: 0; background: #fff; color: #241b00; font: inherit; }
 .pickup-customer-form textarea { min-height: 146px; resize: vertical; }
+.pickup-customer-form input[readonly] { border-style: dashed; background: #f2ecd2; color: #655000; cursor: not-allowed; }
 .pickup-crm-filter input:focus,
 .pickup-crm-filter select:focus,
 .pickup-customer-form input:focus,
@@ -2481,6 +2482,7 @@ button, a, input, select, textarea { -webkit-tap-highlight-color: transparent; }
 .pickup-reward-summary article:first-child strong { color: var(--dhl-red); }
 .pickup-reward-summary small { color: #806d24; }
 .pickup-reward-layout { display: grid; grid-template-columns: minmax(0, 1.25fr) minmax(320px, 0.75fr); }
+.pickup-reward-layout.is-read-only { grid-template-columns: 1fr; }
 .pickup-reward-form { display: grid; grid-template-columns: minmax(180px, 0.7fr) minmax(120px, 0.35fr) auto; gap: 16px; align-items: end; padding: 25px; border-right: 1px solid rgba(69, 50, 0, 0.22); }
 .pickup-reward-form > div,
 .pickup-reward-reason { grid-column: 1 / -1; }

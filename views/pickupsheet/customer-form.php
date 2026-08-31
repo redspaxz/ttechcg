@@ -9,6 +9,8 @@ $errors = is_array($errors ?? null) ? $errors : [];
 $shipments = is_array($shipments ?? null) ? $shipments : ['items' => [], 'page' => 1, 'totalRecords' => 0, 'totalPages' => 1];
 $rewardAdjustments = is_array($rewardAdjustments ?? null) ? $rewardAdjustments : [];
 $rewardRedemptions = is_array($rewardRedemptions ?? null) ? $rewardRedemptions : ['items' => [], 'page' => 1, 'totalRecords' => 0, 'totalPages' => 1];
+$canEditCustomerNames = (bool) ($canEditCustomerNames ?? false);
+$canAdjustRewards = (bool) ($canAdjustRewards ?? false);
 $value = static fn (string $field, mixed $fallback = ''): mixed => array_key_exists($field, $old) ? $old[$field] : $fallback;
 $status = (string) $value('status', $customer?->status ?? 'lead');
 ?>
@@ -16,9 +18,10 @@ $status = (string) $value('status', $customer?->status ?? 'lead');
     <div class="container pickup-workspace-header">
         <strong class="pickup-wordmark">Pickupsheet CRM</strong>
         <div class="pickup-header-links">
-            <span class="pickup-session-user"><?= $e($recordsFullName ?? $recordsUsername ?? '') ?> &middot; admin</span>
+            <span class="pickup-session-user"><?= $e($recordsFullName ?? $recordsUsername ?? '') ?> &middot; <?= $e($recordsRole ?? '') ?></span>
             <a class="pickup-back" href="<?= $e($basePath) ?>/dhl/pickupsheet/customers">Customer directory <span aria-hidden="true">&#8599;</span></a>
-            <a class="pickup-back" href="<?= $e($basePath) ?>/dhl/pickupsheet/dashboard">Dashboard <span aria-hidden="true">&#8599;</span></a>
+            <?php if (($recordsRole ?? '') === 'admin'): ?><a class="pickup-back" href="<?= $e($basePath) ?>/dhl/pickupsheet/dashboard">Dashboard <span aria-hidden="true">&#8599;</span></a><?php endif; ?>
+            <a class="pickup-back" href="<?= $e($basePath) ?>/dhl/pickupsheet/submissions">Submitted sheets <span aria-hidden="true">&#8599;</span></a>
             <form method="post" action="<?= $e($basePath) ?>/dhl/pickupsheet/logout"><input type="hidden" name="_token" value="<?= $e($csrfToken) ?>"><button class="pickup-link-button" type="submit">Sign out</button></form>
         </div>
     </div>
@@ -46,8 +49,8 @@ $status = (string) $value('status', $customer?->status ?? 'lead');
                     <article><span>Lifetime Earned Points</span><strong><?= $e(number_format($customer->lifetimeEarnedPoints())) ?></strong><small>Cargo weight and bonus points</small></article>
                     <article><span>Loyalty Tier</span><strong><?= $e($customer->loyaltyTier()) ?></strong><small>Based on lifetime earned points</small></article>
                 </div>
-                <div class="pickup-reward-layout">
-                    <form class="pickup-reward-form" method="post" action="<?= $e($basePath) ?>/dhl/pickupsheet/customers/rewards">
+                <div class="pickup-reward-layout<?= $canAdjustRewards ? '' : ' is-read-only' ?>">
+                    <?php if ($canAdjustRewards): ?><form class="pickup-reward-form" method="post" action="<?= $e($basePath) ?>/dhl/pickupsheet/customers/rewards">
                         <input type="hidden" name="_token" value="<?= $e($csrfToken) ?>">
                         <input type="hidden" name="customer_key" value="<?= $e($customer->customerKey) ?>">
                         <div><span>Adjust balance</span><h3>Bonus or redemption</h3><p>Every adjustment requires a reason and remains in the reward history. Redemptions cannot make the balance negative.</p></div>
@@ -55,7 +58,7 @@ $status = (string) $value('status', $customer?->status ?? 'lead');
                         <label><span>Points</span><input type="number" name="points" min="1" max="100000" step="1" required inputmode="numeric"></label>
                         <label class="pickup-reward-reason"><span>Reason</span><input name="reason" maxlength="255" minlength="3" required placeholder="Promotion, service recovery, or reward redeemed"></label>
                         <button class="button" type="submit">Update points</button>
-                    </form>
+                    </form><?php endif; ?>
                     <div class="pickup-reward-history">
                         <h3>Adjustment history</h3>
                         <?php if ($rewardAdjustments === []): ?><p>No manual bonuses or redemptions have been recorded.</p><?php else: ?>
@@ -80,18 +83,18 @@ $status = (string) $value('status', $customer?->status ?? 'lead');
                 <input type="hidden" name="_token" value="<?= $e($csrfToken) ?>">
                 <input type="hidden" name="customer_key" value="<?= $e($customer?->customerKey ?? '') ?>">
                 <fieldset><legend>Organization</legend>
-                    <label class="pickup-field pickup-field-wide"><span>Customer or organization name</span><input name="display_name" value="<?= $e($value('display_name', $customer?->displayName ?? '')) ?>" maxlength="160" required autocomplete="organization"></label>
+                    <label class="pickup-field pickup-field-wide"><span>Customer or organization name</span><input name="display_name" value="<?= $e($value('display_name', $customer?->displayName ?? '')) ?>" maxlength="160" required autocomplete="organization" <?= $canEditCustomerNames ? '' : 'readonly aria-readonly="true"' ?>><?php if (!$canEditCustomerNames): ?><small>Customer names can only be changed by an administrator.</small><?php endif; ?></label>
                     <label class="pickup-field"><span>Relationship status</span><select name="status" required><?php foreach (['lead' => 'Lead', 'active' => 'Active', 'attention' => 'Needs attention', 'inactive' => 'Inactive'] as $option => $label): ?><option value="<?= $e($option) ?>" <?= $status === $option ? 'selected' : '' ?>><?= $e($label) ?></option><?php endforeach; ?></select></label>
                     <label class="pickup-field"><span>Country</span><select name="country_code"><option value="">Not specified</option><option value="CM" <?= $value('country_code', $customer?->countryCode ?? '') === 'CM' ? 'selected' : '' ?>>Cameroon</option><option value="NG" <?= $value('country_code', $customer?->countryCode ?? '') === 'NG' ? 'selected' : '' ?>>Nigeria</option></select></label>
                     <label class="pickup-field"><span>City</span><input name="city" value="<?= $e($value('city', $customer?->city ?? '')) ?>" maxlength="100" autocomplete="address-level2"></label>
                     <label class="pickup-field pickup-field-wide"><span>Address</span><input name="address" value="<?= $e($value('address', $customer?->address ?? '')) ?>" maxlength="255" autocomplete="street-address"></label>
                 </fieldset>
                 <fieldset><legend>Primary contact</legend>
-                    <label class="pickup-field"><span>Contact name</span><input name="contact_name" value="<?= $e($value('contact_name', $customer?->contactName ?? '')) ?>" maxlength="100" autocomplete="name"></label>
+                    <label class="pickup-field"><span>Contact name</span><input name="contact_name" value="<?= $e($value('contact_name', $customer?->contactName ?? '')) ?>" maxlength="100" autocomplete="name" <?= $canEditCustomerNames ? '' : 'readonly aria-readonly="true"' ?>></label>
                     <label class="pickup-field"><span>Email</span><input type="email" name="email" value="<?= $e($value('email', $customer?->email ?? '')) ?>" maxlength="254" autocomplete="email"></label>
                     <label class="pickup-field"><span>Phone</span><input type="tel" name="phone" value="<?= $e($value('phone', $customer?->phone ?? '')) ?>" maxlength="32" autocomplete="tel"></label>
                     <label class="pickup-field"><span>Next follow-up</span><input type="date" name="next_follow_up_on" value="<?= $e($value('next_follow_up_on', $customer?->nextFollowUpOn ?? '')) ?>"></label>
-                    <label class="pickup-field pickup-field-wide"><span>Internal notes</span><textarea name="notes" maxlength="2000" rows="7" placeholder="Relationship context, preferences, follow-up outcome, or service opportunity"><?= $e($value('notes', $customer?->notes ?? '')) ?></textarea><small>Visible only to administrators.</small></label>
+                    <label class="pickup-field pickup-field-wide"><span>Internal notes</span><textarea name="notes" maxlength="2000" rows="7" placeholder="Relationship context, preferences, follow-up outcome, or service opportunity"><?= $e($value('notes', $customer?->notes ?? '')) ?></textarea><small>Visible to operators and administrators.</small></label>
                 </fieldset>
                 <div class="pickup-customer-form-actions"><button class="button" type="submit">Save customer</button><a href="<?= $e($basePath) ?>/dhl/pickupsheet/customers">Cancel</a></div>
             </form>

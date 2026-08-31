@@ -9,8 +9,8 @@ final class RecordsPrincipal
     /** @var array<string, list<string>> */
     private const ROLE_PERMISSIONS = [
         'viewer' => ['create', 'list', 'paginate'],
-        'operator' => ['create', 'list', 'paginate', 'print', 'export'],
-        'admin' => ['dashboard', 'crm', 'backup', 'create', 'edit', 'mark_paid', 'delete', 'list', 'paginate', 'print', 'export', 'manage'],
+        'operator' => ['crm_view', 'crm_update', 'create', 'list', 'paginate', 'print', 'export'],
+        'admin' => ['dashboard', 'crm', 'crm_view', 'crm_update', 'backup', 'create', 'edit', 'mark_paid', 'delete', 'list', 'paginate', 'print', 'export', 'manage'],
     ];
 
     public function __construct(

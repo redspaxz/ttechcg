@@ -236,6 +236,20 @@ final class CustomerService
         return $this->repository->save($customer, $actorId);
     }
 
+    /** @param array<string, mixed> $input */
+    public function updateDetailsWithoutNames(string $customerKey, array $input, string $actorId): CustomerProfile
+    {
+        $existing = $this->find($customerKey);
+        if ($existing === null) {
+            throw new InvalidArgumentException('Customer profile not found.');
+        }
+
+        $input['display_name'] = $existing->displayName;
+        $input['contact_name'] = $existing->contactName;
+
+        return $this->save($existing->customerKey, $input, $actorId);
+    }
+
     private function text(mixed $value, int $maximumLength): string
     {
         $text = is_string($value) ? trim($value) : '';

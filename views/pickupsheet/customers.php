@@ -9,8 +9,9 @@ $summary = is_array($summary ?? null) ? $summary : [];
     <div class="container pickup-workspace-header">
         <strong class="pickup-wordmark">Pickupsheet CRM</strong>
         <div class="pickup-header-links">
-            <span class="pickup-session-user"><?= $e($recordsFullName ?? $recordsUsername ?? '') ?> &middot; admin</span>
-            <a class="pickup-back" href="<?= $e($basePath) ?>/dhl/pickupsheet/dashboard">Dashboard <span aria-hidden="true">&#8599;</span></a>
+            <span class="pickup-session-user"><?= $e($recordsFullName ?? $recordsUsername ?? '') ?> &middot; <?= $e($recordsRole ?? '') ?></span>
+            <?php if (($recordsRole ?? '') === 'admin'): ?><a class="pickup-back" href="<?= $e($basePath) ?>/dhl/pickupsheet/dashboard">Dashboard <span aria-hidden="true">&#8599;</span></a><?php endif; ?>
+            <a class="pickup-back" href="<?= $e($basePath) ?>/dhl/pickupsheet/submissions">Submitted sheets <span aria-hidden="true">&#8599;</span></a>
             <form method="post" action="<?= $e($basePath) ?>/dhl/pickupsheet/logout"><input type="hidden" name="_token" value="<?= $e($csrfToken) ?>"><button class="pickup-link-button" type="submit">Sign out</button></form>
         </div>
     </div>
@@ -20,7 +21,7 @@ $summary = is_array($summary ?? null) ? $summary : [];
         <?php if (is_string($error ?? null) && $error !== ''): ?><div class="notice notice-error" role="alert"><?= $e($error) ?></div><?php endif; ?>
         <header class="pickup-crm-heading">
             <div><p class="eyebrow eyebrow-red">Customer relationships</p><h1>Customer CRM</h1><p>Turn shipment senders into managed customer profiles, maintain contact data, and schedule follow-up.</p></div>
-            <a class="button pickup-crm-add" href="<?= $e($basePath) ?>/dhl/pickupsheet/customers/new">Add customer</a>
+            <?php if ((bool) ($canCreateCustomers ?? false)): ?><a class="button pickup-crm-add" href="<?= $e($basePath) ?>/dhl/pickupsheet/customers/new">Add customer</a><?php endif; ?>
         </header>
 
         <section class="pickup-crm-kpis" aria-label="Customer CRM summary">

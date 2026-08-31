@@ -33,7 +33,7 @@ final class CustomerController
 
     public function index(Request $request): Response
     {
-        $principal = $this->authorize($request);
+        $principal = $this->authorize($request, 'crm_view');
         if ($principal instanceof Response) {
             return $principal;
         }
@@ -69,7 +69,7 @@ final class CustomerController
 
     public function page(Request $request): Response
     {
-        $principal = $this->authorize($request, false);
+        $principal = $this->authorize($request, 'crm_view', false);
         if ($principal instanceof Response) {
             return $principal;
         }
@@ -88,7 +88,7 @@ final class CustomerController
 
     public function create(Request $request): Response
     {
-        $principal = $this->authorize($request);
+        $principal = $this->authorize($request, 'crm');
         if ($principal instanceof Response) {
             return $principal;
         }
@@ -97,7 +97,7 @@ final class CustomerController
 
     public function edit(Request $request): Response
     {
-        $principal = $this->authorize($request);
+        $principal = $this->authorize($request, 'crm_view');
         if ($principal instanceof Response) {
             return $principal;
         }
@@ -126,7 +126,7 @@ final class CustomerController
 
     public function save(Request $request): Response
     {
-        $principal = $this->authorize($request);
+        $principal = $this->authorize($request, 'crm_update');
         if ($principal instanceof Response) {
             return $principal;
         }
@@ -148,9 +148,12 @@ final class CustomerController
         }
 
         $key = strtolower($request->input('customer_key'));
+        $canEditNames = $principal->can('crm');
+        if (!$canEditNames && preg_match('/^[a-f0-9]{64}$/', $key) !== 1) {
+            $this->log($request, $principal, 'pickupsheet.crm_customer_save', 'denied', ['reason' => 'existing_profile_required']);
+            return Response::html('Operators may only update existing customer profiles.', 403, $this->privateHeaders());
+        }
         $input = [
-            'display_name' => $request->input('display_name'),
-            'contact_name' => $request->input('contact_name'),
             'email' => $request->input('email'),
             'phone' => $request->input('phone'),
             'address' => $request->input('address'),
@@ -160,10 +163,16 @@ final class CustomerController
             'notes' => $request->rawInput('notes'),
             'next_follow_up_on' => $request->input('next_follow_up_on'),
         ];
+        if ($canEditNames) {
+            $input['display_name'] = $request->input('display_name');
+            $input['contact_name'] = $request->input('contact_name');
+        }
         $_SESSION['_crm_old'] = $input;
 
         try {
-            $saved = $this->service->save($key === '' ? null : $key, $input, $this->actorId($principal));
+            $saved = $canEditNames
+                ? $this->service->save($key === '' ? null : $key, $input, $this->actorId($principal))
+                : $this->service->updateDetailsWithoutNames($key, $input, $this->actorId($principal));
             unset($_SESSION['_crm_old'], $_SESSION['_crm_errors']);
             $_SESSION['_crm_flash'] = 'Customer profile saved.';
             $this->log($request, $principal, 'pickupsheet.crm_customer_save', 'accepted', [
@@ -195,7 +204,7 @@ final class CustomerController
 
     public function adjustRewards(Request $request): Response
     {
-        $principal = $this->authorize($request);
+        $principal = $this->authorize($request, 'crm');
         if ($principal instanceof Response) {
             return $principal;
         }
@@ -298,28 +307,31 @@ final class CustomerController
             'old' => is_array($old) ? $old : [],
             'errors' => is_array($errors) ? $errors : [],
             'flash' => is_string($flash) ? $flash : null,
+            'canCreateCustomers' => $principal->can('crm'),
+            'canEditCustomerNames' => $principal->can('crm'),
+            'canAdjustRewards' => $principal->can('crm'),
         ]);
         return Response::html($body, 200, $this->privateHeaders());
     }
 
-    private function authorize(Request $request, bool $logGranted = true): RecordsPrincipal|Response
+    private function authorize(Request $request, string $permission, bool $logGranted = true): RecordsPrincipal|Response
     {
         $principal = $this->recordsSession->principal($this->recordsAccess);
-        $context = ['action' => 'crm'];
+        $context = ['action' => $permission];
         if ($principal !== null) {
             $context += [
                 'actor_id' => $this->actorId($principal),
                 'role' => $principal->role,
                 'identity_provider' => $principal->identityProvider,
             ];
-            if ($principal->can('crm')) {
+            if ($principal->can($permission)) {
                 if ($logGranted) {
                     $this->securityLogger->event('pickupsheet.records_access', $request, 'granted', $context);
                 }
                 return $principal;
             }
             $this->securityLogger->event('pickupsheet.records_access', $request, 'forbidden', $context);
-            return Response::html('You do not have permission to manage customer data.', 403, $this->privateHeaders());
+            return Response::html('You do not have permission to access this customer function.', 403, $this->privateHeaders());
         }
 
         $this->securityLogger->event('pickupsheet.records_access', $request, 'denied', $context);
@@ -349,6 +361,9 @@ final class CustomerController
             'recordsRole' => $principal->role,
             'recordsUsername' => $principal->username,
             'recordsFullName' => $principal->fullName(),
+            'canCreateCustomers' => $principal->can('crm'),
+            'canEditCustomerNames' => $principal->can('crm'),
+            'canAdjustRewards' => $principal->can('crm'),
         ];
     }
 
@@ -377,7 +392,7 @@ final class CustomerController
 
     private function customerTablePage(Request $request, string $table): Response
     {
-        $principal = $this->authorize($request, false);
+        $principal = $this->authorize($request, 'crm_view', false);
         if ($principal instanceof Response) {
             return $principal;
         }

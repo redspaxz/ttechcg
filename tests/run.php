@@ -482,7 +482,9 @@ $adminPrincipal = $recordsAccess->authenticate(new Request('GET', '/protected', 
 $viewerPrincipal = $recordsAccess->authenticate(new Request('GET', '/protected', [], [], '', $viewerServer));
 $operatorPrincipal = $recordsAccess->authenticate(new Request('GET', '/protected', [], [], '', $operatorServer));
 $assert($adminPrincipal?->role === 'admin' && $adminPrincipal->can('manage') && $adminPrincipal->can('dashboard') && $adminPrincipal->can('backup'), 'An admin should manage users, backups, and the activity dashboard.');
-$assert($adminPrincipal?->can('crm') === true && $viewerPrincipal?->can('crm') === false && $operatorPrincipal?->can('crm') === false, 'Only administrators should manage CRM customer data.');
+$assert($adminPrincipal?->can('crm') === true && $adminPrincipal->can('crm_update') === true, 'Administrators should retain full CRM management access.');
+$assert($operatorPrincipal?->can('crm_view') === true && $operatorPrincipal->can('crm_update') === true && $operatorPrincipal->can('crm') === false, 'Operators should view and update existing CRM profiles without administrative CRM rights.');
+$assert($viewerPrincipal?->can('crm_view') === false && $viewerPrincipal->can('crm_update') === false, 'Viewers should not receive CRM profile access.');
 $assert($adminPrincipal?->fullName() === 'Records Administrator', 'Authenticated principals should expose the account first and last name.');
 $assert($adminPrincipal?->can('edit') === true && $adminPrincipal->can('mark_paid') === true && $adminPrincipal->can('delete') === true, 'An administrator should edit, mark paid, and delete pickup records.');
 $assert($viewerPrincipal?->can('create') === true && $viewerPrincipal->can('list') === true && $viewerPrincipal->can('edit') === false && $viewerPrincipal->can('print') === false, 'A viewer should create and view records but cannot edit, print, or export them.');
@@ -1372,6 +1374,7 @@ $operatorSubmissions = $pickupController->submissions(new Request('GET', '/dhl/p
 $assert($operatorCreate->status() === 200 && $operatorSubmissions->status() === 200, 'An operator should be able to enter and view pickup records.');
 $assert($operatorPrint->status() === 200 && $operatorExport->status() === 200, 'An operator should print pickup-sheet PDFs and export Excel files.');
 $assert(!str_contains($operatorSubmissions->body(), 'Manage access'), 'An operator should not be shown administrator account controls.');
+$assert(str_contains($operatorSubmissions->body(), 'Customer CRM'), 'An operator should receive a direct link to the customer directory.');
 $assert(!str_contains($operatorSubmissions->body(), 'Edit record'), 'An operator should not receive record-edit actions.');
 $assert(!str_contains($operatorSubmissions->body(), 'Mark paid'), 'An operator should not receive the paid-status action.');
 $assert(str_contains($operatorSubmissions->body(), 'Print / PDF') && str_contains($operatorSubmissions->body(), 'Export Excel'), 'An operator should be shown print and export actions.');
@@ -1576,7 +1579,40 @@ $viewerCustomerShipments = $customerController->shipmentPage(new Request('GET', 
 $assert($viewerCustomerDirectory->status() === 403 && $viewerCustomerPage->status() === 403 && $viewerCustomerShipments->status() === 403, 'A viewer must not access administrator CRM pages or AJAX fragments.');
 $recordsSession->login($operatorPrincipal);
 $operatorCustomerDirectory = $customerController->index(new Request('GET', '/dhl/pickupsheet/customers'));
-$assert($operatorCustomerDirectory->status() === 403, 'An operator must not access administrator CRM data.');
+$operatorCustomerPage = $customerController->page(new Request('GET', '/dhl/pickupsheet/customers/page'));
+$operatorCustomerProfile = $customerController->edit(new Request('GET', '/dhl/pickupsheet/customers/edit', ['customer' => $customerKey]));
+$operatorCustomerShipments = $customerController->shipmentPage(new Request('GET', '/dhl/pickupsheet/customers/shipments/page', ['customer' => $customerKey]));
+$assert($operatorCustomerDirectory->status() === 200 && $operatorCustomerPage->status() === 200 && $operatorCustomerProfile->status() === 200 && $operatorCustomerShipments->status() === 200, 'An operator should access the CRM directory, profiles, and shipment history.');
+$assert(!str_contains($operatorCustomerDirectory->body(), '/dhl/pickupsheet/customers/new'), 'An operator should not receive the administrator-only new-customer control.');
+$assert(str_contains($operatorCustomerProfile->body(), 'name="display_name"') && substr_count($operatorCustomerProfile->body(), 'readonly aria-readonly="true"') >= 2, 'Customer and contact names should be read-only for operators.');
+$assert(!str_contains($operatorCustomerProfile->body(), '/dhl/pickupsheet/customers/rewards') && str_contains($operatorCustomerProfile->body(), 'pickup-reward-layout is-read-only'), 'An operator should not receive manual reward controls, and reward history should use the full available width.');
+$operatorCreateCustomer = $customerController->create(new Request('GET', '/dhl/pickupsheet/customers/new'));
+$operatorAdjustRewards = $customerController->adjustRewards(new Request('POST', '/dhl/pickupsheet/customers/rewards', [], [
+    '_token' => $pickupCsrf->token(),
+    'customer_key' => $customerKey,
+    'operation' => 'bonus',
+    'points' => '100',
+    'reason' => 'Forbidden operator bonus',
+]));
+$assert($operatorCreateCustomer->status() === 403 && $operatorAdjustRewards->status() === 403, 'Operators must not create profiles or adjust customer rewards.');
+$operatorCustomerSave = $customerController->save(new Request('POST', '/dhl/pickupsheet/customers/save', [], [
+    '_token' => $pickupCsrf->token(),
+    'customer_key' => $customerKey,
+    'display_name' => 'Forged Organization Name',
+    'contact_name' => 'Forged Contact Name',
+    'email' => 'operator-updated@example.com',
+    'phone' => '+237 699 111 222',
+    'address' => 'Bonapriso Business District',
+    'city' => 'Douala',
+    'country_code' => 'CM',
+    'status' => 'active',
+    'notes' => 'Operator updated the customer profile details.',
+    'next_follow_up_on' => '2026-09-15',
+]));
+$operatorUpdatedProfile = $customerController->edit(new Request('GET', '/dhl/pickupsheet/customers/edit', ['customer' => $customerKey]));
+$assert($operatorCustomerSave->status() === 303, 'An operator should save changes to an existing customer profile.');
+$assert(str_contains($operatorUpdatedProfile->body(), 'Controller Client') && str_contains($operatorUpdatedProfile->body(), 'Camille Customer') && !str_contains($operatorUpdatedProfile->body(), 'Forged Organization Name') && !str_contains($operatorUpdatedProfile->body(), 'Forged Contact Name'), 'The server must preserve both customer and contact names when an operator submits forged name fields.');
+$assert(str_contains($operatorUpdatedProfile->body(), 'operator-updated@example.com') && str_contains($operatorUpdatedProfile->body(), '+237 699 111 222') && str_contains($operatorUpdatedProfile->body(), 'Bonapriso Business District') && str_contains($operatorUpdatedProfile->body(), 'Douala') && str_contains($operatorUpdatedProfile->body(), 'Operator updated the customer profile details.') && str_contains($operatorUpdatedProfile->body(), '2026-09-15'), 'An operator should update all permitted customer profile details.');
 $recordsSession->login($adminPrincipal);
 $adminUsers = $pickupController->users(new Request('GET', '/dhl/pickupsheet/submissions/users', [], [], '', $recordsServer));
 $assert($adminUsers->status() === 200, 'An administrator should open records-user management.');
@@ -1863,8 +1899,8 @@ $assert(is_string($dhlAsset) && !str_contains($dhlAsset, '<text'), 'The disquali
 $partnerSources = file_get_contents(dirname(__DIR__) . '/public/assets/partners/README.md');
 $assert(is_string($partnerSources) && str_contains($partnerSources, 'www.dhl.com/content/dam/dhl/global/core/images/logos/dhl-logo.svg'), 'The official DHL artwork source should be documented.');
 $assert(!str_contains($home, 'href="/dhl/pickupsheet"'), 'Pickupsheet should not be discoverable from the public site chrome or homepage.');
-$assert(str_contains($home, 'styles.css?v=20260831-consignor-autocomplete'), 'Authentication and autocomplete styles should use a cache-safe stylesheet version.');
-$assert(str_contains($home, 'app.js?v=20260831-consignor-autocomplete'), 'Authentication and autocomplete interactions should use a cache-safe script version.');
+$assert(str_contains($home, 'styles.css?v=20260831-operator-crm'), 'Operator CRM styles should use a cache-safe stylesheet version.');
+$assert(str_contains($home, 'app.js?v=20260831-operator-crm'), 'Operator CRM interactions should use a cache-safe script version.');
 $assert(str_contains($home, 'analytics.js?v=20260825-security-hardening'), 'The current consent-aware Google Analytics loader should render on every page.');
 $assert(str_contains($home, 'data-analytics-accept'), 'The site should offer an explicit analytics acceptance control.');
 $assert(str_contains($home, 'data-analytics-decline'), 'The site should offer an explicit analytics decline control.');
@@ -1997,7 +2033,7 @@ $assert(str_contains($privacy, 'first name, last name, email address or username
 $assert(str_contains($privacy, 'records the collection time automatically'), 'The privacy notice should explain the server-generated collection time.');
 $assert(str_contains($privacy, 'Every Pickupsheet screen requires an authorised staff login'), 'The privacy notice should disclose portal authentication.');
 $assert(str_contains($privacy, 'operators and administrators can print PDFs and export Excel files'), 'The privacy notice should disclose operator print and export access.');
-$assert(str_contains($privacy, 'Only administrators can edit records, change an open sheet to paid'), 'The privacy notice should disclose the administrator-only record actions.');
+$assert(str_contains($privacy, 'Only administrators can create customer profiles') && str_contains($privacy, 'edit pickup records, change an open sheet to paid'), 'The privacy notice should disclose the administrator-only CRM and record actions.');
 $assert(str_contains($privacy, 'audited soft deletion'), 'The privacy notice should disclose administrator-only soft deletion.');
 $assert(str_contains($privacy, 'inquiry and pickup-sheet forms require an explicit, unchecked opt-in'), 'Both personal-data forms should require explicit consent.');
 $assert(str_contains($privacy, 'T&amp;Tech Consulting Group'), 'The privacy notice should identify the data controller.');
@@ -2020,8 +2056,8 @@ $assert(str_contains($privacy, 'Cloudflare Access handoff') && str_contains($pri
 $assert(str_contains($privacy, 'Access token is used only to complete the handoff and is not retained'), 'The privacy notice should state the Cloudflare token-retention boundary.');
 $assert(str_contains($privacy, 'successful staff login, last-activity, and logout times'), 'The privacy notice should disclose administrative login-frequency and session-duration monitoring.');
 $assert(str_contains($privacy, 'event action, result, protected route, request identifier, and pseudonymous client identifier'), 'The privacy notice should disclose the detailed user audit fields.');
-$assert(str_contains($privacy, 'Shipment consignor names are synchronized into the administrator-only customer directory'), 'The privacy notice should disclose shipment-to-CRM synchronization.');
-$assert(str_contains($privacy, 'contact name, business email, phone, address, city') && str_contains($privacy, 'CRM and reward access is limited to Pickupsheet administrators'), 'The privacy notice should disclose CRM fields and the administrator-only access boundary.');
+$assert(str_contains($privacy, 'Shipment consignor names are synchronized into the restricted customer directory'), 'The privacy notice should disclose shipment-to-CRM synchronization.');
+$assert(str_contains($privacy, 'Operators and administrators may maintain business email, phone, address, city') && str_contains($privacy, 'profile creation, name changes, and manual reward controls remain limited to administrators'), 'The privacy notice should disclose CRM fields and the operator-versus-administrator access boundary.');
 $assert(str_contains($privacy, '10 points per kilogram shipped') && str_contains($privacy, 'required reason, UTC time, and pseudonymous administrator identifier'), 'The privacy notice should disclose weight-based reward points and adjustment-ledger fields.');
 $assert(str_contains($privacy, 'passphrase-encrypted backups') && str_contains($privacy, 'environment secrets and plaintext passwords are excluded'), 'The privacy notice should disclose disaster-recovery processing and its secret boundary.');
 $assert(str_contains($privacy, 'authenticator secrets are encrypted at rest') && str_contains($privacy, 'recovery codes are stored only as keyed hashes'), 'The privacy notice should disclose local 2FA storage protections.');
