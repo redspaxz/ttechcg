@@ -8,22 +8,10 @@ use App\Shared\Http\Request;
 
 final class PickupsheetCountryPolicy
 {
-    /** @var array<string, true> */
-    private array $allowedCountries = [];
+    private const ALLOWED_COUNTRY = 'CM';
 
-    /** @param list<string> $allowedCountries */
-    public function __construct(private readonly bool $enabled, array $allowedCountries = ['CM', 'NG'])
+    public function __construct(private readonly bool $enabled)
     {
-        foreach ($allowedCountries as $country) {
-            $country = strtoupper(trim($country));
-            if (preg_match('/^[A-Z]{2}$/', $country) === 1) {
-                $this->allowedCountries[$country] = true;
-            }
-        }
-
-        if ($this->allowedCountries === []) {
-            $this->allowedCountries = ['CM' => true, 'NG' => true];
-        }
     }
 
     public static function fromEnvironment(bool $production): self
@@ -33,12 +21,8 @@ final class PickupsheetCountryPolicy
             ? filter_var($enabledValue, FILTER_VALIDATE_BOOL, FILTER_NULL_ON_FAILURE)
             : null;
         $enabled = $production && (is_bool($parsedEnabled) ? $parsedEnabled : true);
-        $countryValue = getenv('PICKUPSHEET_ALLOWED_COUNTRIES');
-        $countries = is_string($countryValue) && trim($countryValue) !== ''
-            ? preg_split('/\s*,\s*/', trim($countryValue))
-            : ['CM', 'NG'];
 
-        return new self($enabled, is_array($countries) ? $countries : ['CM', 'NG']);
+        return new self($enabled);
     }
 
     public function allows(Request $request): bool
@@ -48,8 +32,7 @@ final class PickupsheetCountryPolicy
         }
 
         $country = strtoupper($request->trustedCloudflareHeader('CF-IPCountry'));
-        return preg_match('/^[A-Z]{2}$/', $country) === 1
-            && isset($this->allowedCountries[$country]);
+        return hash_equals(self::ALLOWED_COUNTRY, $country);
     }
 
     private function protects(string $path): bool
