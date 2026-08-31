@@ -1900,8 +1900,8 @@ $assert(is_string($dhlAsset) && !str_contains($dhlAsset, '<text'), 'The disquali
 $partnerSources = file_get_contents(dirname(__DIR__) . '/public/assets/partners/README.md');
 $assert(is_string($partnerSources) && str_contains($partnerSources, 'www.dhl.com/content/dam/dhl/global/core/images/logos/dhl-logo.svg'), 'The official DHL artwork source should be documented.');
 $assert(!str_contains($home, 'href="/dhl/pickupsheet"'), 'Pickupsheet should not be discoverable from the public site chrome or homepage.');
-$assert(str_contains($home, 'styles.css?v=20260831-autocomplete-clean'), 'Scrollbar-free autocomplete styles should use a cache-safe stylesheet version.');
-$assert(str_contains($home, 'app.js?v=20260831-autocomplete-first-letter'), 'First-letter autocomplete interactions should use a cache-safe script version.');
+$assert(str_contains($home, 'styles.css?v=20260831-autocomplete-progressive'), 'Progressive autocomplete styles should use a cache-safe stylesheet version.');
+$assert(str_contains($home, 'app.js?v=20260831-autocomplete-progressive'), 'Progressive AJAX autocomplete interactions should use a cache-safe script version.');
 $assert(str_contains($home, 'analytics.js?v=20260825-security-hardening'), 'The current consent-aware Google Analytics loader should render on every page.');
 $assert(str_contains($home, 'data-analytics-accept'), 'The site should offer an explicit analytics acceptance control.');
 $assert(str_contains($home, 'data-analytics-decline'), 'The site should offer an explicit analytics decline control.');
@@ -2134,7 +2134,7 @@ $assert(is_string($styles) && str_contains($styles, '.shipment-editor-heading > 
 $assert(is_string($styles) && str_contains($styles, '.shipment-table {') && str_contains($styles, 'min-width: 0;'), 'Shipment tables should shrink to the available desktop width instead of forcing horizontal overflow.');
 $assert(is_string($styles) && str_contains($styles, '.shipment-table-edit th:nth-child(10) { width: 8%; }'), 'Editable shipment columns should use a proportional fit-to-screen layout.');
 $assert(is_string($styles) && str_contains($styles, '.consignor-autocomplete-popup[data-open]') && str_contains($styles, 'transition: opacity 150ms ease'), 'The consignor suggestion popup should animate into view without changing table layout.');
-$assert(is_string($styles) && str_contains($styles, '@keyframes consignor-option-enter') && str_contains($styles, '.consignor-autocomplete-option[aria-selected="true"]'), 'Autocomplete options should animate and expose a visible keyboard selection state.');
+$assert(is_string($styles) && str_contains($styles, '@keyframes consignor-option-enter') && str_contains($styles, '.consignor-autocomplete-option:not([data-js-animated])') && str_contains($styles, '.consignor-autocomplete-option[aria-selected="true"]'), 'Autocomplete options should retain an animation fallback and expose a visible keyboard selection state.');
 $assert(is_string($styles) && str_contains($styles, 'scrollbar-width: none') && str_contains($styles, '.consignor-autocomplete-popup::-webkit-scrollbar'), 'The autocomplete should hide browser scrollbars while retaining its scrollable results region.');
 
 $script = file_get_contents(dirname(__DIR__) . '/public/assets/app.js');
@@ -2157,7 +2157,7 @@ $assert(is_string($script) && str_contains($script, "document.querySelector('[da
 $assert(is_string($script) && str_contains($script, 'consignorSuggestionNames') && str_contains($script, "input.removeAttribute('list')"), 'JavaScript should enhance the native consignor datalist without removing its no-script fallback from the HTML.');
 $assert(is_string($script) && str_contains($script, "event.key === 'ArrowDown'") && str_contains($script, "aria-activedescendant") && str_contains($script, 'selectConsignorSuggestion'), 'The animated consignor autocomplete should support accessible keyboard navigation and selection.');
 $assert(is_string($script) && str_contains($script, "if (query === '')") && str_contains($script, '.filter((name) => name.toLowerCase().includes(query))') && str_contains($script, '.sort(compareConsignorSuggestions)') && str_contains($script, '.slice(0, 12)'), 'The consignor popup should stay closed for empty input, then alphabetize first-letter matches before keeping the visible choice list bounded.');
-$assert(is_string($script) && str_contains($script, 'consignorSearchEndpoint') && str_contains($script, "endpoint.searchParams.set('q', query)") && str_contains($script, '}, 180);'), 'The consignor autocomplete should debounce protected server searches while retaining immediate local matches.');
+$assert(is_string($script) && str_contains($script, 'consignorSearchEndpoint') && str_contains($script, "endpoint.searchParams.set('q', query)") && str_contains($script, 'consignorSearchGeneration') && str_contains($script, "setAttribute('aria-busy'") && str_contains($script, 'option.animate(') && str_contains($script, '}, 140);'), 'The consignor autocomplete should progressively debounce protected AJAX searches, reject stale results, expose loading state, and animate refreshed options with JavaScript.');
 $assert(is_string($script) && !str_contains($script, 'scrollIntoView'), 'AJAX pagination should update in place without moving the user\'s viewport.');
 
 $analyticsScript = file_get_contents(dirname(__DIR__) . '/public/assets/analytics.js');

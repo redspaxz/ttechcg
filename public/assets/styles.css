@@ -2012,8 +2012,8 @@ button, a, input, select, textarea { -webkit-tap-highlight-color: transparent; }
     line-height: 1.35;
     text-align: left;
     cursor: pointer;
-    animation: consignor-option-enter 160ms ease both;
 }
+.consignor-autocomplete-option:not([data-js-animated]) { animation: consignor-option-enter 160ms ease both; }
 .consignor-autocomplete-option:last-child { border-bottom: 0; }
 .consignor-autocomplete-option:hover,
 .consignor-autocomplete-option[aria-selected="true"] { background: #fff3b8; color: #8c0009; }

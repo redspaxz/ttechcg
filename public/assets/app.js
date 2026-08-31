@@ -116,12 +116,21 @@ if (pickupForm) {
     let activeConsignorSuggestion = -1;
     let consignorSearchTimer = null;
     let consignorSearchRequest = null;
+    let consignorSearchGeneration = 0;
+
+    const setConsignorSearchLoading = (loading) => {
+        if (!consignorPopup) return;
+        consignorPopup.toggleAttribute('data-loading', loading);
+        consignorPopup.setAttribute('aria-busy', String(loading));
+    };
 
     const closeConsignorSuggestions = () => {
+        consignorSearchGeneration += 1;
         window.clearTimeout(consignorSearchTimer);
         consignorSearchTimer = null;
         consignorSearchRequest?.abort();
         consignorSearchRequest = null;
+        setConsignorSearchLoading(false);
         if (activeConsignorInput) {
             activeConsignorInput.setAttribute('aria-expanded', 'false');
             activeConsignorInput.removeAttribute('aria-activedescendant');
@@ -179,6 +188,26 @@ if (pickupForm) {
         input.focus({ preventScroll: true });
     };
 
+    const animateConsignorOptions = (options) => {
+        if (window.matchMedia('(prefers-reduced-motion: reduce)').matches) return;
+        options.forEach((option, index) => {
+            if (typeof option.animate !== 'function') return;
+            option.dataset.jsAnimated = '';
+            option.animate(
+                [
+                    { opacity: 0, transform: 'translateY(-6px)' },
+                    { opacity: 1, transform: 'translateY(0)' },
+                ],
+                {
+                    duration: 180,
+                    delay: Math.min(index * 22, 154),
+                    easing: 'cubic-bezier(0.2, 0.75, 0.25, 1)',
+                    fill: 'backwards',
+                },
+            );
+        });
+    };
+
     const showConsignorSuggestions = (input, source = consignorSuggestionNames) => {
         if (!consignorPopup) return;
         const query = input.value.trim().toLowerCase();
@@ -186,8 +215,15 @@ if (pickupForm) {
             closeConsignorSuggestions();
             return;
         }
+        const seenMatches = new Set();
         const matches = source
             .filter((name) => name.toLowerCase().includes(query))
+            .filter((name) => {
+                const normalizedName = name.trim().toLowerCase();
+                if (seenMatches.has(normalizedName)) return false;
+                seenMatches.add(normalizedName);
+                return true;
+            })
             .sort(compareConsignorSuggestions)
             .slice(0, 12);
         if (matches.length === 0) {
@@ -199,6 +235,7 @@ if (pickupForm) {
         visibleConsignorSuggestions = matches;
         activeConsignorSuggestion = -1;
         consignorPopup.replaceChildren();
+        const renderedOptions = [];
         matches.forEach((name, index) => {
             const option = document.createElement('button');
             option.type = 'button';
@@ -215,7 +252,9 @@ if (pickupForm) {
             });
             option.addEventListener('pointermove', () => setActiveConsignorSuggestion(index));
             consignorPopup.append(option);
+            renderedOptions.push(option);
         });
+        animateConsignorOptions(renderedOptions);
         input.setAttribute('aria-expanded', 'true');
         consignorPopup.setAttribute('aria-hidden', 'false');
         positionConsignorPopup();
@@ -225,14 +264,19 @@ if (pickupForm) {
     };
 
     const searchConsignorSuggestions = (input) => {
-        showConsignorSuggestions(input);
         const query = input.value.trim();
         window.clearTimeout(consignorSearchTimer);
+        consignorSearchTimer = null;
         consignorSearchRequest?.abort();
         consignorSearchRequest = null;
+        setConsignorSearchLoading(false);
+        showConsignorSuggestions(input);
         if (consignorSearchEndpoint === '' || query === '') return;
+        const searchGeneration = ++consignorSearchGeneration;
         activeConsignorInput = input;
+        setConsignorSearchLoading(true);
         consignorSearchTimer = window.setTimeout(async () => {
+            consignorSearchTimer = null;
             const request = new AbortController();
             consignorSearchRequest = request;
             try {
@@ -253,8 +297,8 @@ if (pickupForm) {
                     ? Array.from(new Set(payload.suggestions.filter((name) => typeof name === 'string' && name.trim() !== '')))
                         .sort(compareConsignorSuggestions)
                     : [];
-                if (activeConsignorInput === input && input.value.trim() === query) {
-                    showConsignorSuggestions(input, suggestions);
+                if (searchGeneration === consignorSearchGeneration && activeConsignorInput === input && input.value.trim() === query) {
+                    showConsignorSuggestions(input, [...consignorSuggestionNames, ...suggestions]);
                 }
             } catch (error) {
                 if (error?.name !== 'AbortError') {
@@ -262,8 +306,9 @@ if (pickupForm) {
                 }
             } finally {
                 if (consignorSearchRequest === request) consignorSearchRequest = null;
+                if (searchGeneration === consignorSearchGeneration) setConsignorSearchLoading(false);
             }
-        }, 180);
+        }, 140);
     };
 
     const initializeConsignorInput = (input) => {
@@ -301,6 +346,7 @@ if (pickupForm) {
         consignorPopup.setAttribute('role', 'listbox');
         consignorPopup.setAttribute('aria-label', 'Consignor suggestions');
         consignorPopup.setAttribute('aria-hidden', 'true');
+        consignorPopup.setAttribute('aria-busy', 'false');
         document.body.append(consignorPopup);
         pickupForm.querySelectorAll('[data-consignor-input]').forEach(initializeConsignorInput);
         document.addEventListener('pointerdown', (event) => {

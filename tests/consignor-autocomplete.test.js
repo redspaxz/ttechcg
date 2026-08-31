@@ -21,6 +21,7 @@ class FakeElement {
         this.clientHeight = 180;
         this.offsetTop = 0;
         this.offsetHeight = 40;
+        this.animations = [];
     }
 
     setAttribute(name, value) { this.attributes.set(name, String(value)); }
@@ -46,6 +47,7 @@ class FakeElement {
     replaceChildren() { this.children = []; }
     contains(target) { return target === this || this.children.some((child) => child.contains?.(target)); }
     focus() { this.focused = true; }
+    animate(keyframes, options) { this.animations.push({ keyframes, options }); return {}; }
     getBoundingClientRect() { return { left: 30, top: 100, bottom: 142, width: 190 }; }
     querySelectorAll(selector) {
         if (selector === '[data-consignor-suggestion]') return this.children;
@@ -76,6 +78,7 @@ const rowsContainer = {
     addEventListener(name, handler) { this.handlers.set(name, handler); },
 };
 const suggestionList = {
+    dataset: { searchEndpoint: '/dhl/pickupsheet/consignors/search' },
     querySelectorAll(selector) {
         return selector === 'option'
             ? [{ value: 'Gamma Freight' }, { value: 'beta Logistics' }, { value: 'Alpha Cargo' }]
@@ -110,6 +113,19 @@ const window = {
     clearTimeout() {},
     setTimeout(callback) { callback(); return 1; },
     requestAnimationFrame(callback) { callback(); },
+    location: { href: 'https://example.test/dhl/pickupsheet/', assign() {} },
+};
+const requestedQueries = [];
+const fetchMock = async (url) => {
+    const query = new URL(url).searchParams.get('q');
+    requestedQueries.push(query);
+    return {
+        redirected: false,
+        ok: true,
+        async json() {
+            return { suggestions: query === 'b' ? ['Bravo Air', 'beta Logistics'] : ['beta Logistics'] };
+        },
+    };
 };
 class EventMock {
     constructor(type, options = {}) { this.type = type; this.bubbles = options.bubbles === true; }
@@ -124,6 +140,7 @@ vm.runInNewContext(script, {
     URL,
     console,
     document,
+    fetch: fetchMock,
     window,
 });
 
@@ -140,6 +157,14 @@ consignorInput.value = 'b';
 consignorInput.emit('input');
 assert.equal(popup.hasAttribute('data-open'), true, 'the first typed letter should open the suggestion popup');
 assert.deepEqual(popup.children.map((option) => option.textContent), ['beta Logistics'], 'one typed letter should filter the A-Z source list');
+assert.deepEqual(requestedQueries, ['b'], 'the first letter should start a protected AJAX search');
+assert.equal(popup.children[0].animations.length, 1, 'visible results should receive a JavaScript entrance animation');
+assert.equal(popup.getAttribute('aria-busy'), 'true', 'the listbox should announce progressive AJAX loading');
+
+consignorInput.value = 'be';
+consignorInput.emit('input');
+assert.deepEqual(requestedQueries, ['b', 'be'], 'each additional letter should progressively refresh AJAX results');
+assert.deepEqual(popup.children.map((option) => option.textContent), ['beta Logistics'], 'additional letters should immediately narrow visible local matches');
 
 const downEvent = consignorInput.emit('keydown', { key: 'ArrowDown' });
 assert.equal(downEvent.defaultPrevented, true);
