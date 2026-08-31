@@ -18,7 +18,7 @@ $e = static fn (mixed $value): string => htmlspecialchars((string) $value, ENT_Q
         <div class="pickup-recovery-actions">
             <button class="button" type="button" data-copy-recovery-codes>Copy codes</button>
             <button class="button" type="button" data-print-recovery-codes>Print</button>
-            <a class="button button-red" href="<?= $e($destination) ?>">Continue to Pickupsheet</a>
+            <a class="button button-red" href="<?= $e($destination) ?>"><?= $e($destinationLabel ?? 'Continue to Pickupsheet') ?></a>
         </div>
         <p class="pickup-login-security">Each recovery code can be used once &middot; new codes require a fresh 2FA enrollment</p>
     </div>

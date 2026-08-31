@@ -12,6 +12,7 @@ $summary = is_array($summary ?? null) ? $summary : [];
             <span class="pickup-session-user"><?= $e($recordsFullName ?? $recordsUsername ?? '') ?> &middot; <?= $e($recordsRole ?? '') ?></span>
             <?php if (($recordsRole ?? '') === 'admin'): ?><a class="pickup-back" href="<?= $e($basePath) ?>/dhl/pickupsheet/dashboard">Dashboard <span aria-hidden="true">&#8599;</span></a><?php endif; ?>
             <a class="pickup-back" href="<?= $e($basePath) ?>/dhl/pickupsheet/submissions">Submitted sheets <span aria-hidden="true">&#8599;</span></a>
+            <a class="pickup-back" href="<?= $e($basePath) ?>/dhl/pickupsheet/settings">User settings <span aria-hidden="true">&#8599;</span></a>
             <form method="post" action="<?= $e($basePath) ?>/dhl/pickupsheet/logout"><input type="hidden" name="_token" value="<?= $e($csrfToken) ?>"><button class="pickup-link-button" type="submit">Sign out</button></form>
         </div>
     </div>
@@ -40,7 +41,7 @@ $summary = is_array($summary ?? null) ? $summary : [];
 
         <section class="pickup-crm-directory ajax-pager" aria-labelledby="customer-directory-title" data-ajax-pager data-ajax-pager-id="customer-directory" data-page-endpoint="<?= $e($basePath) ?>/dhl/pickupsheet/customers/page" data-page-param="page" data-current-page="<?= $e($customers['page'] ?? 1) ?>" data-error-message="Customer profiles could not be loaded. Please try again.">
             <div class="ajax-pager-loading" data-ajax-pager-spinner role="status" hidden><span class="pickup-loading-spinner" aria-hidden="true"></span><span>Loading customers...</span></div>
-            <div data-ajax-pager-content aria-live="polite" aria-busy="false">
+            <div class="pickup-crm-directory-content" data-ajax-pager-content aria-live="polite" aria-busy="false">
                 <?php require __DIR__ . '/_customer-directory.php'; ?>
             </div>
         </section>

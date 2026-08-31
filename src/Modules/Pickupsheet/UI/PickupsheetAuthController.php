@@ -27,6 +27,9 @@ final class PickupsheetAuthController
     private const MFA_PENDING_KEY = '_pickup_mfa_pending';
     private const MFA_SETUP_SECRET_KEY = '_pickup_mfa_setup_secret';
     private const MFA_RECOVERY_CODES_KEY = '_pickup_mfa_recovery_codes';
+    private const SETTINGS_MFA_SETUP_SECRET_KEY = '_pickup_settings_mfa_setup_secret';
+    private const SETTINGS_MFA_RECOVERY_CODES_KEY = '_pickup_settings_mfa_recovery_codes';
+    private const SETTINGS_MFA_REPLACEMENT_KEY = '_pickup_settings_mfa_replacement';
 
     /** @param array<string, mixed> $config */
     public function __construct(
@@ -343,6 +346,215 @@ final class PickupsheetAuthController
         return Response::html($body, 200, $this->privateHeaders());
     }
 
+    public function settings(Request $request): Response
+    {
+        $principal = $this->recordsSession->principal($this->recordsAccess);
+        if ($principal === null) {
+            return Response::redirect($request->basePath . '/dhl/pickupsheet/login');
+        }
+
+        $flash = $_SESSION['_pickup_settings_flash'] ?? null;
+        $errors = $_SESSION['_pickup_settings_errors'] ?? [];
+        unset($_SESSION['_pickup_settings_flash'], $_SESSION['_pickup_settings_errors']);
+        $localIdentity = $principal->identityProvider === 'local';
+        $mfaAvailable = $localIdentity && $this->localMfa?->isConfigured() === true;
+        $mfaEnrolled = false;
+        $mfaReplacing = false;
+        $setup = null;
+
+        if ($mfaAvailable) {
+            try {
+                $mfaEnrolled = $this->localMfa->isEnrolled($principal->securitySubject());
+                $mfaReplacing = $mfaEnrolled && $this->settingsMfaReplacementAuthorized($principal);
+                if (!$mfaEnrolled || $mfaReplacing) {
+                    $secret = $_SESSION[self::SETTINGS_MFA_SETUP_SECRET_KEY] ?? null;
+                    if (!is_string($secret) || preg_match('/^[A-Z2-7]{32}$/', $secret) !== 1) {
+                        $setup = $this->localMfa->beginEnrollment($principal->username);
+                        $_SESSION[self::SETTINGS_MFA_SETUP_SECRET_KEY] = $setup['secret'];
+                    } else {
+                        $setup = [
+                            'secret' => $secret,
+                            'formattedSecret' => trim(chunk_split($secret, 4, ' ')),
+                            'otpauthUri' => $this->otpauthUri($principal->username, $secret),
+                        ];
+                    }
+                } else {
+                    unset($_SESSION[self::SETTINGS_MFA_SETUP_SECRET_KEY], $_SESSION[self::SETTINGS_MFA_REPLACEMENT_KEY]);
+                }
+            } catch (Throwable $exception) {
+                error_log('Pickupsheet user 2FA settings failed: ' . $exception->getMessage());
+                $mfaAvailable = false;
+                $errors[] = 'Two-factor settings are temporarily unavailable. Check the MySQL connection and migration 015.';
+            }
+        } else {
+            unset($_SESSION[self::SETTINGS_MFA_SETUP_SECRET_KEY], $_SESSION[self::SETTINGS_MFA_REPLACEMENT_KEY]);
+        }
+
+        $identityProviderLabel = match ($principal->identityProvider) {
+            'jumpcloud' => 'JumpCloud',
+            'cloudflare_access' => 'JumpCloud via Cloudflare Access',
+            default => 'Local account',
+        };
+        $body = $this->view->render('pickupsheet/settings', [
+            'pageTitle' => 'User settings',
+            'pageDescription' => 'Manage the signed-in Pickupsheet account and its two-factor authentication.',
+            'pageRobots' => 'noindex, nofollow',
+            'activePage' => 'pickupsheet',
+            'basePath' => $request->basePath,
+            'assetBase' => $request->basePath . '/public/assets',
+            'config' => $this->config,
+            'csrfToken' => $this->csrf->token(),
+            'principal' => $principal,
+            'identityProviderLabel' => $identityProviderLabel,
+            'localIdentity' => $localIdentity,
+            'mfaEnabled' => $this->localMfa?->isEnabled() === true,
+            'mfaAvailable' => $mfaAvailable,
+            'mfaEnrolled' => $mfaEnrolled,
+            'mfaReplacing' => $mfaReplacing,
+            'setup' => $setup,
+            'flash' => is_string($flash) ? $flash : null,
+            'errors' => is_array($errors) ? array_values(array_filter($errors, 'is_string')) : [],
+        ]);
+        return Response::html($body, 200, $this->privateHeaders());
+    }
+
+    public function enrollSettingsMfa(Request $request): Response
+    {
+        $principal = $this->recordsSession->principal($this->recordsAccess);
+        if ($principal === null) {
+            return Response::redirect($request->basePath . '/dhl/pickupsheet/login');
+        }
+        $guard = $this->mfaSettingsWriteGuard($request, $principal);
+        if ($guard !== null) {
+            return $guard;
+        }
+        if ($principal->identityProvider !== 'local' || $this->localMfa?->isConfigured() !== true) {
+            $_SESSION['_pickup_settings_errors'] = ['Two-factor authentication for this account is managed by its identity provider or is unavailable.'];
+            return Response::redirect($request->basePath . '/dhl/pickupsheet/settings');
+        }
+
+        try {
+            if (!$this->reauthenticates($principal, $request->rawInput('current_password'))) {
+                throw new InvalidArgumentException('Enter your current local account password.');
+            }
+            $alreadyEnrolled = $this->localMfa->isEnrolled($principal->securitySubject());
+            if ($alreadyEnrolled && !$this->settingsMfaReplacementAuthorized($principal)) {
+                throw new InvalidArgumentException('Two-factor authentication is already enabled for this account.');
+            }
+            $secret = $_SESSION[self::SETTINGS_MFA_SETUP_SECRET_KEY] ?? null;
+            if (!is_string($secret) || preg_match('/^[A-Z2-7]{32}$/', $secret) !== 1) {
+                throw new InvalidArgumentException('The authenticator setup expired. Reload User settings and try again.');
+            }
+            $recoveryCodes = $this->localMfa->confirmEnrollment(
+                $principal->securitySubject(),
+                $principal->username,
+                $secret,
+                $request->rawInput('code'),
+                $this->actorId($principal),
+            );
+            unset($_SESSION[self::SETTINGS_MFA_SETUP_SECRET_KEY], $_SESSION[self::SETTINGS_MFA_REPLACEMENT_KEY]);
+            $_SESSION[self::SETTINGS_MFA_RECOVERY_CODES_KEY] = $recoveryCodes;
+            $this->securityLogger->event('pickupsheet.user_mfa_enroll', $request, 'accepted', [
+                'actor_id' => $this->actorId($principal),
+            ]);
+            return Response::redirect($request->basePath . '/dhl/pickupsheet/settings/2fa/recovery-codes');
+        } catch (InvalidArgumentException $exception) {
+            $_SESSION['_pickup_settings_errors'] = [$exception->getMessage()];
+            $this->securityLogger->event('pickupsheet.user_mfa_enroll', $request, 'denied', [
+                'actor_id' => $this->actorId($principal),
+            ]);
+        } catch (Throwable $exception) {
+            error_log('Pickupsheet user 2FA enrollment failed: ' . $exception->getMessage());
+            $_SESSION['_pickup_settings_errors'] = ['Two-factor enrollment is temporarily unavailable.'];
+            $this->securityLogger->event('pickupsheet.user_mfa_enroll', $request, 'failed', [
+                'actor_id' => $this->actorId($principal),
+            ]);
+        }
+        return Response::redirect($request->basePath . '/dhl/pickupsheet/settings');
+    }
+
+    public function resetSettingsMfa(Request $request): Response
+    {
+        $principal = $this->recordsSession->principal($this->recordsAccess);
+        if ($principal === null) {
+            return Response::redirect($request->basePath . '/dhl/pickupsheet/login');
+        }
+        $guard = $this->mfaSettingsWriteGuard($request, $principal);
+        if ($guard !== null) {
+            return $guard;
+        }
+        if ($principal->identityProvider !== 'local' || $this->localMfa?->isConfigured() !== true) {
+            $_SESSION['_pickup_settings_errors'] = ['Two-factor authentication for this account is managed by its identity provider or is unavailable.'];
+            return Response::redirect($request->basePath . '/dhl/pickupsheet/settings');
+        }
+
+        try {
+            if ($request->input('confirm_reset') !== '1') {
+                throw new InvalidArgumentException('Confirm that you want to replace your authenticator.');
+            }
+            if (!$this->reauthenticates($principal, $request->rawInput('current_password'))) {
+                throw new InvalidArgumentException('Enter your current local account password.');
+            }
+            if (!$this->localMfa->isEnrolled($principal->securitySubject())) {
+                throw new InvalidArgumentException('Two-factor authentication is not currently enrolled.');
+            }
+            $method = $this->localMfa->verify($principal->securitySubject(), $request->rawInput('code'));
+            if ($method === null) {
+                throw new InvalidArgumentException('Enter a valid current authenticator or recovery code.');
+            }
+            $setup = $this->localMfa->beginEnrollment($principal->username);
+            $_SESSION[self::SETTINGS_MFA_SETUP_SECRET_KEY] = $setup['secret'];
+            $_SESSION[self::SETTINGS_MFA_REPLACEMENT_KEY] = [
+                'subject' => $principal->securitySubject(),
+                'expires_at' => time() + 300,
+            ];
+            $_SESSION['_pickup_settings_flash'] = 'Replacement authorized for five minutes. Your current authenticator stays active until the new setup is confirmed.';
+            $this->securityLogger->event('pickupsheet.user_mfa_reset', $request, 'accepted', [
+                'actor_id' => $this->actorId($principal),
+                'verified_with' => $method,
+            ]);
+        } catch (InvalidArgumentException $exception) {
+            $_SESSION['_pickup_settings_errors'] = [$exception->getMessage()];
+            $this->securityLogger->event('pickupsheet.user_mfa_reset', $request, 'denied', [
+                'actor_id' => $this->actorId($principal),
+            ]);
+        } catch (Throwable $exception) {
+            error_log('Pickupsheet user 2FA reset failed: ' . $exception->getMessage());
+            $_SESSION['_pickup_settings_errors'] = ['Two-factor reset is temporarily unavailable.'];
+            $this->securityLogger->event('pickupsheet.user_mfa_reset', $request, 'failed', [
+                'actor_id' => $this->actorId($principal),
+            ]);
+        }
+        return Response::redirect($request->basePath . '/dhl/pickupsheet/settings');
+    }
+
+    public function settingsRecoveryCodes(Request $request): Response
+    {
+        $principal = $this->recordsSession->principal($this->recordsAccess);
+        $codes = $_SESSION[self::SETTINGS_MFA_RECOVERY_CODES_KEY] ?? null;
+        unset($_SESSION[self::SETTINGS_MFA_RECOVERY_CODES_KEY]);
+        if ($principal === null || $principal->identityProvider !== 'local' || !is_array($codes) || $codes === []) {
+            return $principal === null
+                ? Response::redirect($request->basePath . '/dhl/pickupsheet/login')
+                : Response::redirect($request->basePath . '/dhl/pickupsheet/settings');
+        }
+
+        $body = $this->view->render('pickupsheet/mfa-recovery', [
+            'pageTitle' => 'Save your recovery codes',
+            'pageDescription' => 'Store one-time local account recovery codes securely.',
+            'pageRobots' => 'noindex, nofollow',
+            'activePage' => 'pickupsheet',
+            'basePath' => $request->basePath,
+            'assetBase' => $request->basePath . '/public/assets',
+            'config' => $this->config,
+            'principal' => $principal,
+            'recoveryCodes' => array_values(array_filter($codes, 'is_string')),
+            'destination' => $request->basePath . '/dhl/pickupsheet/settings',
+            'destinationLabel' => 'Return to User settings',
+        ]);
+        return Response::html($body, 200, $this->privateHeaders());
+    }
+
     public function jumpCloudStart(Request $request): Response
     {
         $principal = $this->recordsSession->principal($this->recordsAccess);
@@ -443,7 +655,14 @@ final class PickupsheetAuthController
         }
         $this->recordsSession->logout();
         $this->clearPendingMfa();
-        unset($_SESSION[self::MFA_RECOVERY_CODES_KEY]);
+        unset(
+            $_SESSION[self::MFA_RECOVERY_CODES_KEY],
+            $_SESSION[self::SETTINGS_MFA_SETUP_SECRET_KEY],
+            $_SESSION[self::SETTINGS_MFA_RECOVERY_CODES_KEY],
+            $_SESSION[self::SETTINGS_MFA_REPLACEMENT_KEY],
+            $_SESSION['_pickup_settings_flash'],
+            $_SESSION['_pickup_settings_errors'],
+        );
         if ($cloudflareIdentity) {
             return Response::redirect('/cdn-cgi/access/logout', 302);
         }
@@ -577,6 +796,63 @@ final class PickupsheetAuthController
     private function clearPendingMfa(): void
     {
         unset($_SESSION[self::MFA_PENDING_KEY], $_SESSION[self::MFA_SETUP_SECRET_KEY], $_SESSION['_pickup_mfa_error']);
+    }
+
+    private function mfaSettingsWriteGuard(Request $request, RecordsPrincipal $principal): ?Response
+    {
+        if (!$this->csrf->validate($request->input('_token'))) {
+            $this->securityLogger->event('pickupsheet.user_mfa_csrf', $request, 'denied', [
+                'actor_id' => $this->actorId($principal),
+            ]);
+            return Response::html('Invalid or expired form token.', 419, $this->privateHeaders());
+        }
+
+        try {
+            $retryAfter = $this->rateLimiter->consume(
+                'pickup-user-mfa-settings',
+                $request->clientIdentifier() . ':' . substr(hash('sha256', $principal->securitySubject()), 0, 16),
+                10,
+                900,
+            );
+        } catch (RuntimeException $exception) {
+            error_log($exception->__toString());
+            return Response::html('Two-factor settings are temporarily unavailable.', 503, $this->privateHeaders());
+        }
+        if ($retryAfter > 0) {
+            return Response::html('Too many two-factor settings attempts. Please try again later.', 429, array_merge(
+                $this->privateHeaders(),
+                ['Retry-After' => (string) $retryAfter],
+            ));
+        }
+        return null;
+    }
+
+    private function reauthenticates(RecordsPrincipal $principal, string $password): bool
+    {
+        $authenticated = $this->recordsAccess->authenticateCredentials($principal->username, $password);
+        return $authenticated !== null
+            && $authenticated->identityProvider === 'local'
+            && hash_equals($principal->securitySubject(), $authenticated->securitySubject())
+            && hash_equals($principal->authenticationVersion, $authenticated->authenticationVersion);
+    }
+
+    private function actorId(RecordsPrincipal $principal): string
+    {
+        return substr(hash('sha256', $principal->username), 0, 24);
+    }
+
+    private function settingsMfaReplacementAuthorized(RecordsPrincipal $principal): bool
+    {
+        $replacement = $_SESSION[self::SETTINGS_MFA_REPLACEMENT_KEY] ?? null;
+        $authorized = is_array($replacement)
+            && is_string($replacement['subject'] ?? null)
+            && is_int($replacement['expires_at'] ?? null)
+            && $replacement['expires_at'] >= time()
+            && hash_equals($principal->securitySubject(), $replacement['subject']);
+        if (!$authorized) {
+            unset($_SESSION[self::SETTINGS_MFA_REPLACEMENT_KEY]);
+        }
+        return $authorized;
     }
 
     private function otpauthUri(string $username, string $secret): string

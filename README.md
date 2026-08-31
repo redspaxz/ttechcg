@@ -69,7 +69,7 @@ PICKUPSHEET_MFA_ENCRYPTION_KEY=PASTE_THE_GENERATED_VALUE_HERE
 PICKUPSHEET_MFA_ISSUER=T&Tech Pickupsheet
 ```
 
-Do not reuse a database password or JumpCloud secret as the encryption key. Preserve this key separately from database backups: changing or losing it makes existing authenticator enrollments unreadable, requiring an administrator reset and re-enrollment. JumpCloud and Cloudflare accounts continue to use provider-managed MFA. An administrator can reset a managed local account's 2FA from **Local operators and viewers**; the account must enroll again after its next successful password check.
+Do not reuse a database password or JumpCloud secret as the encryption key. Preserve this key separately from database backups: changing or losing it makes existing authenticator enrollments unreadable, requiring an administrator reset and re-enrollment. JumpCloud and Cloudflare accounts continue to use provider-managed MFA. An administrator can reset a managed local account's 2FA from **Local operators and viewers**; the account must enroll again after its next successful password check. Any signed-in user can open `/dhl/pickupsheet/settings` to review their identity and 2FA status. Local users can replace their own authenticator only after re-entering the current password and a valid existing authenticator or recovery code. The old enrollment remains active until a new TOTP code is confirmed and new recovery codes are issued, so abandoning replacement does not remove account protection.
 
 ### Cloudflare Access SSO handoff
 

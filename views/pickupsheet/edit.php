@@ -43,6 +43,7 @@ $renderEditRow = static function (string|int $index, array $values = []) use ($e
         <div class="pickup-header-links">
             <span class="pickup-session-user" title="<?= $e($recordsUsername) ?>"><?= $e($checkerName) ?> · <?= $e($recordsRole) ?></span>
             <a class="pickup-back" href="<?= $e($basePath) ?>/dhl/pickupsheet/submissions">Submitted sheets <span aria-hidden="true">&#8599;</span></a>
+            <a class="pickup-back" href="<?= $e($basePath) ?>/dhl/pickupsheet/settings">User settings <span aria-hidden="true">&#8599;</span></a>
             <form method="post" action="<?= $e($basePath) ?>/dhl/pickupsheet/logout"><input type="hidden" name="_token" value="<?= $e($csrfToken) ?>"><button class="pickup-link-button" type="submit">Sign out</button></form>
         </div>
     </div>

@@ -697,4 +697,13 @@ document.addEventListener('submit', (event) => {
         const confirmation = event.target.querySelector('[data-confirm-mfa-reset]');
         if (confirmation) confirmation.value = '1';
     }
+    if (event.target.matches('[data-self-mfa-reset]')) {
+        const accountName = event.target.dataset.accountName || 'your account';
+        if (!window.confirm(`Replace the authenticator for ${accountName}? The current authenticator and unused recovery codes will stop working.`)) {
+            event.preventDefault();
+            return;
+        }
+        const confirmation = event.target.querySelector('[data-confirm-self-mfa-reset]');
+        if (confirmation) confirmation.value = '1';
+    }
 });

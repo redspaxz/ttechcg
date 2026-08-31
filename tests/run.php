@@ -1249,6 +1249,46 @@ $replayedRecoveryLogin = $mfaAuthController->verifyMfa(new Request('POST', '/dhl
 $assert($replayedRecoveryLogin->status() === 303 && $recordsSession->principal($recordsAccess) === null, 'A consumed recovery code must not complete another login.');
 $mfaAuthController->login(new Request('GET', '/dhl/pickupsheet/login'));
 
+$deniedUserSettings = $mfaAuthController->settings(new Request('GET', '/dhl/pickupsheet/settings'));
+$assert($deniedUserSettings->status() === 303 && ($deniedUserSettings->headers()['Location'] ?? '') === '/dhl/pickupsheet/login', 'User settings should require an authenticated Pickupsheet session.');
+$recordsSession->login($adminPrincipal);
+$userSettings = $mfaAuthController->settings(new Request('GET', '/dhl/pickupsheet/settings'));
+$assert($userSettings->status() === 200 && str_contains($userSettings->body(), 'Your settings.') && str_contains($userSettings->body(), 'Records Administrator'), 'A signed-in user should open settings for their own account identity.');
+$assert(str_contains($userSettings->body(), 'Two-factor authentication') && str_contains($userSettings->body(), 'data-self-mfa-reset') && str_contains($userSettings->body(), '>Enabled</span>'), 'An enrolled local user should see their 2FA status and protected authenticator replacement action.');
+$invalidSettingsCsrf = $mfaAuthController->resetSettingsMfa(new Request('POST', '/dhl/pickupsheet/settings/2fa/reset', [], [
+    '_token' => 'invalid-token',
+    'current_password' => $recordsPassword,
+    'code' => $totpForSecret((string) $mfaEnrollmentSecret),
+    'confirm_reset' => '1',
+]));
+$assert($invalidSettingsCsrf->status() === 419 && $mfaService->isEnrolled($adminPrincipal->securitySubject()), 'Self-service 2FA replacement should reject an invalid CSRF token without changing enrollment.');
+$invalidSettingsPassword = $mfaAuthController->resetSettingsMfa(new Request('POST', '/dhl/pickupsheet/settings/2fa/reset', [], [
+    '_token' => $pickupCsrf->token(),
+    'current_password' => 'incorrect-current-password',
+    'code' => $totpForSecret((string) $mfaEnrollmentSecret),
+    'confirm_reset' => '1',
+], '', ['REMOTE_ADDR' => '203.0.113.40']));
+$assert($invalidSettingsPassword->status() === 303 && $mfaService->isEnrolled($adminPrincipal->securitySubject()), 'Self-service 2FA replacement should require the signed-in user\'s current local password.');
+$replaceSettingsMfa = $mfaAuthController->resetSettingsMfa(new Request('POST', '/dhl/pickupsheet/settings/2fa/reset', [], [
+    '_token' => $pickupCsrf->token(),
+    'current_password' => $recordsPassword,
+    'code' => $totpForSecret((string) $mfaEnrollmentSecret),
+    'confirm_reset' => '1',
+], '', ['REMOTE_ADDR' => '203.0.113.40']));
+$replacementMfaSecret = $_SESSION['_pickup_settings_mfa_setup_secret'] ?? null;
+$assert($replaceSettingsMfa->status() === 303 && is_string($replacementMfaSecret) && $mfaService->isEnrolled($adminPrincipal->securitySubject()), 'A password and existing second factor should authorize replacement while preserving the old authenticator until confirmation.');
+$replacementSettingsPage = $mfaAuthController->settings(new Request('GET', '/dhl/pickupsheet/settings'));
+$assert(str_contains($replacementSettingsPage->body(), 'Complete authenticator replacement') && str_contains($replacementSettingsPage->body(), 'Confirm replacement') && str_contains($replacementSettingsPage->body(), 'current authenticator remains active'), 'User settings should guide the signed-in user through an atomic replacement enrollment.');
+$completeSettingsMfa = $mfaAuthController->enrollSettingsMfa(new Request('POST', '/dhl/pickupsheet/settings/2fa/enroll', [], [
+    '_token' => $pickupCsrf->token(),
+    'current_password' => $recordsPassword,
+    'code' => $totpForSecret((string) $replacementMfaSecret),
+], '', ['REMOTE_ADDR' => '203.0.113.40']));
+$assert($completeSettingsMfa->status() === 303 && ($completeSettingsMfa->headers()['Location'] ?? '') === '/dhl/pickupsheet/settings/2fa/recovery-codes' && $mfaService->isEnrolled($adminPrincipal->securitySubject()), 'The signed-in user should confirm replacement 2FA before receiving new recovery codes.');
+$settingsRecoveryPage = $mfaAuthController->settingsRecoveryCodes(new Request('GET', '/dhl/pickupsheet/settings/2fa/recovery-codes'));
+$assert($settingsRecoveryPage->status() === 200 && substr_count($settingsRecoveryPage->body(), '<code>') === 10 && str_contains($settingsRecoveryPage->body(), 'Return to User settings'), 'Self-service enrollment should display ten replacement recovery codes exactly once and return to settings.');
+$recordsSession->logout();
+
 $deniedSubmissions = $pickupController->submissions(new Request('GET', '/dhl/pickupsheet/submissions', [], [], '', [
     'REMOTE_ADDR' => '203.0.113.21',
 ]));
@@ -1486,6 +1526,7 @@ $customerProfile = $customerController->edit(new Request('GET', '/dhl/pickupshee
 $assert($customerDirectory->status() === 200 && str_contains($customerDirectory->body(), 'Customer CRM'), 'An administrator should open the customer CRM.');
 $assert(str_contains($customerDirectory->body(), 'Controller Client') && str_contains($customerDirectory->body(), '14,000 XAF'), 'CRM should synchronize shipment consignors and their operational value.');
 $assert(str_contains($customerDirectory->body(), 'data-ajax-pager-id="customer-directory"') && str_contains($customerDirectory->body(), 'data-ajax-pager-form="customer-directory"'), 'The customer directory and its filters should use progressive AJAX pagination.');
+$assert(str_contains($customerDirectory->body(), 'class="pickup-crm-directory-content"'), 'The AJAX customer directory should retain its card-specific content wrapper and padding.');
 $customerDirectoryFragment = $customerController->page(new Request('GET', '/dhl/pickupsheet/customers/page', ['page' => '1']));
 $assert($customerDirectoryFragment->status() === 200 && str_contains($customerDirectoryFragment->body(), 'Customer directory') && str_contains($customerDirectoryFragment->body(), 'data-ajax-current-page="1"'), 'The customer directory endpoint should return a normal-link-compatible page fragment.');
 $assert($customerProfile->status() === 200 && str_contains($customerProfile->body(), 'Recent shipments') && str_contains($customerProfile->body(), 'pickup-customer-history-content') && str_contains($customerProfile->body(), $savedReference), 'A synchronized customer profile should show linked shipment history inside its compact AJAX card content.');
@@ -1922,8 +1963,8 @@ $assert(is_string($dhlAsset) && !str_contains($dhlAsset, '<text'), 'The disquali
 $partnerSources = file_get_contents(dirname(__DIR__) . '/public/assets/partners/README.md');
 $assert(is_string($partnerSources) && str_contains($partnerSources, 'www.dhl.com/content/dam/dhl/global/core/images/logos/dhl-logo.svg'), 'The official DHL artwork source should be documented.');
 $assert(!str_contains($home, 'href="/dhl/pickupsheet"'), 'Pickupsheet should not be discoverable from the public site chrome or homepage.');
-$assert(str_contains($home, 'styles.css?v=20260831-managed-user-disable'), 'Managed-user status controls and prior Pickupsheet refinements should use a cache-safe stylesheet version.');
-$assert(str_contains($home, 'app.js?v=20260831-managed-user-disable'), 'Managed-user status confirmation and progressive AJAX interactions should use a cache-safe script version.');
+$assert(str_contains($home, 'styles.css?v=20260831-user-settings-2fa'), 'User settings, Customer directory padding, and prior Pickupsheet refinements should use a cache-safe stylesheet version.');
+$assert(str_contains($home, 'app.js?v=20260831-user-settings-2fa'), 'Self-service 2FA confirmation and progressive AJAX interactions should use a cache-safe script version.');
 $assert(str_contains($home, 'analytics.js?v=20260825-security-hardening'), 'The current consent-aware Google Analytics loader should render on every page.');
 $assert(str_contains($home, 'data-analytics-accept'), 'The site should offer an explicit analytics acceptance control.');
 $assert(str_contains($home, 'data-analytics-decline'), 'The site should offer an explicit analytics decline control.');
@@ -2149,6 +2190,7 @@ $assert(is_string($styles) && str_contains($styles, '.records-users-layout'), 'A
 $assert(is_string($styles) && str_contains($styles, '.records-user-table') && str_contains($styles, '.records-user-summary-row:nth-child(4n + 3)'), 'Managed accounts should render in a detailed table with alternating row colors.');
 $assert(is_string($styles) && str_contains($styles, '.records-login-method-grid') && str_contains($styles, '.records-method-switch'), 'The administrator workspace should style authentication-method toggles.');
 $assert(is_string($styles) && str_contains($styles, '.pickup-mfa-setup') && str_contains($styles, '.pickup-recovery-codes') && str_contains($styles, '.records-user-mfa-status'), 'Local 2FA enrollment, recovery codes, and administrator status should have responsive styling.');
+$assert(is_string($styles) && str_contains($styles, '/* Signed-in user settings */') && str_contains($styles, '.pickup-settings-grid') && str_contains($styles, '.pickup-settings-status[data-enabled="true"]'), 'Signed-in account and 2FA settings should have a dedicated responsive visual system.');
 $assert(is_string($styles) && str_contains($styles, '/* Pickupsheet login portal */'), 'Pickupsheet should have a dedicated responsive login portal.');
 $assert(is_string($styles) && str_contains($styles, '.pickup-admin-workspace') && str_contains($styles, '.pickup-kpi-grid'), 'The administrator should have a dedicated KPI control-panel layout.');
 $assert(is_string($styles) && str_contains($styles, '.shipment-editor > *') && str_contains($styles, 'max-width: 1180px;'), 'The cash-shipment editor should be centered within the available screen width.');
@@ -2160,6 +2202,7 @@ $assert(is_string($styles) && str_contains($styles, '@keyframes consignor-option
 $assert(is_string($styles) && str_contains($styles, 'scrollbar-width: none') && str_contains($styles, '.consignor-autocomplete-popup::-webkit-scrollbar'), 'The autocomplete should hide browser scrollbars while retaining its scrollable results region.');
 $assert(is_string($styles) && str_contains($styles, '.pickup-customer-history-content > .pickup-card-heading') && str_contains($styles, 'padding: 18px 20px;'), 'The AJAX-wrapped Recent shipments heading should retain compact card padding.');
 $assert(is_string($styles) && str_contains($styles, '.pickup-customer-history .pickup-crm-table-wrap td { padding: 13px 15px; }') && str_contains($styles, '.pickup-customer-history .pickup-pagination { gap: 14px; padding: 16px 20px 18px; }'), 'Recent shipment rows and pagination should use a compact, consistent spacing rhythm.');
+$assert(is_string($styles) && str_contains($styles, '.pickup-crm-directory-content > .pickup-card-heading') && str_contains($styles, '.pickup-crm-directory .pickup-crm-table-wrap td,') && str_contains($styles, '.pickup-crm-directory .pickup-pagination,'), 'The AJAX-wrapped Customer directory card should retain compact heading, row, and pager padding.');
 $assert(is_string($styles) && str_contains($styles, '.pickup-workspace-header {') && str_contains($styles, 'position: sticky;') && str_contains($styles, 'z-index: 1150;') && str_contains($styles, 'top: 0;'), 'Pickupsheet workspace headers should remain visible while their pages scroll.');
 $assert(is_string($styles) && str_contains($styles, '.pickup-admin-workspace > .pickup-workspace-header') && str_contains($styles, 'box-shadow: 0 0 0 100vmax #0b0b0c;'), 'Sticky administrator headers should retain their full-width dark background.');
 
@@ -2180,6 +2223,7 @@ $assert(is_string($script) && str_contains($script, "document.querySelectorAll('
 $assert(is_string($script) && str_contains($script, "event.target.matches('[data-user-delete-form]')") && str_contains($script, 'Permanently delete'), 'Local account deletion should require an explicit browser confirmation.');
 $assert(is_string($script) && str_contains($script, "event.target.matches('[data-user-status-form]')") && str_contains($script, 'Their current session and future local sign-ins will be blocked') && str_contains($script, "confirmation.value = '1'"), 'Direct managed-account disabling should require explicit browser confirmation.');
 $assert(is_string($script) && str_contains($script, "document.querySelector('[data-copy-recovery-codes]')") && str_contains($script, "event.target.matches('[data-user-mfa-reset-form]')"), 'Local 2FA should support secure recovery-code handling and explicit administrator reset confirmation.');
+$assert(is_string($script) && str_contains($script, "event.target.matches('[data-self-mfa-reset]')") && str_contains($script, 'The current authenticator and unused recovery codes will stop working'), 'A signed-in user should explicitly confirm replacing their own authenticator.');
 $assert(is_string($script) && str_contains($script, "document.querySelector('[data-login-method-form]')") && str_contains($script, "'X-Requested-With': 'XMLHttpRequest'"), 'Sign-in toggles should save asynchronously without refreshing account management.');
 $assert(is_string($script) && str_contains($script, 'consignorSuggestionNames') && str_contains($script, "input.removeAttribute('list')"), 'JavaScript should enhance the native consignor datalist without removing its no-script fallback from the HTML.');
 $assert(is_string($script) && str_contains($script, "event.key === 'ArrowDown'") && str_contains($script, "aria-activedescendant") && str_contains($script, 'selectConsignorSuggestion'), 'The animated consignor autocomplete should support accessible keyboard navigation and selection.');
@@ -2365,6 +2409,7 @@ $assert(is_string($bootstrap) && str_contains($bootstrap, "'/pickupsheet'"), 'Th
 $assert(is_string($bootstrap) && str_contains($bootstrap, 'rawurlencode($reference)'), 'Legacy print and export redirects should preserve the reference query safely.');
 $assert(is_string($bootstrap) && str_contains($bootstrap, "'/dhl/pickupsheet/login'"), 'Pickupsheet should expose its dedicated session login portal.');
 $assert(is_string($bootstrap) && str_contains($bootstrap, "'/dhl/pickupsheet/login/2fa'") && str_contains($bootstrap, "'/dhl/pickupsheet/login/2fa/recovery-codes'"), 'Pickupsheet should expose local 2FA verification and one-time recovery-code routes.');
+$assert(is_string($bootstrap) && str_contains($bootstrap, "'/dhl/pickupsheet/settings'") && str_contains($bootstrap, "'/dhl/pickupsheet/settings/2fa/enroll'") && str_contains($bootstrap, "'/dhl/pickupsheet/settings/2fa/reset'") && str_contains($bootstrap, "'/dhl/pickupsheet/settings/2fa/recovery-codes'"), 'Pickupsheet should expose signed-in user settings and protected self-service 2FA routes.');
 $assert(is_string($bootstrap) && str_contains($bootstrap, "'/dhl/pickupsheet/logout'"), 'Pickupsheet should expose a CSRF-protected logout route.');
 $assert(is_string($bootstrap) && str_contains($bootstrap, "'/dhl/pickupsheet/consignors/search'"), 'Pickupsheet should expose its protected consignor autocomplete route.');
 
