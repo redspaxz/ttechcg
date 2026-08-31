@@ -1975,6 +1975,8 @@ button, a, input, select, textarea { -webkit-tap-highlight-color: transparent; }
     z-index: 1200;
     max-height: min(300px, 44vh);
     overflow-y: auto;
+    scrollbar-width: none;
+    -ms-overflow-style: none;
     padding: 6px;
     border: 1px solid rgba(69, 50, 0, 0.38);
     background: #fff;
@@ -1986,6 +1988,7 @@ button, a, input, select, textarea { -webkit-tap-highlight-color: transparent; }
     pointer-events: none;
     transition: opacity 150ms ease, transform 180ms cubic-bezier(0.2, 0.75, 0.25, 1), visibility 0s linear 180ms;
 }
+.consignor-autocomplete-popup::-webkit-scrollbar { width: 0; height: 0; }
 .consignor-autocomplete-popup[data-placement="above"] { transform: translateY(8px) scale(0.985); transform-origin: bottom center; }
 .consignor-autocomplete-popup[data-open] {
     opacity: 1;

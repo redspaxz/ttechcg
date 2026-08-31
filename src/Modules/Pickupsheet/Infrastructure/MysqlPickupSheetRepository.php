@@ -472,7 +472,7 @@ final class MysqlPickupSheetRepository implements PickupSheetRepository
              WHERE p.deleted_at IS NULL AND TRIM(ps.consignor) <> \'\'
                AND (:query_empty = 1 OR LOCATE(:query_value, LOWER(TRIM(ps.consignor))) > 0)
              GROUP BY LOWER(TRIM(ps.consignor))
-             ORDER BY consignor ASC
+             ORDER BY LOWER(consignor) ASC, consignor ASC
              LIMIT :limit',
         );
         $normalizedQuery = strtolower(trim($query));

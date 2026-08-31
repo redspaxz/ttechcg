@@ -74,6 +74,9 @@ if (pickupForm) {
         .map((option) => option.value.trim())
         .filter(Boolean);
     const consignorSearchEndpoint = consignorSuggestionList?.dataset?.searchEndpoint || '';
+    const compareConsignorSuggestions = (left, right) => (
+        left.localeCompare(right, undefined, { sensitivity: 'base' }) || left.localeCompare(right)
+    );
     const maximumRows = 50;
     const fieldLabels = {
         consignor: 'consignor',
@@ -181,6 +184,7 @@ if (pickupForm) {
         const query = input.value.trim().toLowerCase();
         const matches = source
             .filter((name) => query === '' || name.toLowerCase().includes(query))
+            .sort(compareConsignorSuggestions)
             .slice(0, 12);
         if (matches.length === 0) {
             closeConsignorSuggestions();
@@ -243,7 +247,7 @@ if (pickupForm) {
                 const payload = await response.json();
                 const suggestions = Array.isArray(payload.suggestions)
                     ? Array.from(new Set(payload.suggestions.filter((name) => typeof name === 'string' && name.trim() !== '')))
-                        .sort((left, right) => left.localeCompare(right, undefined, { sensitivity: 'base' }))
+                        .sort(compareConsignorSuggestions)
                     : [];
                 if (activeConsignorInput === input && input.value.trim() === query) {
                     showConsignorSuggestions(input, suggestions);

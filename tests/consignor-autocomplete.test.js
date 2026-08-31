@@ -78,7 +78,7 @@ const rowsContainer = {
 const suggestionList = {
     querySelectorAll(selector) {
         return selector === 'option'
-            ? [{ value: 'Alpha Cargo' }, { value: 'Beta Logistics' }, { value: 'Gamma Freight' }]
+            ? [{ value: 'Gamma Freight' }, { value: 'beta Logistics' }, { value: 'Alpha Cargo' }]
             : [];
     },
 };
@@ -134,11 +134,11 @@ assert.equal(consignorInput.hasAttribute('list'), false, 'enhancement should sup
 
 consignorInput.emit('focus');
 assert.equal(popup.hasAttribute('data-open'), true, 'focus should animate the suggestion popup open');
-assert.deepEqual(popup.children.map((option) => option.textContent), ['Alpha Cargo', 'Beta Logistics', 'Gamma Freight']);
+assert.deepEqual(popup.children.map((option) => option.textContent), ['Alpha Cargo', 'beta Logistics', 'Gamma Freight'], 'unsorted sources should always render in case-insensitive A-Z order');
 
 consignorInput.value = 'be';
 consignorInput.emit('input');
-assert.deepEqual(popup.children.map((option) => option.textContent), ['Beta Logistics'], 'typing should filter the A-Z source list');
+assert.deepEqual(popup.children.map((option) => option.textContent), ['beta Logistics'], 'typing should filter the A-Z source list');
 
 const downEvent = consignorInput.emit('keydown', { key: 'ArrowDown' });
 assert.equal(downEvent.defaultPrevented, true);
@@ -147,7 +147,7 @@ assert.equal(popup.children[0].getAttribute('aria-selected'), 'true');
 
 const enterEvent = consignorInput.emit('keydown', { key: 'Enter' });
 assert.equal(enterEvent.defaultPrevented, true);
-assert.equal(consignorInput.value, 'Beta Logistics');
+assert.equal(consignorInput.value, 'beta Logistics');
 assert.equal(consignorInput.getAttribute('aria-expanded'), 'false');
 assert.equal(popup.hasAttribute('data-open'), false, 'selection should animate the popup closed');
 

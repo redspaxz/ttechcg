@@ -1899,8 +1899,8 @@ $assert(is_string($dhlAsset) && !str_contains($dhlAsset, '<text'), 'The disquali
 $partnerSources = file_get_contents(dirname(__DIR__) . '/public/assets/partners/README.md');
 $assert(is_string($partnerSources) && str_contains($partnerSources, 'www.dhl.com/content/dam/dhl/global/core/images/logos/dhl-logo.svg'), 'The official DHL artwork source should be documented.');
 $assert(!str_contains($home, 'href="/dhl/pickupsheet"'), 'Pickupsheet should not be discoverable from the public site chrome or homepage.');
-$assert(str_contains($home, 'styles.css?v=20260831-operator-crm'), 'Operator CRM styles should use a cache-safe stylesheet version.');
-$assert(str_contains($home, 'app.js?v=20260831-operator-crm'), 'Operator CRM interactions should use a cache-safe script version.');
+$assert(str_contains($home, 'styles.css?v=20260831-autocomplete-clean'), 'Scrollbar-free autocomplete styles should use a cache-safe stylesheet version.');
+$assert(str_contains($home, 'app.js?v=20260831-autocomplete-clean'), 'Alphabetical autocomplete interactions should use a cache-safe script version.');
 $assert(str_contains($home, 'analytics.js?v=20260825-security-hardening'), 'The current consent-aware Google Analytics loader should render on every page.');
 $assert(str_contains($home, 'data-analytics-accept'), 'The site should offer an explicit analytics acceptance control.');
 $assert(str_contains($home, 'data-analytics-decline'), 'The site should offer an explicit analytics decline control.');
@@ -2134,6 +2134,7 @@ $assert(is_string($styles) && str_contains($styles, '.shipment-table {') && str_
 $assert(is_string($styles) && str_contains($styles, '.shipment-table-edit th:nth-child(10) { width: 8%; }'), 'Editable shipment columns should use a proportional fit-to-screen layout.');
 $assert(is_string($styles) && str_contains($styles, '.consignor-autocomplete-popup[data-open]') && str_contains($styles, 'transition: opacity 150ms ease'), 'The consignor suggestion popup should animate into view without changing table layout.');
 $assert(is_string($styles) && str_contains($styles, '@keyframes consignor-option-enter') && str_contains($styles, '.consignor-autocomplete-option[aria-selected="true"]'), 'Autocomplete options should animate and expose a visible keyboard selection state.');
+$assert(is_string($styles) && str_contains($styles, 'scrollbar-width: none') && str_contains($styles, '.consignor-autocomplete-popup::-webkit-scrollbar'), 'The autocomplete should hide browser scrollbars while retaining its scrollable results region.');
 
 $script = file_get_contents(dirname(__DIR__) . '/public/assets/app.js');
 $assert(is_string($script) && str_contains($script, "event.key === 'Escape'"), 'The mobile navigation should close with Escape.');
@@ -2154,7 +2155,7 @@ $assert(is_string($script) && str_contains($script, "document.querySelector('[da
 $assert(is_string($script) && str_contains($script, "document.querySelector('[data-login-method-form]')") && str_contains($script, "'X-Requested-With': 'XMLHttpRequest'"), 'Sign-in toggles should save asynchronously without refreshing account management.');
 $assert(is_string($script) && str_contains($script, 'consignorSuggestionNames') && str_contains($script, "input.removeAttribute('list')"), 'JavaScript should enhance the native consignor datalist without removing its no-script fallback from the HTML.');
 $assert(is_string($script) && str_contains($script, "event.key === 'ArrowDown'") && str_contains($script, "aria-activedescendant") && str_contains($script, 'selectConsignorSuggestion'), 'The animated consignor autocomplete should support accessible keyboard navigation and selection.');
-$assert(is_string($script) && str_contains($script, '.filter((name) => query === \'\' || name.toLowerCase().includes(query))') && str_contains($script, '.slice(0, 12)'), 'The consignor popup should filter its A-Z source and keep the visible choice list bounded.');
+$assert(is_string($script) && str_contains($script, '.filter((name) => query === \'\' || name.toLowerCase().includes(query))') && str_contains($script, '.sort(compareConsignorSuggestions)') && str_contains($script, '.slice(0, 12)'), 'The consignor popup should alphabetize filtered results before keeping the visible choice list bounded.');
 $assert(is_string($script) && str_contains($script, 'consignorSearchEndpoint') && str_contains($script, "endpoint.searchParams.set('q', query)") && str_contains($script, '}, 180);'), 'The consignor autocomplete should debounce protected server searches while retaining immediate local matches.');
 $assert(is_string($script) && !str_contains($script, 'scrollIntoView'), 'AJAX pagination should update in place without moving the user\'s viewport.');
 
@@ -2220,7 +2221,7 @@ $assert(str_contains($pickupMysqlRepository, 'pickup_sheet_lifecycle_audit'), 'P
 $assert(str_contains($pickupMysqlRepository, 'GROUP BY LOWER(TRIM(ps.consignor))'), 'MySQL sender performance should group sender name casing consistently.');
 $assert(str_contains($pickupMysqlRepository, 'p.collection_date >= :minimum_date') && str_contains($pickupMysqlRepository, 'p.collection_date <= :maximum_date'), 'MySQL sender performance should use a bounded rolling collection-date window.');
 $assert(str_contains($pickupMysqlRepository, 'ORDER BY shipment_count DESC, sender ASC'), 'MySQL sender performance should rank the most frequent senders first with deterministic ties.');
-$assert(str_contains($pickupMysqlRepository, 'public function consignorSuggestions') && str_contains($pickupMysqlRepository, 'ORDER BY consignor ASC'), 'MySQL should provide alphabetically ordered consignor suggestions for new pickup sheets.');
+$assert(str_contains($pickupMysqlRepository, 'public function consignorSuggestions') && str_contains($pickupMysqlRepository, 'ORDER BY LOWER(consignor) ASC, consignor ASC'), 'MySQL should provide deterministic case-insensitive alphabetical consignor suggestions.');
 $assert(str_contains($pickupMysqlRepository, 'LOCATE(:query_value, LOWER(TRIM(ps.consignor))) > 0'), 'MySQL consignor autocomplete should safely search normalized saved names by substring.');
 $assert(str_contains($pickupMysqlRepository, 'p.deleted_at IS NULL') && str_contains($pickupMysqlRepository, "TRIM(ps.consignor) <> \\'\\'"), 'Consignor suggestions should exclude deleted sheets and blank names.');
 $sessionActivityMigration = file_get_contents(dirname(__DIR__) . '/database/migrations/010_create_pickup_records_session_activity.sql');
