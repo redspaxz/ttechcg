@@ -21,6 +21,7 @@ final class RecordsPrincipal
         public readonly string $lastName = '',
         public readonly string $identityProvider = 'local',
         public readonly string $displayName = '',
+        public readonly string $localSecuritySubject = '',
     ) {
     }
 
@@ -48,6 +49,14 @@ final class RecordsPrincipal
 
         $fallback = self::fallbackNameParts($this->username);
         return $fallback['firstName'] . ' ' . $fallback['lastName'];
+    }
+
+    public function securitySubject(): string
+    {
+        if ($this->localSecuritySubject !== '') {
+            return $this->localSecuritySubject;
+        }
+        return strtolower($this->identityProvider . ':' . $this->username);
     }
 
     /** @return array{firstName: string, lastName: string} */

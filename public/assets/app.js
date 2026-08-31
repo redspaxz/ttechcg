@@ -382,6 +382,22 @@ if (loginMethodForm) {
     methodToggles.forEach((toggle) => toggle.addEventListener('change', () => loginMethodForm.requestSubmit()));
 }
 
+document.querySelector('[data-copy-recovery-codes]')?.addEventListener('click', async (event) => {
+    const codes = Array.from(document.querySelectorAll('[data-recovery-code-list] code'))
+        .map((code) => code.textContent?.trim())
+        .filter(Boolean)
+        .join('\n');
+    if (codes === '') return;
+    try {
+        await navigator.clipboard.writeText(codes);
+        event.currentTarget.textContent = 'Codes copied';
+    } catch {
+        event.currentTarget.textContent = 'Copy unavailable';
+    }
+});
+
+document.querySelector('[data-print-recovery-codes]')?.addEventListener('click', () => window.print());
+
 document.addEventListener('submit', (event) => {
     if (event.target.matches('[data-pickup-delete]')
         && !window.confirm('Delete this pickup sheet from active records? Its audit history will be retained.')) {
@@ -394,6 +410,15 @@ document.addEventListener('submit', (event) => {
             return;
         }
         const confirmation = event.target.querySelector('[data-confirm-delete]');
+        if (confirmation) confirmation.value = '1';
+    }
+    if (event.target.matches('[data-user-mfa-reset-form]')) {
+        const accountName = event.target.dataset.accountName || 'this local account';
+        if (!window.confirm(`Reset two-factor authentication for ${accountName}? They must enroll again at the next sign-in.`)) {
+            event.preventDefault();
+            return;
+        }
+        const confirmation = event.target.querySelector('[data-confirm-mfa-reset]');
         if (confirmation) confirmation.value = '1';
     }
 });

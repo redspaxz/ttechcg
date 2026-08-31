@@ -28,7 +28,7 @@ $operational = (bool) ($operational ?? false);
 
         <section class="pickup-backup-scope" aria-labelledby="backup-scope-title">
             <div><span>Backup scope</span><h2 id="backup-scope-title">Application data, protected at rest</h2></div>
-            <p>The encrypted file includes pickup sheets, shipments, customers, rewards, inquiries, local account password hashes, and application audit records. It excludes the <code>.env</code> file, database password, JumpCloud and Cloudflare secrets, uploaded assets, and PHP session files.</p>
+            <p>The encrypted file includes pickup sheets, shipments, customers, rewards, inquiries, local account password hashes, encrypted 2FA enrollments, recovery-code hashes, and application audit records. It excludes the <code>.env</code> file, database password, 2FA encryption key, JumpCloud and Cloudflare secrets, uploaded assets, and PHP session files.</p>
         </section>
 
         <div class="pickup-backup-grid">

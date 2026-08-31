@@ -14,6 +14,9 @@ $localLoginEnabled = (bool) ($loginMethods->localLoginEnabled ?? $localLoginConf
 $jumpCloudDirectEnabled = (bool) ($loginMethods->jumpCloudLoginEnabled ?? $jumpCloudLoginConfigured);
 $cloudflareAccessConfigured = (bool) ($loginMethods->cloudflareAccessConfigured ?? $config['cloudflare_access_configured'] ?? false);
 $loginMethodsUpdatedAt = is_string($loginMethods->updatedAt ?? null) ? $loginMethods->updatedAt : null;
+$mfaStatuses = is_array($mfaStatuses ?? null) ? $mfaStatuses : [];
+$localMfaEnabled = ($localMfaEnabled ?? false) === true;
+$localMfaConfigured = ($localMfaConfigured ?? false) === true;
 $jumpCloudEnabled = $jumpCloudDirectEnabled || $jumpCloudIdentity;
 $jumpCloudGroups = is_array($config['jumpcloud_role_groups'] ?? null) ? $config['jumpcloud_role_groups'] : [];
 ?>
@@ -57,6 +60,7 @@ $jumpCloudGroups = is_array($config['jumpcloud_role_groups'] ?? null) ? $config[
                     <div><strong>Local login</strong><span data-login-method-status="local"><?= !$localLoginConfigured ? 'Unavailable' : ($localLoginEnabled ? 'Enabled' : 'Disabled') ?></span></div>
                     <p>Username or email and password authentication for locally managed accounts.</p>
                     <label class="records-method-switch"><input type="hidden" name="local_login_enabled" value="0"><input type="checkbox" name="local_login_enabled" value="1" data-login-method-toggle="local" <?= $localLoginEnabled ? 'checked' : '' ?> <?= !$localLoginConfigured ? 'disabled' : '' ?>><span aria-hidden="true"></span><b><?= $localLoginConfigured ? 'Allow local sign-in' : 'Blocked by server configuration' ?></b></label>
+                    <small class="records-local-mfa-state" data-enabled="<?= $localMfaConfigured ? 'true' : 'false' ?>">Authenticator 2FA: <?= !$localMfaEnabled ? 'disabled in .env' : ($localMfaConfigured ? 'required' : 'encryption key unavailable') ?></small>
                     <code>PICKUPSHEET_LOCAL_LOGIN_ENABLED=<?= $localLoginConfigured ? 'true' : 'false' ?></code>
                 </article>
                 <article data-login-method-card="jumpcloud" data-enabled="<?= $jumpCloudDirectEnabled ? 'true' : 'false' ?>" data-configured="<?= $jumpCloudLoginConfigured ? 'true' : 'false' ?>">
@@ -118,23 +122,24 @@ $jumpCloudGroups = is_array($config['jumpcloud_role_groups'] ?? null) ? $config[
 
             <div class="records-user-table-wrap">
                 <table class="records-user-table">
-                    <thead><tr><th>User</th><th>Login ID</th><th>Role</th><th>Status</th><th>Last updated</th><th>Actions</th></tr></thead>
+                    <thead><tr><th>User</th><th>Login ID</th><th>Role</th><th>Status</th><th>2FA</th><th>Last updated</th><th>Actions</th></tr></thead>
                     <tbody>
                     <?php if ($accounts === []): ?>
-                        <tr><td colspan="6"><div class="pickup-empty-state"><h2>No lower-tier accounts yet.</h2><p>Create an operator or viewer using the form above.</p></div></td></tr>
+                        <tr><td colspan="7"><div class="pickup-empty-state"><h2>No lower-tier accounts yet.</h2><p>Create an operator or viewer using the form above.</p></div></td></tr>
                     <?php endif; ?>
                     <?php foreach ($accounts as $account): ?>
-                        <?php $editorId = 'user-editor-' . (int) $account->id; ?>
+                        <?php $editorId = 'user-editor-' . (int) $account->id; $mfaSubject = 'local-user:' . (int) $account->id; $mfaEnrolled = ($mfaStatuses[$mfaSubject] ?? false) === true; ?>
                         <tr class="records-user-summary-row" data-active="<?= $account->active ? 'true' : 'false' ?>">
                             <td><div class="records-user-table-identity"><strong><?= $e($account->fullName()) ?></strong><small>Local account #<?= $e($account->id) ?> &middot; created <?= $e($account->createdAt) ?> UTC</small></div></td>
                             <td><span class="records-user-login-id"><?= $e($account->username) ?></span></td>
                             <td><span class="records-user-role"><?= $e($account->role) ?></span></td>
                             <td><span class="records-user-status" data-active="<?= $account->active ? 'true' : 'false' ?>"><?= $account->active ? 'Active' : 'Inactive' ?></span></td>
+                            <td><span class="records-user-mfa-status" data-enabled="<?= $mfaEnrolled ? 'true' : 'false' ?>"><?= !$localMfaEnabled ? 'Not required' : ($mfaEnrolled ? 'Enabled' : 'Not enrolled') ?></span></td>
                             <td><time class="records-user-updated" datetime="<?= $e($account->updatedAt) ?>"><?= $e($account->updatedAt) ?><small>UTC</small></time></td>
-                            <td class="records-user-action-cell"><div class="records-user-row-actions"><button class="button button-dark" type="button" data-user-edit-toggle="<?= $e($editorId) ?>" aria-controls="<?= $e($editorId) ?>" aria-expanded="false">Edit</button><form method="post" action="<?= $e($basePath) ?>/dhl/pickupsheet/submissions/users/delete" data-user-delete-form data-account-name="<?= $e($account->fullName()) ?>"><input type="hidden" name="_token" value="<?= $e($csrfToken) ?>"><input type="hidden" name="id" value="<?= $e($account->id) ?>"><input type="hidden" name="confirm_delete" value="0" data-confirm-delete><button class="button records-user-delete" type="submit">Delete</button></form></div></td>
+                            <td class="records-user-action-cell"><div class="records-user-row-actions"><button class="button button-dark" type="button" data-user-edit-toggle="<?= $e($editorId) ?>" aria-controls="<?= $e($editorId) ?>" aria-expanded="false">Edit</button><?php if ($localMfaConfigured && $mfaEnrolled): ?><form method="post" action="<?= $e($basePath) ?>/dhl/pickupsheet/submissions/users/mfa/reset" data-user-mfa-reset-form data-account-name="<?= $e($account->fullName()) ?>"><input type="hidden" name="_token" value="<?= $e($csrfToken) ?>"><input type="hidden" name="id" value="<?= $e($account->id) ?>"><input type="hidden" name="confirm_reset" value="0" data-confirm-mfa-reset><button class="button records-user-mfa-reset" type="submit">Reset 2FA</button></form><?php endif; ?><form method="post" action="<?= $e($basePath) ?>/dhl/pickupsheet/submissions/users/delete" data-user-delete-form data-account-name="<?= $e($account->fullName()) ?>"><input type="hidden" name="_token" value="<?= $e($csrfToken) ?>"><input type="hidden" name="id" value="<?= $e($account->id) ?>"><input type="hidden" name="confirm_delete" value="0" data-confirm-delete><button class="button records-user-delete" type="submit">Delete</button></form></div></td>
                         </tr>
                         <tr class="records-user-editor-row" id="<?= $e($editorId) ?>" data-user-editor hidden>
-                            <td colspan="6">
+                            <td colspan="7">
                                 <form class="records-user-editor" method="post" action="<?= $e($basePath) ?>/dhl/pickupsheet/submissions/users/update">
                                     <input type="hidden" name="_token" value="<?= $e($csrfToken) ?>">
                                     <input type="hidden" name="id" value="<?= $e($account->id) ?>">

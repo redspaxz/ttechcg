@@ -118,6 +118,9 @@ final class RecordsAccess
                     $this->environmentAuthenticationVersion($username, $environmentUser, $passwordHash),
                     $environmentUser['firstName'],
                     $environmentUser['lastName'],
+                    'local',
+                    '',
+                    'local-env:' . $username,
                 )
                 : null;
         }
@@ -145,6 +148,9 @@ final class RecordsAccess
             $managedAccount->authenticationVersion(),
             $managedAccount->firstName,
             $managedAccount->lastName,
+            'local',
+            '',
+            'local-user:' . $managedAccount->id,
         );
     }
 
@@ -171,6 +177,9 @@ final class RecordsAccess
             $managedAccount->authenticationVersion(),
             $managedAccount->firstName,
             $managedAccount->lastName,
+            'local',
+            '',
+            'local-user:' . $managedAccount->id,
         );
     }
 
@@ -216,6 +225,9 @@ final class RecordsAccess
             $this->environmentAuthenticationVersion($username, $user, $passwordHash),
             $user['firstName'],
             $user['lastName'],
+            'local',
+            '',
+            'local-env:' . $username,
         );
     }
 

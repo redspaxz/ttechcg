@@ -12,6 +12,7 @@ use App\Shared\Security\Captcha;
 use App\Shared\Security\Csrf;
 use App\Shared\Security\LoginMethodSettings;
 use App\Shared\Security\LoginMethodSettingsService;
+use App\Shared\Security\LocalMfaService;
 use App\Shared\Security\RateLimiter;
 use App\Shared\Security\RecordsAccess;
 use App\Shared\Security\RecordsPrincipal;
@@ -22,6 +23,7 @@ use App\Shared\Spreadsheet\XlsxWriter;
 use App\Shared\View\View;
 use InvalidArgumentException;
 use RuntimeException;
+use Throwable;
 
 final class PickupsheetController
 {
@@ -40,6 +42,7 @@ final class PickupsheetController
         private readonly RateLimiter $rateLimiter,
         private readonly SecurityLogger $securityLogger,
         private readonly ?LoginMethodSettingsService $loginMethodSettings = null,
+        private readonly ?LocalMfaService $localMfa = null,
     ) {
     }
 
@@ -533,11 +536,23 @@ final class PickupsheetController
 
         $accounts = [];
         $loginMethods = $this->effectiveLoginMethods();
+        $mfaStatuses = [];
         try {
             $accounts = $this->recordsUserService->accounts($authorization);
         } catch (RuntimeException $exception) {
             error_log($exception->__toString());
             $errors = ['Account storage could not be initialized. Confirm that the MySQL user can create tables, or apply migration 005 in phpMyAdmin.'];
+        }
+        if ($accounts !== [] && $this->localMfa?->isEnabled() === true && $this->localMfa->isConfigured()) {
+            try {
+                $mfaStatuses = $this->localMfa->statuses(array_map(
+                    static fn ($account): string => 'local-user:' . $account->id,
+                    $accounts,
+                ));
+            } catch (Throwable $exception) {
+                error_log('Managed account 2FA status could not be loaded: ' . $exception->getMessage());
+                $errors[] = 'Two-factor status could not be loaded. Apply migration 015 and check MySQL.';
+            }
         }
 
         $body = $this->view->render('pickupsheet/users', [
@@ -557,6 +572,9 @@ final class PickupsheetController
             'recordsFullName' => $authorization->fullName(),
             'recordsIdentityProvider' => $authorization->identityProvider,
             'loginMethods' => $loginMethods,
+            'mfaStatuses' => $mfaStatuses,
+            'localMfaEnabled' => $this->localMfa?->isEnabled() === true,
+            'localMfaConfigured' => $this->localMfa?->isConfigured() === true,
         ]);
 
         return Response::html($body, 200, $this->privateHeaders());
@@ -671,6 +689,13 @@ final class PickupsheetController
                 throw new InvalidArgumentException('Confirm the local account deletion and try again.');
             }
             $account = $this->recordsUserService->delete($request->input('id'), $authorization);
+            if ($this->localMfa?->isConfigured() === true) {
+                try {
+                    $this->localMfa->reset('local-user:' . $account->id, $this->actorId($authorization));
+                } catch (Throwable $exception) {
+                    error_log('Deleted local account 2FA cleanup failed: ' . $exception->getMessage());
+                }
+            }
             $_SESSION['_records_users_flash'] = sprintf('Local account %s deleted.', $account->username);
             $this->securityLogger->event('pickupsheet.records_user_delete', $request, 'accepted', [
                 'actor_id' => $this->actorId($authorization),
@@ -686,6 +711,44 @@ final class PickupsheetController
             $this->securityLogger->event('pickupsheet.records_user_delete', $request, 'failed');
         }
 
+        return Response::redirect($request->basePath . '/dhl/pickupsheet/submissions/users');
+    }
+
+    public function resetUserMfa(Request $request): Response
+    {
+        $authorization = $this->authorizeRecords($request, 'manage');
+        if ($authorization instanceof Response) {
+            return $authorization;
+        }
+        $writeDenied = $this->recordsUserWriteGuard($request);
+        if ($writeDenied !== null) {
+            return $writeDenied;
+        }
+
+        try {
+            if ($request->input('confirm_reset') !== '1') {
+                throw new InvalidArgumentException('Confirm the two-factor reset and try again.');
+            }
+            if ($this->localMfa?->isConfigured() !== true) {
+                throw new RuntimeException('Local 2FA is not configured.');
+            }
+            $account = $this->recordsUserService->account($request->input('id'), $authorization);
+            if (!$this->localMfa->reset('local-user:' . $account->id, $this->actorId($authorization))) {
+                throw new InvalidArgumentException('Two-factor authentication is not enrolled for that account.');
+            }
+            $_SESSION['_records_users_flash'] = sprintf('Two-factor authentication reset for %s. It must be enrolled at the next sign-in.', $account->username);
+            $this->securityLogger->event('pickupsheet.records_user_mfa_reset', $request, 'accepted', [
+                'actor_id' => $this->actorId($authorization),
+                'target_id' => substr(hash('sha256', $account->username), 0, 24),
+            ]);
+        } catch (InvalidArgumentException $exception) {
+            $_SESSION['_records_users_errors'] = [$exception->getMessage()];
+            $this->securityLogger->event('pickupsheet.records_user_mfa_reset', $request, 'denied');
+        } catch (RuntimeException $exception) {
+            error_log($exception->__toString());
+            $_SESSION['_records_users_errors'] = ['Two-factor authentication could not be reset. Check migration 015 and MySQL.'];
+            $this->securityLogger->event('pickupsheet.records_user_mfa_reset', $request, 'failed');
+        }
         return Response::redirect($request->basePath . '/dhl/pickupsheet/submissions/users');
     }
 

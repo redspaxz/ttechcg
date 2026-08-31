@@ -35,12 +35,15 @@ use App\Shared\Infrastructure\DemoSecurityEventRepository;
 use App\Shared\Infrastructure\Environment;
 use App\Shared\Infrastructure\MigrationRunner;
 use App\Shared\Infrastructure\DemoLoginMethodSettingsRepository;
+use App\Shared\Infrastructure\DemoLocalMfaRepository;
 use App\Shared\Infrastructure\MysqlLoginMethodSettingsRepository;
+use App\Shared\Infrastructure\MysqlLocalMfaRepository;
 use App\Shared\Infrastructure\MysqlRecordsUserRepository;
 use App\Shared\Infrastructure\MysqlRecordsSessionActivityRepository;
 use App\Shared\Infrastructure\MysqlSecurityEventRepository;
 use App\Shared\Infrastructure\UnavailableRecordsUserRepository;
 use App\Shared\Infrastructure\UnavailableLoginMethodSettingsRepository;
+use App\Shared\Infrastructure\UnavailableLocalMfaRepository;
 use App\Shared\Infrastructure\UnavailableRecordsSessionActivityRepository;
 use App\Shared\Infrastructure\UnavailableSecurityEventRepository;
 use App\Shared\Security\Captcha;
@@ -48,6 +51,7 @@ use App\Shared\Security\CloudflareAccessProvider;
 use App\Shared\Security\Csrf;
 use App\Shared\Security\JumpCloudOidcProvider;
 use App\Shared\Security\LoginMethodSettingsService;
+use App\Shared\Security\LocalMfaService;
 use App\Shared\Security\PickupsheetCountryPolicy;
 use App\Shared\Security\RateLimiter;
 use App\Shared\Security\RecordsAccess;
@@ -127,6 +131,11 @@ $loginMethodSettingsRepository = match (true) {
     $isProduction => new UnavailableLoginMethodSettingsRepository(),
     default => new DemoLoginMethodSettingsRepository(),
 };
+$localMfaRepository = match (true) {
+    $connection !== null => new MysqlLocalMfaRepository($connection),
+    $isProduction => new UnavailableLocalMfaRepository(),
+    default => new DemoLocalMfaRepository(),
+};
 $backupRepository = $connection !== null
     ? new MysqlBackupRepository($connection)
     : new UnavailableBackupRepository();
@@ -156,6 +165,9 @@ $loginMethodSettings = new LoginMethodSettingsService(
     $jumpCloud->isConfigured(),
     $cloudflareAccess->isConfigured(),
 );
+$localMfa = LocalMfaService::fromEnvironment($localMfaRepository);
+$config['local_mfa_enabled'] = $localMfa->isEnabled();
+$config['local_mfa_configured'] = $localMfa->isConfigured();
 $recordsUserService = new RecordsUserService($recordsUserRepository, $recordsAccess->environmentUsernames());
 $contactCaptcha = new Captcha('contact');
 $pickupCaptcha = new Captcha('pickupsheet');
@@ -182,6 +194,7 @@ $pickupsheetAuthController = new PickupsheetAuthController(
     $jumpCloud,
     $cloudflareAccess,
     $loginMethodSettings,
+    $localMfa,
 );
 $pickupsheetController = new PickupsheetController(
     new PickupSheetService($pickupSheetRepository),
@@ -197,6 +210,7 @@ $pickupsheetController = new PickupsheetController(
     $rateLimiter,
     $securityLogger,
     $loginMethodSettings,
+    $localMfa,
 );
 $customerController = new CustomerController(
     new CustomerService($customerRepository),
@@ -227,6 +241,9 @@ $router->get('/contact', fn (Request $request): Response => $contactController->
 $router->post('/contact', fn (Request $request): Response => $contactController->store($request));
 $router->get('/dhl/pickupsheet/login', fn (Request $request): Response => $pickupsheetAuthController->login($request));
 $router->post('/dhl/pickupsheet/login', fn (Request $request): Response => $pickupsheetAuthController->authenticate($request));
+$router->get('/dhl/pickupsheet/login/2fa', fn (Request $request): Response => $pickupsheetAuthController->mfa($request));
+$router->post('/dhl/pickupsheet/login/2fa', fn (Request $request): Response => $pickupsheetAuthController->verifyMfa($request));
+$router->get('/dhl/pickupsheet/login/2fa/recovery-codes', fn (Request $request): Response => $pickupsheetAuthController->recoveryCodes($request));
 $router->get('/dhl/pickupsheet/auth/jumpcloud', fn (Request $request): Response => $pickupsheetAuthController->jumpCloudStart($request));
 $router->get('/dhl/pickupsheet/auth/jumpcloud/callback', fn (Request $request): Response => $pickupsheetAuthController->jumpCloudCallback($request));
 $router->post('/dhl/pickupsheet/logout', fn (Request $request): Response => $pickupsheetAuthController->logout($request));
@@ -257,6 +274,7 @@ $router->get('/dhl/pickupsheet/submissions/users', fn (Request $request): Respon
 $router->post('/dhl/pickupsheet/submissions/users', fn (Request $request): Response => $pickupsheetController->createUser($request));
 $router->post('/dhl/pickupsheet/submissions/users/update', fn (Request $request): Response => $pickupsheetController->updateUser($request));
 $router->post('/dhl/pickupsheet/submissions/users/delete', fn (Request $request): Response => $pickupsheetController->deleteUser($request));
+$router->post('/dhl/pickupsheet/submissions/users/mfa/reset', fn (Request $request): Response => $pickupsheetController->resetUserMfa($request));
 $router->post('/dhl/pickupsheet/submissions/users/login-methods', fn (Request $request): Response => $pickupsheetController->updateLoginMethods($request));
 $router->post('/dhl/pickupsheet/submissions/users/admin-password', fn (Request $request): Response => $pickupsheetController->resetAdminPassword($request));
 $router->get('/dhl/pickupsheet/submissions/print', fn (Request $request): Response => $pickupsheetController->print($request));

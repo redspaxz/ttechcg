@@ -28,6 +28,7 @@ use App\Shared\Http\Response;
 use App\Shared\Http\Router;
 use App\Shared\Infrastructure\DemoRecordsUserRepository;
 use App\Shared\Infrastructure\DemoLoginMethodSettingsRepository;
+use App\Shared\Infrastructure\DemoLocalMfaRepository;
 use App\Shared\Infrastructure\DemoRecordsSessionActivityRepository;
 use App\Shared\Infrastructure\DemoSecurityEventRepository;
 use App\Shared\Security\Captcha;
@@ -35,6 +36,7 @@ use App\Shared\Security\CloudflareAccessProvider;
 use App\Shared\Security\Csrf;
 use App\Shared\Security\JumpCloudOidcProvider;
 use App\Shared\Security\LoginMethodSettingsService;
+use App\Shared\Security\LocalMfaService;
 use App\Shared\Security\OidcHttpClient;
 use App\Shared\Security\PickupsheetCountryPolicy;
 use App\Shared\Security\RateLimiter;
@@ -58,6 +60,33 @@ $assert = static function (bool $condition, string $message): void {
     }
 };
 
+$totpForSecret = static function (string $secret, ?int $step = null): string {
+    $alphabet = 'ABCDEFGHIJKLMNOPQRSTUVWXYZ234567';
+    $bits = '';
+    foreach (str_split(strtoupper($secret)) as $character) {
+        $position = strpos($alphabet, $character);
+        if ($position === false) {
+            throw new RuntimeException('Invalid test TOTP secret.');
+        }
+        $bits .= str_pad(decbin($position), 5, '0', STR_PAD_LEFT);
+    }
+    $key = '';
+    foreach (str_split($bits, 8) as $chunk) {
+        if (strlen($chunk) === 8) {
+            $key .= chr(bindec($chunk));
+        }
+    }
+    $step ??= intdiv(time(), 30);
+    $counter = pack('N2', intdiv($step, 4294967296), $step % 4294967296);
+    $hash = hash_hmac('sha1', $counter, $key, true);
+    $offset = ord($hash[19]) & 0x0f;
+    $number = ((ord($hash[$offset]) & 0x7f) << 24)
+        | ((ord($hash[$offset + 1]) & 0xff) << 16)
+        | ((ord($hash[$offset + 2]) & 0xff) << 8)
+        | (ord($hash[$offset + 3]) & 0xff);
+    return str_pad((string) ($number % 1000000), 6, '0', STR_PAD_LEFT);
+};
+
 $_SESSION = [];
 $captchaService = new Captcha();
 $captchaChallenge = $captchaService->issue();
@@ -70,6 +99,28 @@ $assert($captchaService->validate($captchaChallenge['nonce'], $captchaAnswer), '
 $assert(!$captchaService->validate($captchaChallenge['nonce'], $captchaAnswer), 'A CAPTCHA challenge should not be reusable.');
 $wrongChallenge = $captchaService->issue();
 $assert(!$captchaService->validate($wrongChallenge['nonce'], '99'), 'An incorrect CAPTCHA response should fail.');
+
+$mfaEncryptionKey = base64_encode(str_repeat("\x19", 32));
+$mfaRepository = new DemoLocalMfaRepository();
+$mfaService = new LocalMfaService($mfaRepository, true, $mfaEncryptionKey, 'T&Tech Test');
+$mfaSetup = $mfaService->beginEnrollment('local.test@example.com');
+$mfaRecoveryCodes = $mfaService->confirmEnrollment(
+    'local:test-account',
+    'local.test@example.com',
+    $mfaSetup['secret'],
+    $totpForSecret($mfaSetup['secret']),
+    str_repeat('a', 24),
+);
+$storedMfa = $mfaRepository->find('local:test-account');
+$assert(count($mfaRecoveryCodes) === 10 && $storedMfa !== null, 'Local 2FA enrollment should issue ten one-time recovery codes.');
+$assert(!str_contains($storedMfa->secretEnvelope, $mfaSetup['secret']) && count($storedMfa->recoveryCodeHashes) === 10, 'Authenticator secrets should be encrypted and recovery codes should be stored only as hashes.');
+$currentMfaCode = $totpForSecret($mfaSetup['secret']);
+$assert($mfaService->verify('local:test-account', $currentMfaCode) === 'totp', 'A current authenticator code should verify.');
+$assert($mfaService->verify('local:test-account', $currentMfaCode) === null, 'An accepted TOTP timestep must not be replayable.');
+$assert($mfaService->verify('local:test-account', $mfaRecoveryCodes[0]) === 'recovery', 'A recovery code should verify once.');
+$assert($mfaService->verify('local:test-account', $mfaRecoveryCodes[0]) === null, 'A consumed recovery code must not be reusable.');
+$assert(($mfaService->statuses(['local:test-account'])['local:test-account'] ?? false) === true, '2FA status should report enrolled local identities.');
+$assert($mfaService->reset('local:test-account', str_repeat('b', 24)) && !$mfaService->isEnrolled('local:test-account'), 'A confirmed 2FA reset should remove the local enrollment.');
 
 $service = new InquiryService(new DemoInquiryRepository());
 $inquiry = $service->submit([
@@ -876,6 +927,7 @@ $pickupController = new PickupsheetController(
     $disabledRateLimiter,
     $testSecurityLogger,
     $loginMethodSettings,
+    $mfaService,
 );
 $customerController = new CustomerController(
     new CustomerService(new DemoCustomerRepository(new DemoPickupSheetRepository())),
@@ -907,6 +959,19 @@ $pickupAuthController = new PickupsheetAuthController(
     null,
     null,
     $loginMethodSettings,
+);
+$mfaAuthController = new PickupsheetAuthController(
+    $view,
+    $pickupCsrf,
+    $recordsAccess,
+    $recordsSession,
+    $disabledRateLimiter,
+    $testSecurityLogger,
+    $config,
+    null,
+    null,
+    $loginMethodSettings,
+    $mfaService,
 );
 
 $jumpCloudConfig = array_merge($config, [
@@ -1119,6 +1184,60 @@ $assert(str_contains($openPickup->body(), 'value="Records Administrator"') && st
 $assert(($openPickup->headers()['Cache-Control'] ?? '') === 'private, no-store, max-age=0', 'The open pickup form should not be cached.');
 
 $recordsSession->logout();
+$mfaPasswordAccepted = $mfaAuthController->authenticate(new Request('POST', '/dhl/pickupsheet/login', [], [
+    '_token' => $pickupCsrf->token(),
+    'username' => $recordsUsername,
+    'password' => $recordsPassword,
+], '', ['REMOTE_ADDR' => '203.0.113.40']));
+$assert($mfaPasswordAccepted->status() === 303 && ($mfaPasswordAccepted->headers()['Location'] ?? '') === '/dhl/pickupsheet/login/2fa', 'A correct local password should continue to 2FA without creating an authenticated session.');
+$assert($recordsSession->principal($recordsAccess) === null, 'Password-only local authentication must not establish a Pickupsheet session when 2FA is enabled.');
+$mfaEnrollmentPage = $mfaAuthController->mfa(new Request('GET', '/dhl/pickupsheet/login/2fa'));
+$mfaEnrollmentSecret = $_SESSION['_pickup_mfa_setup_secret'] ?? null;
+$assert(
+    $mfaEnrollmentPage->status() === 200 && str_contains($mfaEnrollmentPage->body(), 'Protect your account.') && is_string($mfaEnrollmentSecret),
+    'An unenrolled local account should receive an authenticator setup key.',
+);
+$validMfaSetupCode = $totpForSecret((string) $mfaEnrollmentSecret);
+$invalidMfaSetupCode = ($validMfaSetupCode[0] === '0' ? '1' : '0') . substr($validMfaSetupCode, 1);
+$invalidMfaCode = $mfaAuthController->verifyMfa(new Request('POST', '/dhl/pickupsheet/login/2fa', [], [
+    '_token' => $pickupCsrf->token(),
+    'code' => $invalidMfaSetupCode,
+], '', ['REMOTE_ADDR' => '203.0.113.40']));
+$assert($invalidMfaCode->status() === 303 && $recordsSession->principal($recordsAccess) === null, 'An incorrect setup code must not establish a local session.');
+$completeMfaEnrollment = $mfaAuthController->verifyMfa(new Request('POST', '/dhl/pickupsheet/login/2fa', [], [
+    '_token' => $pickupCsrf->token(),
+    'code' => $validMfaSetupCode,
+], '', ['REMOTE_ADDR' => '203.0.113.40']));
+$issuedRecoveryCodes = $_SESSION['_pickup_mfa_recovery_codes'] ?? [];
+$firstIssuedRecoveryCode = is_array($issuedRecoveryCodes) ? ($issuedRecoveryCodes[0] ?? '') : '';
+$assert($completeMfaEnrollment->status() === 303 && ($completeMfaEnrollment->headers()['Location'] ?? '') === '/dhl/pickupsheet/login/2fa/recovery-codes', 'A valid enrollment code should enable 2FA and redirect to one-time recovery codes.');
+$assert($recordsSession->principal($recordsAccess)?->role === 'admin' && is_string($firstIssuedRecoveryCode), 'Successful second-factor enrollment should establish the local administrator session and issue recovery codes.');
+$mfaRecoveryPage = $mfaAuthController->recoveryCodes(new Request('GET', '/dhl/pickupsheet/login/2fa/recovery-codes'));
+$assert($mfaRecoveryPage->status() === 200 && substr_count($mfaRecoveryPage->body(), '<code>') === 10 && str_contains($mfaRecoveryPage->body(), 'will not be displayed again'), 'New recovery codes should be displayed exactly once after enrollment.');
+$recordsSession->logout();
+$mfaAuthController->authenticate(new Request('POST', '/dhl/pickupsheet/login', [], [
+    '_token' => $pickupCsrf->token(),
+    'username' => $recordsUsername,
+    'password' => $recordsPassword,
+], '', ['REMOTE_ADDR' => '203.0.113.40']));
+$recoveryLogin = $mfaAuthController->verifyMfa(new Request('POST', '/dhl/pickupsheet/login/2fa', [], [
+    '_token' => $pickupCsrf->token(),
+    'code' => (string) $firstIssuedRecoveryCode,
+], '', ['REMOTE_ADDR' => '203.0.113.40']));
+$assert($recoveryLogin->status() === 303 && $recordsSession->principal($recordsAccess)?->role === 'admin', 'An unused recovery code should complete local authentication.');
+$recordsSession->logout();
+$mfaAuthController->authenticate(new Request('POST', '/dhl/pickupsheet/login', [], [
+    '_token' => $pickupCsrf->token(),
+    'username' => $recordsUsername,
+    'password' => $recordsPassword,
+], '', ['REMOTE_ADDR' => '203.0.113.40']));
+$replayedRecoveryLogin = $mfaAuthController->verifyMfa(new Request('POST', '/dhl/pickupsheet/login/2fa', [], [
+    '_token' => $pickupCsrf->token(),
+    'code' => (string) $firstIssuedRecoveryCode,
+], '', ['REMOTE_ADDR' => '203.0.113.40']));
+$assert($replayedRecoveryLogin->status() === 303 && $recordsSession->principal($recordsAccess) === null, 'A consumed recovery code must not complete another login.');
+$mfaAuthController->login(new Request('GET', '/dhl/pickupsheet/login'));
+
 $deniedSubmissions = $pickupController->submissions(new Request('GET', '/dhl/pickupsheet/submissions', [], [], '', [
     'REMOTE_ADDR' => '203.0.113.21',
 ]));
@@ -1492,6 +1611,28 @@ $adminUsersWithAccount = $pickupController->users(new Request('GET', '/dhl/picku
 $assert(str_contains($adminUsersWithAccount->body(), 'managed-operator') && str_contains($adminUsersWithAccount->body(), 'class="records-user-table"') && str_contains($adminUsersWithAccount->body(), 'data-user-edit-toggle="user-editor-1"'), 'The management page should list read-only lower-tier account details with an explicit Edit action.');
 $assert(str_contains($adminUsersWithAccount->body(), 'data-user-editor hidden') && str_contains($adminUsersWithAccount->body(), 'data-user-delete-form'), 'Account forms should remain hidden until requested and expose a separate protected Delete action.');
 $assert(str_contains($adminUsersWithAccount->body(), 'PICKUPSHEET_LOCAL_LOGIN_ENABLED=true') && str_contains($adminUsersWithAccount->body(), 'JUMPCLOUD_OIDC_ENABLED=false'), 'The administrator workspace should display the effective local and JumpCloud login configuration.');
+$managedMfaSetup = $mfaService->beginEnrollment('managed-operator');
+$mfaService->confirmEnrollment(
+    'local-user:' . $managedAccount->id,
+    'managed-operator',
+    $managedMfaSetup['secret'],
+    $totpForSecret($managedMfaSetup['secret']),
+    str_repeat('c', 24),
+);
+$adminUsersWithMfa = $pickupController->users(new Request('GET', '/dhl/pickupsheet/submissions/users', [], [], '', $recordsServer));
+$assert(str_contains($adminUsersWithMfa->body(), '>Enabled</span>') && str_contains($adminUsersWithMfa->body(), 'data-user-mfa-reset-form'), 'The administrator should see enrolled managed-account 2FA and its protected reset action.');
+$unconfirmedMfaReset = $pickupController->resetUserMfa(new Request('POST', '/dhl/pickupsheet/submissions/users/mfa/reset', [], [
+    '_token' => $pickupCsrf->token(),
+    'id' => (string) $managedAccount->id,
+    'confirm_reset' => '0',
+], '', $recordsServer));
+$assert($unconfirmedMfaReset->status() === 303 && $mfaService->isEnrolled('local-user:' . $managedAccount->id), 'Managed-account 2FA reset should require explicit browser confirmation.');
+$confirmedMfaReset = $pickupController->resetUserMfa(new Request('POST', '/dhl/pickupsheet/submissions/users/mfa/reset', [], [
+    '_token' => $pickupCsrf->token(),
+    'id' => (string) $managedAccount->id,
+    'confirm_reset' => '1',
+], '', $recordsServer));
+$assert($confirmedMfaReset->status() === 303 && !$mfaService->isEnrolled('local-user:' . $managedAccount->id), 'An administrator should reset enrolled managed-account 2FA and require re-enrollment.');
 $usersView = file_get_contents(dirname(__DIR__) . '/views/pickupsheet/users.php');
 $assert(is_string($usersView) && !str_contains($usersView, 'passwordHash'), 'The management view must never access or render a stored password hash.');
 $managedPrincipal = $recordsAccess->authenticateCredentials('managed-operator', 'managed-password-123');
@@ -1707,8 +1848,8 @@ $assert(is_string($dhlAsset) && !str_contains($dhlAsset, '<text'), 'The disquali
 $partnerSources = file_get_contents(dirname(__DIR__) . '/public/assets/partners/README.md');
 $assert(is_string($partnerSources) && str_contains($partnerSources, 'www.dhl.com/content/dam/dhl/global/core/images/logos/dhl-logo.svg'), 'The official DHL artwork source should be documented.');
 $assert(!str_contains($home, 'href="/dhl/pickupsheet"'), 'Pickupsheet should not be discoverable from the public site chrome or homepage.');
-$assert(str_contains($home, 'styles.css?v=20260830-auth-toggles-users'), 'Authentication and account-table styles should use a cache-safe stylesheet version.');
-$assert(str_contains($home, 'app.js?v=20260830-auth-toggles-users'), 'Authentication interactions should use a cache-safe script version.');
+$assert(str_contains($home, 'styles.css?v=20260831-local-mfa'), 'Authentication and account-table styles should use a cache-safe stylesheet version.');
+$assert(str_contains($home, 'app.js?v=20260831-local-mfa'), 'Authentication interactions should use a cache-safe script version.');
 $assert(str_contains($home, 'analytics.js?v=20260825-security-hardening'), 'The current consent-aware Google Analytics loader should render on every page.');
 $assert(str_contains($home, 'data-analytics-accept'), 'The site should offer an explicit analytics acceptance control.');
 $assert(str_contains($home, 'data-analytics-decline'), 'The site should offer an explicit analytics decline control.');
@@ -1864,6 +2005,7 @@ $assert(str_contains($privacy, 'Shipment consignor names are synchronized into t
 $assert(str_contains($privacy, 'contact name, business email, phone, address, city') && str_contains($privacy, 'CRM and reward access is limited to Pickupsheet administrators'), 'The privacy notice should disclose CRM fields and the administrator-only access boundary.');
 $assert(str_contains($privacy, '10 points per kilogram shipped') && str_contains($privacy, 'required reason, UTC time, and pseudonymous administrator identifier'), 'The privacy notice should disclose weight-based reward points and adjustment-ledger fields.');
 $assert(str_contains($privacy, 'passphrase-encrypted backups') && str_contains($privacy, 'environment secrets and plaintext passwords are excluded'), 'The privacy notice should disclose disaster-recovery processing and its secret boundary.');
+$assert(str_contains($privacy, 'authenticator secrets are encrypted at rest') && str_contains($privacy, 'recovery codes are stored only as keyed hashes'), 'The privacy notice should disclose local 2FA storage protections.');
 $assert(str_contains($privacy, "visitor's country code from the source IP address") && str_contains($privacy, 'restrict portal access to Cameroon and Nigeria'), 'The privacy notice should disclose country-level Pickupsheet access enforcement.');
 
 $environmentExample = file_get_contents(dirname(__DIR__) . '/.env.example');
@@ -1875,6 +2017,7 @@ $assert(is_string($credentialGenerator) && str_contains($credentialGenerator, "[
 $assert(is_string($credentialGenerator) && str_contains($credentialGenerator, "PICKUPSHEET_RBAC_USERS='"), 'The credential generator should provide a cPanel-ready RBAC environment value.');
 $assert(is_string($environmentExample) && str_contains($environmentExample, 'RUN_MIGRATIONS=true'), 'The environment example should explicitly document migration execution.');
 $assert(is_string($environmentExample) && str_contains($environmentExample, 'PICKUPSHEET_LOCAL_LOGIN_ENABLED=true'), 'The environment example should expose the independent local-login switch with a safe compatibility default.');
+$assert(is_string($environmentExample) && str_contains($environmentExample, 'PICKUPSHEET_LOCAL_MFA_ENABLED=false') && str_contains($environmentExample, 'PICKUPSHEET_MFA_ENCRYPTION_KEY='), 'The environment example should keep local 2FA disabled until its dedicated encryption key is configured.');
 $assert(is_string($environmentExample) && str_contains($environmentExample, 'JUMPCLOUD_OIDC_ENABLED=false'), 'The environment example should keep JumpCloud disabled until credentials are supplied.');
 $assert(is_string($environmentExample) && str_contains($environmentExample, 'JUMPCLOUD_OIDC_REDIRECT_URI=https://ttechcg.com/dhl/pickupsheet/auth/jumpcloud/callback'), 'The environment example should document the exact JumpCloud callback URI.');
 $assert(is_string($environmentExample) && str_contains($environmentExample, 'JUMPCLOUD_RBAC_ADMIN_GROUP=Pickupsheet Admins'), 'The environment example should map JumpCloud groups to Pickupsheet roles.');
@@ -1927,6 +2070,7 @@ $assert(is_string($styles) && str_contains($styles, '.pickup-pagination'), 'Qual
 $assert(is_string($styles) && str_contains($styles, '.records-users-layout'), 'Administrator account management should have a dedicated responsive layout.');
 $assert(is_string($styles) && str_contains($styles, '.records-user-table') && str_contains($styles, '.records-user-summary-row:nth-child(4n + 3)'), 'Managed accounts should render in a detailed table with alternating row colors.');
 $assert(is_string($styles) && str_contains($styles, '.records-login-method-grid') && str_contains($styles, '.records-method-switch'), 'The administrator workspace should style authentication-method toggles.');
+$assert(is_string($styles) && str_contains($styles, '.pickup-mfa-setup') && str_contains($styles, '.pickup-recovery-codes') && str_contains($styles, '.records-user-mfa-status'), 'Local 2FA enrollment, recovery codes, and administrator status should have responsive styling.');
 $assert(is_string($styles) && str_contains($styles, '/* Pickupsheet login portal */'), 'Pickupsheet should have a dedicated responsive login portal.');
 $assert(is_string($styles) && str_contains($styles, '.pickup-admin-workspace') && str_contains($styles, '.pickup-kpi-grid'), 'The administrator should have a dedicated KPI control-panel layout.');
 $assert(is_string($styles) && str_contains($styles, '.shipment-editor > *') && str_contains($styles, 'max-width: 1180px;'), 'The cash-shipment editor should be centered within the available screen width.');
@@ -1949,6 +2093,7 @@ $assert(is_string($script) && str_contains($script, "spinner.hidden = !loading")
 $assert(is_string($script) && str_contains($script, "window.history.pushState"), 'AJAX pagination should preserve browser history.');
 $assert(is_string($script) && str_contains($script, "document.querySelectorAll('[data-user-edit-toggle]')") && str_contains($script, 'preventScroll: true'), 'Local account editors should open on demand without moving the viewport.');
 $assert(is_string($script) && str_contains($script, "event.target.matches('[data-user-delete-form]')") && str_contains($script, 'Permanently delete'), 'Local account deletion should require an explicit browser confirmation.');
+$assert(is_string($script) && str_contains($script, "document.querySelector('[data-copy-recovery-codes]')") && str_contains($script, "event.target.matches('[data-user-mfa-reset-form]')"), 'Local 2FA should support secure recovery-code handling and explicit administrator reset confirmation.');
 $assert(is_string($script) && str_contains($script, "document.querySelector('[data-login-method-form]')") && str_contains($script, "'X-Requested-With': 'XMLHttpRequest'"), 'Sign-in toggles should save asynchronously without refreshing account management.');
 $assert(is_string($script) && !str_contains($script, 'scrollIntoView'), 'AJAX pagination should update in place without moving the user\'s viewport.');
 
@@ -2057,6 +2202,9 @@ $assert(is_string($recordsUserNamesMigration) && str_contains($recordsUserNamesM
 $assert(is_string($recordsUserNamesMigration) && str_contains($recordsUserNamesMigration, 'MODIFY COLUMN first_name VARCHAR(49) NOT NULL'), 'The name migration should enforce required identity fields after backfilling existing users.');
 $loginMethodMigration = file_get_contents(dirname(__DIR__) . '/database/migrations/014_create_pickup_auth_settings.sql');
 $assert(is_string($loginMethodMigration) && str_contains($loginMethodMigration, 'CREATE TABLE IF NOT EXISTS pickup_auth_settings') && str_contains($loginMethodMigration, 'local_login_enabled TINYINT(1)'), 'MySQL should persist administrator sign-in method preferences idempotently.');
+$localMfaMigration = file_get_contents(dirname(__DIR__) . '/database/migrations/015_create_pickup_local_mfa.sql');
+$assert(is_string($localMfaMigration) && str_contains($localMfaMigration, 'CREATE TABLE IF NOT EXISTS pickup_local_mfa'), 'MySQL should persist local authenticator enrollment idempotently.');
+$assert(is_string($localMfaMigration) && str_contains($localMfaMigration, 'secret_envelope TEXT NOT NULL') && str_contains($localMfaMigration, 'recovery_code_hashes LONGTEXT NOT NULL') && str_contains($localMfaMigration, 'last_used_step BIGINT NULL'), 'Local 2FA storage should retain only encrypted secrets, recovery hashes, and TOTP replay state.');
 $loginMethodServiceSource = file_get_contents(dirname(__DIR__) . '/src/Shared/Security/LoginMethodSettingsService.php');
 $assert(is_string($loginMethodServiceSource) && str_contains($loginMethodServiceSource, 'avoid locking every administrator out') && str_contains($loginMethodServiceSource, 'PICKUPSHEET_LOCAL_LOGIN_ENABLED'), 'Sign-in preference enforcement should preserve environment hard limits and prevent lockout.');
 $recordsUserMysqlRepository = file_get_contents(dirname(__DIR__) . '/src/Shared/Infrastructure/MysqlRecordsUserRepository.php');
@@ -2088,7 +2236,7 @@ $backupRepositorySource = file_get_contents(dirname(__DIR__) . '/src/Modules/Bac
 $backupControllerSource = file_get_contents(dirname(__DIR__) . '/src/Modules/Backup/UI/BackupController.php');
 $assert(is_string($backupServiceSource) && str_contains($backupServiceSource, "'aes-256-gcm'") && str_contains($backupServiceSource, "hash_pbkdf2('sha256'") && str_contains($backupServiceSource, 'KDF_ITERATIONS = 210000'), 'Backups should use authenticated AES-256-GCM encryption with a hardened PBKDF2-SHA256 key.');
 $assert(is_string($backupServiceSource) && !str_contains($backupServiceSource, 'getenv('), 'Backup encryption must never derive its passphrase from stored environment configuration.');
-$assert(is_string($backupRepositorySource) && str_contains($backupRepositorySource, "'pickup_sheets'") && str_contains($backupRepositorySource, "'pickup_customer_reward_adjustments'") && str_contains($backupRepositorySource, "'pickup_auth_settings'"), 'The MySQL backup allowlist should include operational, CRM reward, and authentication preference data.');
+$assert(is_string($backupRepositorySource) && str_contains($backupRepositorySource, "'pickup_sheets'") && str_contains($backupRepositorySource, "'pickup_customer_reward_adjustments'") && str_contains($backupRepositorySource, "'pickup_auth_settings'") && str_contains($backupRepositorySource, "'pickup_local_mfa'"), 'The MySQL backup allowlist should include operational, CRM reward, authentication preference, and encrypted 2FA data.');
 $assert(is_string($backupRepositorySource) && !str_contains($backupRepositorySource, 'schema_migrations') && !str_contains($backupRepositorySource, '.env'), 'Backups should exclude schema bookkeeping and environment secrets.');
 $assert(is_string($backupRepositorySource) && substr_count($backupRepositorySource, 'beginTransaction()') === 2 && substr_count($backupRepositorySource, 'rollBack()') === 2, 'Export should use a consistent snapshot and restore should roll back every partial database change.');
 $assert(is_string($backupControllerSource) && str_contains($backupControllerSource, "!== 'RESTORE'") && str_contains($backupControllerSource, "validate(\$request->input('_token'))"), 'Restore should require exact destructive confirmation and a valid CSRF token.');
@@ -2101,6 +2249,7 @@ $assert(is_string($bootstrap) && str_contains($bootstrap, '$connection !== null 
 $assert(is_string($bootstrap) && str_contains($bootstrap, 'RecordsAccess::fromEnvironment($recordsUserRepository)'), 'Stored pickup-sheet records should combine fail-closed environment admins with managed lower-tier accounts.');
 $assert(is_string($bootstrap) && str_contains($bootstrap, 'JumpCloudOidcProvider::fromEnvironment()'), 'Pickupsheet should initialize the optional JumpCloud OIDC provider from server-managed configuration.');
 $assert(is_string($bootstrap) && str_contains($bootstrap, 'CloudflareAccessProvider::fromEnvironment()'), 'Pickupsheet should initialize the optional Cloudflare Access handoff from server-managed configuration.');
+$assert(is_string($bootstrap) && str_contains($bootstrap, 'LocalMfaService::fromEnvironment($localMfaRepository)'), 'Pickupsheet should initialize local 2FA from server-managed configuration.');
 $assert(is_string($bootstrap) && str_contains($bootstrap, 'PickupsheetCountryPolicy::fromEnvironment($isProduction)'), 'The HTTP boundary should initialize fail-closed production country enforcement.');
 $assert(is_string($bootstrap) && str_contains($bootstrap, "'/dhl/pickupsheet/auth/jumpcloud/callback'"), 'Pickupsheet should expose the exact JumpCloud OIDC callback route.');
 $assert(is_string($bootstrap) && str_contains($bootstrap, "'/dhl/pickupsheet'"), 'Pickupsheet should be routed under the DHL namespace.');
@@ -2108,6 +2257,7 @@ $assert(is_string($bootstrap) && str_contains($bootstrap, "'/dhl/pickupsheet/sub
 $assert(is_string($bootstrap) && str_contains($bootstrap, "'/dhl/pickupsheet/dashboard/user-activity/page'") && str_contains($bootstrap, "'/dhl/pickupsheet/dashboard/audit-logs/page'") && str_contains($bootstrap, "'/dhl/pickupsheet/dashboard/recent-sheets/page'"), 'Each qualified dashboard table should expose a protected AJAX fragment route.');
 $assert(is_string($bootstrap) && str_contains($bootstrap, "'/dhl/pickupsheet/submissions/users'"), 'Pickupsheet should expose administrator-only account management.');
 $assert(is_string($bootstrap) && str_contains($bootstrap, "'/dhl/pickupsheet/submissions/users/delete'") && str_contains($bootstrap, "'/dhl/pickupsheet/submissions/users/login-methods'"), 'Pickupsheet should expose protected local-account deletion and sign-in preference routes.');
+$assert(is_string($bootstrap) && str_contains($bootstrap, "'/dhl/pickupsheet/submissions/users/mfa/reset'"), 'Pickupsheet should expose the administrator-only managed-account 2FA reset route.');
 $assert(is_string($bootstrap) && str_contains($bootstrap, "'/dhl/pickupsheet/dashboard'"), 'Pickupsheet should expose the administrator KPI control panel.');
 $assert(is_string($bootstrap) && str_contains($bootstrap, "'/dhl/pickupsheet/admin/backup'") && str_contains($bootstrap, "'/dhl/pickupsheet/admin/backup/restore'"), 'Pickupsheet should expose administrator-only backup and restore routes.');
 $assert(is_string($bootstrap) && str_contains($bootstrap, "'/dhl/pickupsheet/customers'"), 'Pickupsheet should expose the administrator-only customer CRM.');
@@ -2120,6 +2270,7 @@ $assert(is_string($bootstrap) && str_contains($bootstrap, "'/dhl/pickupsheet/sub
 $assert(is_string($bootstrap) && str_contains($bootstrap, "'/pickupsheet'"), 'The legacy Pickupsheet entry should retain a permanent redirect.');
 $assert(is_string($bootstrap) && str_contains($bootstrap, 'rawurlencode($reference)'), 'Legacy print and export redirects should preserve the reference query safely.');
 $assert(is_string($bootstrap) && str_contains($bootstrap, "'/dhl/pickupsheet/login'"), 'Pickupsheet should expose its dedicated session login portal.');
+$assert(is_string($bootstrap) && str_contains($bootstrap, "'/dhl/pickupsheet/login/2fa'") && str_contains($bootstrap, "'/dhl/pickupsheet/login/2fa/recovery-codes'"), 'Pickupsheet should expose local 2FA verification and one-time recovery-code routes.');
 $assert(is_string($bootstrap) && str_contains($bootstrap, "'/dhl/pickupsheet/logout'"), 'Pickupsheet should expose a CSRF-protected logout route.');
 
 echo "All application tests passed.\n";

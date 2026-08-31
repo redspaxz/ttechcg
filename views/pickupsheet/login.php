@@ -34,6 +34,7 @@ $e = static fn (mixed $value): string => htmlspecialchars((string) $value, ENT_Q
                 <label><span>Email or username</span><input name="username" value="<?= $e($username) ?>" maxlength="100" autocomplete="username" autocapitalize="none" spellcheck="false" autofocus required></label>
                 <label><span>Password</span><input type="password" name="password" maxlength="128" autocomplete="current-password" required></label>
                 <button class="button button-red" type="submit">Sign in <span aria-hidden="true">&#8594;</span></button>
+                <?php if (($localMfaEnabled ?? false) === true): ?><small class="pickup-login-mfa-note">A configured authenticator or recovery code is required after your password.</small><?php endif; ?>
             </form>
         <?php endif; ?>
         <?php if (($loginMethodsAvailable ?? true) === false): ?>
