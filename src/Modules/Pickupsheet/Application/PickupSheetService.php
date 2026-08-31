@@ -80,6 +80,12 @@ final class PickupSheetService
         );
     }
 
+    /** @return list<string> */
+    public function consignorSuggestions(int $limit = 50): array
+    {
+        return $this->repository->consignorSuggestions(max(1, min($limit, 50)));
+    }
+
     /** @param array<string, mixed> $input */
     public function submit(array $input): PickupSheet
     {

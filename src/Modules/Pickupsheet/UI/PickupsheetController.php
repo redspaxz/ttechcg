@@ -58,6 +58,15 @@ final class PickupsheetController
         $old = $_SESSION['_pickup_old'] ?? [];
         unset($_SESSION['_pickup_flash'], $_SESSION['_pickup_errors'], $_SESSION['_pickup_old']);
 
+        $consignorSuggestions = [];
+        if ($this->pickupOperational) {
+            try {
+                $consignorSuggestions = $this->service->consignorSuggestions();
+            } catch (Throwable $exception) {
+                error_log('Pickup consignor suggestions could not be loaded: ' . $exception->getMessage());
+            }
+        }
+
         $body = $this->view->render('pickupsheet/show', [
             'pageTitle' => 'Cash shipment pickup sheet',
             'pageDescription' => 'Securely record cash shipment collections and pickup-sheet totals.',
@@ -77,6 +86,7 @@ final class PickupsheetController
             'recordsUsername' => $authorization->username,
             'recordsFullName' => $authorization->fullName(),
             'recordsIdentityProvider' => $authorization->identityProvider,
+            'consignorSuggestions' => $consignorSuggestions,
         ]);
 
         return Response::html($body, 200, $this->privateHeaders());

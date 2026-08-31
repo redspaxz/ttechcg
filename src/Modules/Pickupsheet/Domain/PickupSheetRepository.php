@@ -31,5 +31,8 @@ interface PickupSheetRepository
     /** @return list<array{sender: string, shipmentCount: int}> */
     public function topSenders(int $months, int $limit): array;
 
+    /** @return list<string> */
+    public function consignorSuggestions(int $limit): array;
+
     public function findByReference(string $referenceNumber): ?PickupSheet;
 }

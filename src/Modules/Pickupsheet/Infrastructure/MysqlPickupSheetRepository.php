@@ -462,6 +462,27 @@ final class MysqlPickupSheetRepository implements PickupSheetRepository
         ], $statement->fetchAll());
     }
 
+    public function consignorSuggestions(int $limit): array
+    {
+        $this->ensureLifecycleSchema();
+        $statement = $this->connection->prepare(
+            'SELECT MIN(TRIM(ps.consignor)) AS consignor
+             FROM pickup_shipments ps
+             INNER JOIN pickup_sheets p ON p.id = ps.pickup_sheet_id
+             WHERE p.deleted_at IS NULL AND TRIM(ps.consignor) <> \'\'
+             GROUP BY LOWER(TRIM(ps.consignor))
+             ORDER BY COUNT(*) DESC, consignor ASC
+             LIMIT :limit',
+        );
+        $statement->bindValue(':limit', max(1, min($limit, 50)), PDO::PARAM_INT);
+        $statement->execute();
+
+        return array_values(array_filter(
+            array_map(static fn (mixed $name): string => trim((string) $name), $statement->fetchAll(PDO::FETCH_COLUMN)),
+            static fn (string $name): bool => $name !== '',
+        ));
+    }
+
     public function findByReference(string $referenceNumber): ?PickupSheet
     {
         $this->ensureLifecycleSchema();

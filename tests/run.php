@@ -307,6 +307,9 @@ $assert(count($topSenders) === 10, 'Sender performance should be limited to the 
 $assert(($topSenders[0]['sender'] ?? '') === 'Sender 01' && ($topSenders[0]['shipmentCount'] ?? 0) === 4, 'Sender performance should group name casing and rank the most frequent sender first.');
 $assert(($topSenders[1]['sender'] ?? '') === 'Sender 02' && ($topSenders[1]['shipmentCount'] ?? 0) === 3, 'Sender performance should sort shipment counts from most to least.');
 $assert(!in_array('Legacy Leader', array_column($topSenders, 'sender'), true), 'Sender performance should exclude shipments older than the rolling twelve-month window.');
+$consignorSuggestions = $senderPerformanceService->consignorSuggestions(50);
+$assert(($consignorSuggestions[0] ?? '') === 'Sender 01' && count(array_filter($consignorSuggestions, static fn (string $name): bool => strtolower($name) === 'sender 01')) === 1, 'Consignor suggestions should rank frequent names first and group casing variants.');
+$assert(in_array('Legacy Leader', $consignorSuggestions, true), 'Consignor suggestions should include previously used names outside the performance-chart window.');
 $_SESSION['_demo_pickup_sheets'] = $existingDemoPickupSheets;
 
 $pickupConsentFailed = false;
@@ -1179,6 +1182,7 @@ $assert($openPickup->status() === 200, 'A signed-in administrator should open th
 $assert(str_contains($openPickup->body(), 'data-pickup-form'), 'The pickup form should be immediately available.');
 $assert(!str_contains($openPickup->body(), 'class="site-header"') && !str_contains($openPickup->body(), 'class="site-footer"'), 'The signed-in Pickupsheet workspace should contain only its operational shell.');
 $assert(!str_contains($openPickup->body(), 'dhl-logo.svg'), 'The pickup form should not display the DHL logo.');
+$assert(str_contains($openPickup->body(), 'data-consignor-suggestions') && str_contains($openPickup->body(), 'list="consignor-suggestions"'), 'The new pickup form should provide browser-native consignor suggestions on every shipment row.');
 $assert(str_contains($openPickup->body(), 'name="shipments[0][checked_by]"') && str_contains($openPickup->body(), 'data-identity-field'), 'The checker identity should be populated from the authenticated account.');
 $assert(str_contains($openPickup->body(), 'value="Records Administrator"') && str_contains($openPickup->body(), 'readonly'), 'The account full name should render as a read-only Check By value.');
 $assert(($openPickup->headers()['Cache-Control'] ?? '') === 'private, no-store, max-age=0', 'The open pickup form should not be cached.');
@@ -1931,6 +1935,7 @@ $product = $view->render('pickupsheet/show', array_merge($common, [
     'pickupOperational' => true,
     'recordsUsername' => 'records-viewer',
     'recordsRole' => 'viewer',
+    'consignorSuggestions' => ['Acme & Sons', 'Beta Logistics'],
 ]));
 $assert(str_contains($product, 'pickupsheet'), 'The Pickupsheet product page should render.');
 $assert(!str_contains($product, 'dhl-logo.svg'), 'The Pickupsheet product page should use a text-only heading.');
@@ -1942,6 +1947,8 @@ $assert(str_contains($product, 'Assigned when saved'), 'Operators should know wh
 $assert(str_contains($product, 'href="/dhl/pickupsheet/submissions"'), 'The direct entry screen should link to the submissions table.');
 $assert(str_contains($product, 'action="/dhl/pickupsheet"'), 'The pickup form should submit to its new DHL-namespaced route.');
 $assert(str_contains($product, 'shipments[0][consignor]'), 'The pickup form should collect a consignor for each row.');
+$assert(str_contains($product, 'data-consignor-input') && str_contains($product, 'aria-autocomplete="list"'), 'The consignor field should expose an accessible suggestion popup while preserving text entry.');
+$assert(str_contains($product, '<option value="Acme &amp; Sons"></option>') && str_contains($product, 'or enter a new name'), 'Consignor suggestions should be escaped safely and explain that new names remain valid.');
 $assert(str_contains($product, 'shipments[0][awb_number]'), 'The pickup form should collect the AWB number from the PDF.');
 $assert(str_contains($product, 'shipments[0][destination]'), 'The pickup form should collect the destination code from the PDF.');
 $assert(str_contains($product, 'shipments[0][amount]'), 'The pickup form should collect cash amounts from the PDF.');
@@ -2158,6 +2165,8 @@ $assert(str_contains($pickupMysqlRepository, 'pickup_sheet_lifecycle_audit'), 'P
 $assert(str_contains($pickupMysqlRepository, 'GROUP BY LOWER(TRIM(ps.consignor))'), 'MySQL sender performance should group sender name casing consistently.');
 $assert(str_contains($pickupMysqlRepository, 'p.collection_date >= :minimum_date') && str_contains($pickupMysqlRepository, 'p.collection_date <= :maximum_date'), 'MySQL sender performance should use a bounded rolling collection-date window.');
 $assert(str_contains($pickupMysqlRepository, 'ORDER BY shipment_count DESC, sender ASC'), 'MySQL sender performance should rank the most frequent senders first with deterministic ties.');
+$assert(str_contains($pickupMysqlRepository, 'public function consignorSuggestions') && str_contains($pickupMysqlRepository, 'ORDER BY COUNT(*) DESC, consignor ASC'), 'MySQL should provide frequency-ranked consignor suggestions for new pickup sheets.');
+$assert(str_contains($pickupMysqlRepository, 'p.deleted_at IS NULL') && str_contains($pickupMysqlRepository, "TRIM(ps.consignor) <> \\'\\'"), 'Consignor suggestions should exclude deleted sheets and blank names.');
 $sessionActivityMigration = file_get_contents(dirname(__DIR__) . '/database/migrations/010_create_pickup_records_session_activity.sql');
 $assert(is_string($sessionActivityMigration) && str_contains($sessionActivityMigration, 'CREATE TABLE IF NOT EXISTS pickup_records_session_activity'), 'MySQL should persist successful staff session activity idempotently.');
 $assert(is_string($sessionActivityMigration) && str_contains($sessionActivityMigration, 'logged_in_at') && str_contains($sessionActivityMigration, 'last_seen_at') && str_contains($sessionActivityMigration, 'logged_out_at'), 'Session activity storage should retain login, activity, and logout timestamps.');

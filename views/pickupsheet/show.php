@@ -10,6 +10,7 @@ $pickupOperational = (bool) ($pickupOperational ?? false);
 $csrfToken = (string) ($csrfToken ?? '');
 $captcha = is_array($captcha ?? null) ? $captcha : [];
 $checkerName = (string) ($recordsFullName ?? $recordsUsername ?? '');
+$consignorSuggestions = is_array($consignorSuggestions ?? null) ? array_values(array_filter($consignorSuggestions, 'is_string')) : [];
 $flash = $flash ?? null;
 $errors = is_array($errors ?? null) ? $errors : [];
 $field = static function (mixed $row, string $name) use ($e): string {
@@ -21,7 +22,7 @@ $renderShipmentRow = static function (int|string $index, mixed $row = []) use ($
     ?>
     <tr class="shipment-row" data-shipment-row>
         <th scope="row"><span data-row-number><?= $rowNumber ?></span></th>
-        <td data-label="Consignor"><label class="sr-only" data-row-label>Shipment <?= $rowNumber ?> consignor</label><input data-field="consignor" name="shipments[<?= $index ?>][consignor]" value="<?= $field($row, 'consignor') ?>" maxlength="160" required autocomplete="off" placeholder="Client name"></td>
+        <td data-label="Consignor"><label class="sr-only" data-row-label>Shipment <?= $rowNumber ?> consignor</label><input data-field="consignor" data-consignor-input name="shipments[<?= $index ?>][consignor]" value="<?= $field($row, 'consignor') ?>" maxlength="160" required autocomplete="off" list="consignor-suggestions" aria-autocomplete="list" aria-describedby="consignor-suggestion-help" placeholder="Client name"></td>
         <td data-label="AWB number"><label class="sr-only" data-row-label>Shipment <?= $rowNumber ?> AWB number</label><input data-field="awb_number" name="shipments[<?= $index ?>][awb_number]" value="<?= $field($row, 'awb_number') ?>" inputmode="numeric" pattern="[0-9]{8,20}" maxlength="20" required autocomplete="off" placeholder="10-digit AWB"></td>
         <td data-label="Destination"><label class="sr-only" data-row-label>Shipment <?= $rowNumber ?> destination</label><input class="pickup-code-input" data-field="destination" name="shipments[<?= $index ?>][destination]" value="<?= $field($row, 'destination') ?>" pattern="[A-Za-z]{3}" minlength="3" maxlength="3" required autocomplete="off" placeholder="DLA"></td>
         <td data-label="Amount (XAF)"><label class="sr-only" data-row-label>Shipment <?= $rowNumber ?> amount in XAF</label><input data-field="amount" name="shipments[<?= $index ?>][amount]" value="<?= $field($row, 'amount') ?>" type="number" inputmode="numeric" min="1" max="999999999" step="1" required autocomplete="off" placeholder="0"></td>
@@ -71,6 +72,9 @@ $renderShipmentRow = static function (int|string $index, mixed $row = []) use ($
         <form class="pickup-form" method="post" action="<?= $e($basePath) ?>/dhl/pickupsheet" data-pickup-form>
             <input type="hidden" name="_token" value="<?= $e($csrfToken) ?>">
             <label class="honeypot" aria-hidden="true">Website<input name="website" tabindex="-1" autocomplete="off"></label>
+            <datalist id="consignor-suggestions" data-consignor-suggestions>
+                <?php foreach ($consignorSuggestions as $consignor): ?><option value="<?= $e($consignor) ?>"></option><?php endforeach; ?>
+            </datalist>
 
             <fieldset class="pickup-meta-fields">
                 <legend>Sheet details</legend>
@@ -94,6 +98,7 @@ $renderShipmentRow = static function (int|string $index, mixed $row = []) use ($
                     <button class="pickup-add-row" type="button" data-add-shipment>+ Add shipment</button>
                 </div>
                 <p class="shipment-scroll-hint">On a small screen, each shipment appears as a separate entry card.</p>
+                <p id="consignor-suggestion-help">Start typing a consignor name to choose a previously used match, or enter a new name.</p>
                 <p>Time collected is recorded automatically when this pickup sheet is submitted.</p>
                 <div class="shipment-table-wrap">
                     <table class="shipment-table">

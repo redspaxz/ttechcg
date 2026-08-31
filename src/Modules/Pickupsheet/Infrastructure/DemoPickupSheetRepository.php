@@ -176,6 +176,30 @@ final class DemoPickupSheetRepository implements PickupSheetRepository
         return array_slice($senders, 0, max(1, min($limit, 10)));
     }
 
+    public function consignorSuggestions(int $limit): array
+    {
+        $senders = [];
+        foreach ($this->recent(PHP_INT_MAX) as $sheet) {
+            foreach ($sheet->shipments as $shipment) {
+                $sender = trim($shipment->consignor);
+                if ($sender === '') {
+                    continue;
+                }
+                $key = strtolower($sender);
+                $senders[$key] ??= ['name' => $sender, 'count' => 0];
+                $senders[$key]['count']++;
+            }
+        }
+        usort($senders, static function (array $left, array $right): int {
+            $countOrder = $right['count'] <=> $left['count'];
+            return $countOrder !== 0 ? $countOrder : strcasecmp($left['name'], $right['name']);
+        });
+        return array_values(array_map(
+            static fn (array $sender): string => $sender['name'],
+            array_slice($senders, 0, max(1, min($limit, 50))),
+        ));
+    }
+
     public function findByReference(string $referenceNumber): ?PickupSheet
     {
         foreach ($this->recent(PHP_INT_MAX) as $pickupSheet) {
