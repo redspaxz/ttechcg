@@ -182,8 +182,12 @@ if (pickupForm) {
     const showConsignorSuggestions = (input, source = consignorSuggestionNames) => {
         if (!consignorPopup) return;
         const query = input.value.trim().toLowerCase();
+        if (query === '') {
+            closeConsignorSuggestions();
+            return;
+        }
         const matches = source
-            .filter((name) => query === '' || name.toLowerCase().includes(query))
+            .filter((name) => name.toLowerCase().includes(query))
             .sort(compareConsignorSuggestions)
             .slice(0, 12);
         if (matches.length === 0) {

@@ -1901,7 +1901,7 @@ $partnerSources = file_get_contents(dirname(__DIR__) . '/public/assets/partners/
 $assert(is_string($partnerSources) && str_contains($partnerSources, 'www.dhl.com/content/dam/dhl/global/core/images/logos/dhl-logo.svg'), 'The official DHL artwork source should be documented.');
 $assert(!str_contains($home, 'href="/dhl/pickupsheet"'), 'Pickupsheet should not be discoverable from the public site chrome or homepage.');
 $assert(str_contains($home, 'styles.css?v=20260831-autocomplete-clean'), 'Scrollbar-free autocomplete styles should use a cache-safe stylesheet version.');
-$assert(str_contains($home, 'app.js?v=20260831-autocomplete-clean'), 'Alphabetical autocomplete interactions should use a cache-safe script version.');
+$assert(str_contains($home, 'app.js?v=20260831-autocomplete-first-letter'), 'First-letter autocomplete interactions should use a cache-safe script version.');
 $assert(str_contains($home, 'analytics.js?v=20260825-security-hardening'), 'The current consent-aware Google Analytics loader should render on every page.');
 $assert(str_contains($home, 'data-analytics-accept'), 'The site should offer an explicit analytics acceptance control.');
 $assert(str_contains($home, 'data-analytics-decline'), 'The site should offer an explicit analytics decline control.');
@@ -2156,7 +2156,7 @@ $assert(is_string($script) && str_contains($script, "document.querySelector('[da
 $assert(is_string($script) && str_contains($script, "document.querySelector('[data-login-method-form]')") && str_contains($script, "'X-Requested-With': 'XMLHttpRequest'"), 'Sign-in toggles should save asynchronously without refreshing account management.');
 $assert(is_string($script) && str_contains($script, 'consignorSuggestionNames') && str_contains($script, "input.removeAttribute('list')"), 'JavaScript should enhance the native consignor datalist without removing its no-script fallback from the HTML.');
 $assert(is_string($script) && str_contains($script, "event.key === 'ArrowDown'") && str_contains($script, "aria-activedescendant") && str_contains($script, 'selectConsignorSuggestion'), 'The animated consignor autocomplete should support accessible keyboard navigation and selection.');
-$assert(is_string($script) && str_contains($script, '.filter((name) => query === \'\' || name.toLowerCase().includes(query))') && str_contains($script, '.sort(compareConsignorSuggestions)') && str_contains($script, '.slice(0, 12)'), 'The consignor popup should alphabetize filtered results before keeping the visible choice list bounded.');
+$assert(is_string($script) && str_contains($script, "if (query === '')") && str_contains($script, '.filter((name) => name.toLowerCase().includes(query))') && str_contains($script, '.sort(compareConsignorSuggestions)') && str_contains($script, '.slice(0, 12)'), 'The consignor popup should stay closed for empty input, then alphabetize first-letter matches before keeping the visible choice list bounded.');
 $assert(is_string($script) && str_contains($script, 'consignorSearchEndpoint') && str_contains($script, "endpoint.searchParams.set('q', query)") && str_contains($script, '}, 180);'), 'The consignor autocomplete should debounce protected server searches while retaining immediate local matches.');
 $assert(is_string($script) && !str_contains($script, 'scrollIntoView'), 'AJAX pagination should update in place without moving the user\'s viewport.');
 

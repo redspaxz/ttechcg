@@ -133,12 +133,13 @@ assert.equal(consignorInput.getAttribute('role'), 'combobox');
 assert.equal(consignorInput.hasAttribute('list'), false, 'enhancement should suppress the competing native popup');
 
 consignorInput.emit('focus');
-assert.equal(popup.hasAttribute('data-open'), true, 'focus should animate the suggestion popup open');
-assert.deepEqual(popup.children.map((option) => option.textContent), ['Alpha Cargo', 'beta Logistics', 'Gamma Freight'], 'unsorted sources should always render in case-insensitive A-Z order');
+assert.equal(popup.hasAttribute('data-open'), false, 'focus alone should keep the suggestion popup closed');
+assert.equal(consignorInput.getAttribute('aria-expanded'), 'false', 'an empty consignor field should remain collapsed');
 
-consignorInput.value = 'be';
+consignorInput.value = 'b';
 consignorInput.emit('input');
-assert.deepEqual(popup.children.map((option) => option.textContent), ['beta Logistics'], 'typing should filter the A-Z source list');
+assert.equal(popup.hasAttribute('data-open'), true, 'the first typed letter should open the suggestion popup');
+assert.deepEqual(popup.children.map((option) => option.textContent), ['beta Logistics'], 'one typed letter should filter the A-Z source list');
 
 const downEvent = consignorInput.emit('keydown', { key: 'ArrowDown' });
 assert.equal(downEvent.defaultPrevented, true);
