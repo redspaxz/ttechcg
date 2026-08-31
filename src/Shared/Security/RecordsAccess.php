@@ -111,18 +111,19 @@ final class RecordsAccess
                 password_verify($password, self::DUMMY_PASSWORD_HASH);
                 return null;
             }
-            return password_verify($password, $passwordHash)
-                ? new RecordsPrincipal(
-                    $username,
-                    $environmentUser['role'],
-                    $this->environmentAuthenticationVersion($username, $environmentUser, $passwordHash),
-                    $environmentUser['firstName'],
-                    $environmentUser['lastName'],
-                    'local',
-                    '',
-                    'local-env:' . $username,
-                )
-                : null;
+            if (!password_verify($password, $passwordHash)) {
+                return null;
+            }
+            return new RecordsPrincipal(
+                $username,
+                $environmentUser['role'],
+                $this->environmentAuthenticationVersion($username, $environmentUser, $passwordHash),
+                $environmentUser['firstName'],
+                $environmentUser['lastName'],
+                'local',
+                '',
+                'local-env:' . $username,
+            );
         }
 
         $managedAccount = null;
@@ -140,6 +141,25 @@ final class RecordsAccess
         if (!$managedAccount->verifies($password)
             || !in_array($managedAccount->role, ['viewer', 'operator'], true)) {
             return null;
+        }
+        if ($managedAccount->needsPasswordRehash()) {
+            try {
+                $updated = $this->repository?->update(
+                    $managedAccount->id,
+                    $managedAccount->username,
+                    $managedAccount->firstName,
+                    $managedAccount->lastName,
+                    $managedAccount->role,
+                    $managedAccount->active,
+                    PasswordHasher::hash($password),
+                    substr(hash('sha256', $managedAccount->username), 0, 24),
+                );
+                if ($updated !== null) {
+                    $managedAccount = $updated;
+                }
+            } catch (Throwable) {
+                // A successful login remains available if opportunistic rehashing fails.
+            }
         }
 
         return new RecordsPrincipal(
@@ -255,4 +275,5 @@ final class RecordsAccess
             return null;
         }
     }
+
 }

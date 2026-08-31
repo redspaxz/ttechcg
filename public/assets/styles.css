@@ -2433,6 +2433,12 @@ button, a, input, select, textarea { -webkit-tap-highlight-color: transparent; }
 .pickup-settings-form input:focus { border-color: var(--dhl-red); outline: 3px solid rgba(212, 5, 17, 0.12); }
 .pickup-settings-form .button { grid-column: 1 / -1; width: 100%; min-height: 48px; justify-content: center; }
 .pickup-settings-mfa-setup { max-width: none; margin: 0 23px 20px; background: #fffdf5; }
+.pickup-security-confirm-shell { max-width: 860px; }
+.pickup-security-confirm-card { margin-bottom: 64px; }
+.pickup-security-confirm-form { padding-top: 3px; }
+.pickup-security-confirm-check { grid-column: 1 / -1; display: flex !important; align-items: flex-start; grid-template-columns: none; gap: 11px !important; padding: 14px; border: 1px solid rgba(69, 50, 0, 0.22); background: #fffdf5; }
+.pickup-security-confirm-check input { width: 18px; min-height: 18px; flex: 0 0 18px; margin-top: 1px; accent-color: var(--dhl-red); }
+.pickup-security-confirm-check span { color: #493800; font-size: 0.75rem; font-weight: 750; letter-spacing: 0; line-height: 1.5; text-transform: none; }
 
 @media (max-width: 850px) {
     .pickup-settings-grid { grid-template-columns: 1fr; }
@@ -2446,6 +2452,7 @@ button, a, input, select, textarea { -webkit-tap-highlight-color: transparent; }
     .pickup-settings-form { grid-template-columns: 1fr; padding-inline: 16px; }
     .pickup-settings-form .button { grid-column: auto; }
     .pickup-settings-mfa-setup { margin-inline: 16px; }
+    .pickup-security-confirm-check { grid-column: auto; }
 }
 
 /* Pickupsheet customer CRM */

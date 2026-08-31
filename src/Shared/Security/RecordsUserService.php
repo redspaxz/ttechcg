@@ -64,10 +64,7 @@ final class RecordsUserService
         $password = $this->password($input['password'] ?? '', $input['password_confirmation'] ?? '');
         $this->assertUsernameAvailable($username);
 
-        $passwordHash = password_hash($password, PASSWORD_DEFAULT);
-        if (!is_string($passwordHash)) {
-            throw new RuntimeException('Unable to secure the account password.');
-        }
+        $passwordHash = PasswordHasher::hash($password);
 
         return $this->repository->create(
             $username,
@@ -105,10 +102,7 @@ final class RecordsUserService
         $password = $input['password'] ?? '';
         $confirmation = $input['password_confirmation'] ?? '';
         if ($password !== '' || $confirmation !== '') {
-            $passwordHash = password_hash($this->password($password, $confirmation), PASSWORD_DEFAULT);
-            if (!is_string($passwordHash)) {
-                throw new RuntimeException('Unable to secure the account password.');
-            }
+            $passwordHash = PasswordHasher::hash($this->password($password, $confirmation));
         }
 
         $updated = $this->repository->update(
@@ -186,10 +180,7 @@ final class RecordsUserService
         }
 
         $password = $this->password($input['password'] ?? '', $input['password_confirmation'] ?? '');
-        $passwordHash = password_hash($password, PASSWORD_DEFAULT);
-        if (!is_string($passwordHash)) {
-            throw new RuntimeException('Unable to secure the administrator password.');
-        }
+        $passwordHash = PasswordHasher::hash($password);
 
         $this->adminCredentialRepository->saveAdminPasswordHash(
             $actor->username,
@@ -249,8 +240,9 @@ final class RecordsUserService
         if (!hash_equals($password, $confirmation)) {
             throw new InvalidArgumentException('Password confirmation does not match.');
         }
-        if (strlen($password) < 12 || strlen($password) > 128) {
-            throw new InvalidArgumentException('Password must contain between 12 and 128 characters.');
+        $maximumLength = PasswordHasher::maximumLength();
+        if (strlen($password) < 12 || strlen($password) > $maximumLength) {
+            throw new InvalidArgumentException(sprintf('Password must contain between 12 and %d characters.', $maximumLength));
         }
 
         return $password;

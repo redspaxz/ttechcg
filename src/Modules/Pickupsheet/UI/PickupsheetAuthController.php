@@ -80,6 +80,7 @@ final class PickupsheetAuthController
 
             if ($principal instanceof RecordsPrincipal) {
                 $this->recordsSession->login($principal);
+                $this->csrf->rotate();
                 $this->securityLogger->event('pickupsheet.cloudflare_access', $request, 'accepted', [
                     'actor_id' => substr(hash('sha256', $principal->username), 0, 24),
                     'role' => $principal->role,
@@ -149,6 +150,26 @@ final class PickupsheetAuthController
         }
 
         $username = $request->input('username');
+        try {
+            $accountRetryAfter = $this->rateLimiter->consume(
+                'pickup-login-account',
+                hash('sha256', strtolower(trim($username))),
+                15,
+                900,
+            );
+        } catch (RuntimeException $exception) {
+            error_log($exception->__toString());
+            return Response::html('Login is temporarily unavailable. Please try again later.', 503, $this->privateHeaders());
+        }
+        if ($accountRetryAfter > 0) {
+            $this->securityLogger->event('pickupsheet.login', $request, 'rate_limited', [
+                'retry_after' => $accountRetryAfter,
+                'throttle_scope' => 'account',
+            ]);
+            return Response::html('Too many login attempts. Please try again later.', 429, array_merge($this->privateHeaders(), [
+                'Retry-After' => (string) $accountRetryAfter,
+            ]));
+        }
         $principal = $this->recordsAccess->authenticateCredentials($username, $request->rawInput('password'));
         if ($principal === null) {
             $_SESSION['_pickup_login_error'] = 'The username or password is incorrect.';
@@ -179,6 +200,7 @@ final class PickupsheetAuthController
         }
 
         $this->recordsSession->login($principal);
+        $this->csrf->rotate();
         $this->securityLogger->event('pickupsheet.login', $request, 'accepted', [
             'actor_id' => substr(hash('sha256', $principal->username), 0, 24),
             'role' => $principal->role,
@@ -299,6 +321,7 @@ final class PickupsheetAuthController
             }
             $this->clearPendingMfa();
             $this->recordsSession->login($currentPrincipal);
+            $this->csrf->rotate();
             $this->securityLogger->event('pickupsheet.login', $request, 'accepted', [
                 'actor_id' => substr(hash('sha256', $currentPrincipal->username), 0, 24),
                 'role' => $currentPrincipal->role,
@@ -452,6 +475,8 @@ final class PickupsheetAuthController
                 $request->rawInput('code'),
                 $this->actorId($principal),
             );
+            $this->recordsSession->renewId();
+            $this->csrf->rotate();
             unset($_SESSION[self::SETTINGS_MFA_SETUP_SECRET_KEY], $_SESSION[self::SETTINGS_MFA_REPLACEMENT_KEY]);
             $_SESSION[self::SETTINGS_MFA_RECOVERY_CODES_KEY] = $recoveryCodes;
             $this->securityLogger->event('pickupsheet.user_mfa_enroll', $request, 'accepted', [
@@ -503,6 +528,8 @@ final class PickupsheetAuthController
                 throw new InvalidArgumentException('Enter a valid current authenticator or recovery code.');
             }
             $setup = $this->localMfa->beginEnrollment($principal->username);
+            $this->recordsSession->renewId();
+            $this->csrf->rotate();
             $_SESSION[self::SETTINGS_MFA_SETUP_SECRET_KEY] = $setup['secret'];
             $_SESSION[self::SETTINGS_MFA_REPLACEMENT_KEY] = [
                 'subject' => $principal->securitySubject(),
@@ -630,6 +657,7 @@ final class PickupsheetAuthController
         }
 
         $this->recordsSession->login($principal);
+        $this->csrf->rotate();
         $this->securityLogger->event('pickupsheet.jumpcloud_callback', $request, 'accepted', [
             'actor_id' => substr(hash('sha256', $principal->username), 0, 24),
             'role' => $principal->role,
@@ -654,6 +682,7 @@ final class PickupsheetAuthController
             ]);
         }
         $this->recordsSession->logout();
+        $this->csrf->rotate();
         $this->clearPendingMfa();
         unset(
             $_SESSION[self::MFA_RECOVERY_CODES_KEY],
@@ -740,6 +769,7 @@ final class PickupsheetAuthController
         if (session_status() === PHP_SESSION_ACTIVE) {
             session_regenerate_id(true);
         }
+        $this->csrf->rotate();
         unset($_SESSION[self::MFA_SETUP_SECRET_KEY], $_SESSION['_pickup_mfa_error']);
         $_SESSION[self::MFA_PENDING_KEY] = [
             'username' => $principal->username,

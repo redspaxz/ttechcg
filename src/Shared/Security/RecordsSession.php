@@ -11,6 +11,7 @@ final class RecordsSession
     private const SESSION_KEY = '_pickupsheet_identity';
     private const ABSOLUTE_LIFETIME = 28800;
     private const IDLE_LIFETIME = 3600;
+    private const ID_RENEWAL_INTERVAL = 900;
     private const ACTIVITY_TOUCH_INTERVAL = 60;
 
     public function __construct(private readonly ?RecordsSessionActivityRepository $activityRepository = null)
@@ -36,6 +37,7 @@ final class RecordsSession
             'identity_provider' => $principal->identityProvider,
             'issued_at' => $now,
             'last_seen_at' => $now,
+            'id_rotated_at' => $now,
             'activity_id' => $activityId,
             'activity_recorded_at' => $now,
         ];
@@ -58,6 +60,7 @@ final class RecordsSession
         $identityProvider = is_string($identity['identity_provider'] ?? null) ? $identity['identity_provider'] : 'local';
         $issuedAt = is_int($identity['issued_at'] ?? null) ? $identity['issued_at'] : 0;
         $lastSeenAt = is_int($identity['last_seen_at'] ?? null) ? $identity['last_seen_at'] : 0;
+        $idRotatedAt = is_int($identity['id_rotated_at'] ?? null) ? $identity['id_rotated_at'] : $issuedAt;
         $now = time();
 
         if ($username === '' || $version === '') {
@@ -87,6 +90,7 @@ final class RecordsSession
             }
 
             $_SESSION[self::SESSION_KEY]['last_seen_at'] = $now;
+            $this->renewIdIfDue($idRotatedAt, $now);
             $this->touchActivity($now);
             return new RecordsPrincipal($username, $role, $version, $firstName, $lastName, $identityProvider, $displayName);
         }
@@ -102,8 +106,29 @@ final class RecordsSession
         }
 
         $_SESSION[self::SESSION_KEY]['last_seen_at'] = $now;
+        $this->renewIdIfDue($idRotatedAt, $now);
         $this->touchActivity($now);
         return $principal;
+    }
+
+    public function renewId(): void
+    {
+        if (!is_array($_SESSION[self::SESSION_KEY] ?? null)) {
+            return;
+        }
+        if (session_status() === PHP_SESSION_ACTIVE) {
+            session_regenerate_id(true);
+        }
+        $_SESSION[self::SESSION_KEY]['id_rotated_at'] = time();
+    }
+
+    public function authenticatedWithin(int $seconds): bool
+    {
+        $identity = $_SESSION[self::SESSION_KEY] ?? null;
+        $issuedAt = is_array($identity) && is_int($identity['issued_at'] ?? null)
+            ? $identity['issued_at']
+            : 0;
+        return $seconds > 0 && $issuedAt >= time() - $seconds;
     }
 
     /**
@@ -184,6 +209,14 @@ final class RecordsSession
             $activityId,
             $timestamp,
         ));
+    }
+
+    private function renewIdIfDue(int $rotatedAt, int $now): void
+    {
+        if ($rotatedAt > 0 && $rotatedAt > $now - self::ID_RENEWAL_INTERVAL) {
+            return;
+        }
+        $this->renewId();
     }
 
     private function finishActivity(int $timestamp): void

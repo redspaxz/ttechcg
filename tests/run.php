@@ -38,12 +38,14 @@ use App\Shared\Security\JumpCloudOidcProvider;
 use App\Shared\Security\LoginMethodSettingsService;
 use App\Shared\Security\LocalMfaService;
 use App\Shared\Security\OidcHttpClient;
+use App\Shared\Security\PasswordHasher;
 use App\Shared\Security\PickupsheetCountryPolicy;
 use App\Shared\Security\RateLimiter;
 use App\Shared\Security\RecordsAccess;
 use App\Shared\Security\RecordsSession;
 use App\Shared\Security\RecordsUserService;
 use App\Shared\Security\SecurityLogger;
+use App\Shared\Security\UnsafeRequestPolicy;
 use App\Shared\Spreadsheet\XlsxWriter;
 use App\Shared\View\View;
 
@@ -101,6 +103,11 @@ $wrongChallenge = $captchaService->issue();
 $assert(!$captchaService->validate($wrongChallenge['nonce'], '99'), 'An incorrect CAPTCHA response should fail.');
 
 $mfaEncryptionKey = base64_encode(str_repeat("\x19", 32));
+$modernPasswordHash = PasswordHasher::hash('modern-password-storage-test');
+$assert(password_verify('modern-password-storage-test', $modernPasswordHash) && !PasswordHasher::needsRehash($modernPasswordHash), 'New local credentials should use the configured modern adaptive password hash.');
+if (defined('PASSWORD_ARGON2ID')) {
+    $assert(password_get_info($modernPasswordHash)['algoName'] === 'argon2id', 'Servers with Argon2id should use OWASP-recommended Argon2id for new passwords.');
+}
 $mfaRepository = new DemoLocalMfaRepository();
 $mfaService = new LocalMfaService($mfaRepository, true, $mfaEncryptionKey, 'T&Tech Test');
 $mfaSetup = $mfaService->beginEnrollment('local.test@example.com');
@@ -356,6 +363,10 @@ $arrayRequest = new Request('POST', '/dhl/pickupsheet', [], ['shipments' => [['a
 $assert(($arrayRequest->arrayInput('shipments')[0]['awb_number'] ?? '') === '1234567890', 'Request should expose nested shipment arrays.');
 $rawPasswordRequest = new Request('POST', '/protected', [], ['password' => '  retain-spaces  '], '');
 $assert($rawPasswordRequest->rawInput('password') === '  retain-spaces  ', 'Password input should not be silently trimmed.');
+$csrfLifecycle = new Csrf();
+$originalCsrfToken = $csrfLifecycle->token();
+$rotatedCsrfToken = $csrfLifecycle->rotate();
+$assert($originalCsrfToken !== $rotatedCsrfToken && !$csrfLifecycle->validate($originalCsrfToken) && $csrfLifecycle->validate($rotatedCsrfToken), 'Authentication transitions should be able to invalidate the previous CSRF token.');
 $uploadRequest = new Request('POST', '/upload', [], [], '', [], ['backup_file' => [
     'name' => '../backup.json',
     'type' => 'application/json',
@@ -380,6 +391,17 @@ $assert(($outsideGeoResponse->headers()['Cache-Control'] ?? '') === 'private, no
 $assert($publicGeoResponse->status() === 200, 'Pickupsheet geolocation must not restrict the public corporate site.');
 $disabledGeoApplication = new Application($geoRouter, new PickupsheetCountryPolicy(false, ['CM', 'NG']));
 $assert($disabledGeoApplication->handle(new Request('GET', '/dhl/pickupsheet/login'))->status() === 200, 'Local development should be able to disable the production geolocation boundary.');
+$unsafeRouter = new Router();
+$unsafeRouter->post('/change', static fn (Request $request): Response => Response::html('Changed'));
+$unsafeApplication = new Application($unsafeRouter, null, null, new UnsafeRequestPolicy('https://ttechcg.com'));
+$crossSiteWrite = $unsafeApplication->handle(new Request('POST', '/change', [], [], '', ['HTTP_SEC_FETCH_SITE' => 'cross-site']));
+$sameSiteSiblingWrite = $unsafeApplication->handle(new Request('POST', '/change', [], [], '', ['HTTP_SEC_FETCH_SITE' => 'same-site']));
+$mismatchedOriginWrite = $unsafeApplication->handle(new Request('POST', '/change', [], [], '', ['HTTP_ORIGIN' => 'https://attacker.example']));
+$sameOriginWrite = $unsafeApplication->handle(new Request('POST', '/change', [], [], '', ['HTTP_SEC_FETCH_SITE' => 'same-origin', 'HTTP_ORIGIN' => 'https://ttechcg.com']));
+$legacyWrite = $unsafeApplication->handle(new Request('POST', '/change'));
+$assert($crossSiteWrite->status() === 403 && $sameSiteSiblingWrite->status() === 403 && $mismatchedOriginWrite->status() === 403, 'Unsafe cross-site, sibling-site, and mismatched-origin writes should fail before routing.');
+$assert(($crossSiteWrite->headers()['Vary'] ?? '') === 'Sec-Fetch-Site, Origin', 'Cross-site request denials should be safe for intermediary caches.');
+$assert($sameOriginWrite->status() === 200 && $legacyWrite->status() === 200, 'Same-origin writes and legacy clients should proceed to mandatory route-level CSRF validation.');
 $previousGeoEnabled = getenv('PICKUPSHEET_GEO_RESTRICTION_ENABLED');
 $previousGeoCountries = getenv('PICKUPSHEET_ALLOWED_COUNTRIES');
 putenv('PICKUPSHEET_GEO_RESTRICTION_ENABLED=true');
@@ -463,6 +485,10 @@ $recordsAccess = new RecordsAccess([
 $recordsSessionActivity = new DemoRecordsSessionActivityRepository();
 $recordsSession = new RecordsSession($recordsSessionActivity);
 $recordsUserService = new RecordsUserService($recordsUserRepository, $recordsAccess->environmentUsernames());
+$legacyHashRepository = new DemoRecordsUserRepository();
+$legacyHashAccount = $legacyHashRepository->create('legacy-hash-viewer', 'Legacy', 'Viewer', password_hash('legacy-hash-password', PASSWORD_BCRYPT, ['cost' => 10]), 'viewer', true, str_repeat('d', 24));
+$legacyHashAccess = new RecordsAccess([], $legacyHashRepository);
+$assert($legacyHashAccount->needsPasswordRehash() && $legacyHashAccess->authenticateCredentials('legacy-hash-viewer', 'legacy-hash-password')?->role === 'viewer' && !$legacyHashRepository->findById($legacyHashAccount->id)?->needsPasswordRehash(), 'Successful managed-account login should transparently upgrade a legacy password hash.');
 $recordsServer = [
     'PHP_AUTH_USER' => $recordsUsername,
     'PHP_AUTH_PW' => $recordsPassword,
@@ -489,6 +515,12 @@ $assert($adminPrincipal?->fullName() === 'Records Administrator', 'Authenticated
 $assert($adminPrincipal?->can('edit') === true && $adminPrincipal->can('mark_paid') === true && $adminPrincipal->can('delete') === true, 'An administrator should edit, mark paid, and delete pickup records.');
 $assert($viewerPrincipal?->can('create') === true && $viewerPrincipal->can('list') === true && $viewerPrincipal->can('edit') === false && $viewerPrincipal->can('print') === false, 'A viewer should create and view records but cannot edit, print, or export them.');
 $assert($operatorPrincipal?->can('create') === true && $operatorPrincipal->can('list') === true && $operatorPrincipal->can('edit') === false && $operatorPrincipal->can('mark_paid') === false && $operatorPrincipal->can('delete') === false && $operatorPrincipal->can('print') === true && $operatorPrincipal->can('export') === true, 'An operator should create, view, print, and export records without edit, status, or delete access.');
+$recordsSession->login($adminPrincipal);
+$assert($recordsSession->authenticatedWithin(300), 'A new authenticated session should qualify for short-lived sensitive-action freshness.');
+$_SESSION['_pickupsheet_identity']['id_rotated_at'] = time() - 901;
+$recordsSession->principal($recordsAccess);
+$assert((int) ($_SESSION['_pickupsheet_identity']['id_rotated_at'] ?? 0) >= time() - 2, 'Active sessions should renew their identifier server-side every fifteen minutes.');
+$recordsSession->logout();
 $assert($recordsAccess->authenticate(new Request('GET', '/protected', [], [], '', [
     'PHP_AUTH_USER' => $viewerUsername,
     'PHP_AUTH_PW' => 'incorrect-password',
@@ -1735,19 +1767,31 @@ $mfaService->confirmEnrollment(
     str_repeat('c', 24),
 );
 $adminUsersWithMfa = $pickupController->users(new Request('GET', '/dhl/pickupsheet/submissions/users', [], [], '', $recordsServer));
-$assert(str_contains($adminUsersWithMfa->body(), '>Enabled</span>') && str_contains($adminUsersWithMfa->body(), 'data-user-mfa-reset-form'), 'The administrator should see enrolled managed-account 2FA and its protected reset action.');
+$assert(str_contains($adminUsersWithMfa->body(), '>Enabled</span>') && str_contains($adminUsersWithMfa->body(), '/dhl/pickupsheet/submissions/users/mfa/reset?id='), 'The administrator should see enrolled managed-account 2FA and its dedicated reauthentication action.');
+$mfaResetConfirmationPage = $pickupController->confirmUserMfaReset(new Request('GET', '/dhl/pickupsheet/submissions/users/mfa/reset', ['id' => (string) $managedAccount->id], [], '', $recordsServer));
+$assert($mfaResetConfirmationPage->status() === 200 && str_contains($mfaResetConfirmationPage->body(), 'Confirm 2FA reset.') && str_contains($mfaResetConfirmationPage->body(), 'Current administrator password') && str_contains($mfaResetConfirmationPage->body(), 'Your authenticator or recovery code'), 'A local administrator should receive a dedicated full-reauthentication page before resetting managed-user 2FA.');
 $unconfirmedMfaReset = $pickupController->resetUserMfa(new Request('POST', '/dhl/pickupsheet/submissions/users/mfa/reset', [], [
     '_token' => $pickupCsrf->token(),
     'id' => (string) $managedAccount->id,
     'confirm_reset' => '0',
 ], '', $recordsServer));
 $assert($unconfirmedMfaReset->status() === 303 && $mfaService->isEnrolled('local-user:' . $managedAccount->id), 'Managed-account 2FA reset should require explicit browser confirmation.');
+$wrongAdminPasswordMfaReset = $pickupController->resetUserMfa(new Request('POST', '/dhl/pickupsheet/submissions/users/mfa/reset', [], [
+    '_token' => $pickupCsrf->token(),
+    'id' => (string) $managedAccount->id,
+    'confirm_reset' => '1',
+    'current_password' => 'incorrect-administrator-password',
+    'code' => $totpForSecret((string) $replacementMfaSecret),
+], '', $recordsServer));
+$assert($wrongAdminPasswordMfaReset->status() === 303 && $mfaService->isEnrolled('local-user:' . $managedAccount->id), 'Managed-account 2FA reset should preserve enrollment when administrator reauthentication fails.');
 $confirmedMfaReset = $pickupController->resetUserMfa(new Request('POST', '/dhl/pickupsheet/submissions/users/mfa/reset', [], [
     '_token' => $pickupCsrf->token(),
     'id' => (string) $managedAccount->id,
     'confirm_reset' => '1',
+    'current_password' => $recordsPassword,
+    'code' => $totpForSecret((string) $replacementMfaSecret),
 ], '', $recordsServer));
-$assert($confirmedMfaReset->status() === 303 && !$mfaService->isEnrolled('local-user:' . $managedAccount->id), 'An administrator should reset enrolled managed-account 2FA and require re-enrollment.');
+$assert($confirmedMfaReset->status() === 303 && !$mfaService->isEnrolled('local-user:' . $managedAccount->id), 'A fully reauthenticated administrator should reset enrolled managed-account 2FA and require re-enrollment.');
 $usersView = file_get_contents(dirname(__DIR__) . '/views/pickupsheet/users.php');
 $assert(is_string($usersView) && !str_contains($usersView, 'passwordHash'), 'The management view must never access or render a stored password hash.');
 $managedPrincipal = $recordsAccess->authenticateCredentials('managed-operator', 'managed-password-123');
@@ -1963,8 +2007,8 @@ $assert(is_string($dhlAsset) && !str_contains($dhlAsset, '<text'), 'The disquali
 $partnerSources = file_get_contents(dirname(__DIR__) . '/public/assets/partners/README.md');
 $assert(is_string($partnerSources) && str_contains($partnerSources, 'www.dhl.com/content/dam/dhl/global/core/images/logos/dhl-logo.svg'), 'The official DHL artwork source should be documented.');
 $assert(!str_contains($home, 'href="/dhl/pickupsheet"'), 'Pickupsheet should not be discoverable from the public site chrome or homepage.');
-$assert(str_contains($home, 'styles.css?v=20260831-user-settings-2fa'), 'User settings, Customer directory padding, and prior Pickupsheet refinements should use a cache-safe stylesheet version.');
-$assert(str_contains($home, 'app.js?v=20260831-user-settings-2fa'), 'Self-service 2FA confirmation and progressive AJAX interactions should use a cache-safe script version.');
+$assert(str_contains($home, 'styles.css?v=20260831-owasp-hardening'), 'OWASP-aligned authentication controls and prior Pickupsheet refinements should use a cache-safe stylesheet version.');
+$assert(str_contains($home, 'app.js?v=20260831-owasp-hardening'), 'OWASP-aligned confirmations and progressive AJAX interactions should use a cache-safe script version.');
 $assert(str_contains($home, 'analytics.js?v=20260825-security-hardening'), 'The current consent-aware Google Analytics loader should render on every page.');
 $assert(str_contains($home, 'data-analytics-accept'), 'The site should offer an explicit analytics acceptance control.');
 $assert(str_contains($home, 'data-analytics-decline'), 'The site should offer an explicit analytics decline control.');
@@ -2222,7 +2266,7 @@ $assert(is_string($script) && str_contains($script, "window.history.pushState"),
 $assert(is_string($script) && str_contains($script, "document.querySelectorAll('[data-user-edit-toggle]')") && str_contains($script, 'preventScroll: true'), 'Local account editors should open on demand without moving the viewport.');
 $assert(is_string($script) && str_contains($script, "event.target.matches('[data-user-delete-form]')") && str_contains($script, 'Permanently delete'), 'Local account deletion should require an explicit browser confirmation.');
 $assert(is_string($script) && str_contains($script, "event.target.matches('[data-user-status-form]')") && str_contains($script, 'Their current session and future local sign-ins will be blocked') && str_contains($script, "confirmation.value = '1'"), 'Direct managed-account disabling should require explicit browser confirmation.');
-$assert(is_string($script) && str_contains($script, "document.querySelector('[data-copy-recovery-codes]')") && str_contains($script, "event.target.matches('[data-user-mfa-reset-form]')"), 'Local 2FA should support secure recovery-code handling and explicit administrator reset confirmation.');
+$assert(is_string($script) && str_contains($script, "document.querySelector('[data-copy-recovery-codes]')"), 'Local 2FA should support secure one-time recovery-code handling.');
 $assert(is_string($script) && str_contains($script, "event.target.matches('[data-self-mfa-reset]')") && str_contains($script, 'The current authenticator and unused recovery codes will stop working'), 'A signed-in user should explicitly confirm replacing their own authenticator.');
 $assert(is_string($script) && str_contains($script, "document.querySelector('[data-login-method-form]')") && str_contains($script, "'X-Requested-With': 'XMLHttpRequest'"), 'Sign-in toggles should save asynchronously without refreshing account management.');
 $assert(is_string($script) && str_contains($script, 'consignorSuggestionNames') && str_contains($script, "input.removeAttribute('list')"), 'JavaScript should enhance the native consignor datalist without removing its no-script fallback from the HTML.');
@@ -2303,6 +2347,20 @@ $sessionActivityRepository = file_get_contents(dirname(__DIR__) . '/src/Shared/I
 $assert(is_string($sessionActivityRepository) && str_contains($sessionActivityRepository, 'COUNT(*) AS login_count'), 'MySQL session activity should aggregate login frequency per user.');
 $assert(is_string($sessionActivityRepository) && str_contains($sessionActivityRepository, 'TIMESTAMPDIFF(SECOND'), 'MySQL session activity should calculate session duration from server timestamps.');
 $assert(is_string($sessionActivityRepository) && str_contains($sessionActivityRepository, 'LIMIT :limit OFFSET :offset') && str_contains($sessionActivityRepository, 'total_records'), 'User activity pagination should count and page grouped accounts in MySQL.');
+$recordsSessionSource = file_get_contents(dirname(__DIR__) . '/src/Shared/Security/RecordsSession.php');
+$csrfSource = file_get_contents(dirname(__DIR__) . '/src/Shared/Security/Csrf.php');
+$unsafeRequestPolicySource = file_get_contents(dirname(__DIR__) . '/src/Shared/Security/UnsafeRequestPolicy.php');
+$applicationSource = file_get_contents(dirname(__DIR__) . '/src/Shared/Http/Application.php');
+$authControllerSource = file_get_contents(dirname(__DIR__) . '/src/Modules/Pickupsheet/UI/PickupsheetAuthController.php');
+$pickupControllerSource = file_get_contents(dirname(__DIR__) . '/src/Modules/Pickupsheet/UI/PickupsheetController.php');
+$adminMfaResetView = file_get_contents(dirname(__DIR__) . '/views/pickupsheet/admin-mfa-reset.php');
+$assert(is_string($recordsSessionSource) && str_contains($recordsSessionSource, 'ID_RENEWAL_INTERVAL = 900') && str_contains($recordsSessionSource, 'public function renewId()') && str_contains($recordsSessionSource, 'public function authenticatedWithin'), 'Session management should renew identifiers periodically and expose bounded authentication freshness for sensitive actions.');
+$assert(is_string($csrfSource) && str_contains($csrfSource, 'public function rotate()'), 'The synchronizer-token service should rotate CSRF state after authentication transitions.');
+$assert(is_string($unsafeRequestPolicySource) && str_contains($unsafeRequestPolicySource, "['cross-site', 'same-site', 'none']") && str_contains($unsafeRequestPolicySource, "header('Origin')") && str_contains($unsafeRequestPolicySource, "header('Referer')"), 'Unsafe requests should use Fetch Metadata and source-origin validation before routing.');
+$assert(is_string($applicationSource) && str_contains($applicationSource, "event('request.cross_site'") && str_contains($applicationSource, "'Vary' => 'Sec-Fetch-Site, Origin'"), 'The application boundary should audit and safely reject cross-site writes.');
+$assert(is_string($authControllerSource) && str_contains($authControllerSource, "'pickup-login-account'") && substr_count($authControllerSource, '$this->csrf->rotate();') >= 7, 'Authentication should combine account-targeted throttling with CSRF rotation across login, logout, and factor changes.');
+$assert(is_string($pickupControllerSource) && str_contains($pickupControllerSource, 'reauthenticateMfaReset') && str_contains($pickupControllerSource, "authenticatedWithin(300)") && str_contains($pickupControllerSource, "'reauthenticated_with'"), 'Managed-user factor reset should require and audit fresh administrator reauthentication.');
+$assert(is_string($adminMfaResetView) && str_contains($adminMfaResetView, 'Current administrator password') && str_contains($adminMfaResetView, 'Your authenticator or recovery code') && str_contains($adminMfaResetView, 'name="confirm_reset"'), 'The managed-user factor reset screen should collect both local factors and explicit confirmation.');
 $securityEventMigration = file_get_contents(dirname(__DIR__) . '/database/migrations/011_create_pickup_security_events.sql');
 $assert(is_string($securityEventMigration) && str_contains($securityEventMigration, 'CREATE TABLE IF NOT EXISTS pickup_security_events'), 'MySQL should persist detailed user audit events idempotently.');
 $assert(is_string($securityEventMigration) && str_contains($securityEventMigration, 'actor_id CHAR(24)') && str_contains($securityEventMigration, 'client_id CHAR(64)'), 'Detailed logs should correlate actors and clients through pseudonymous identifiers.');
@@ -2354,6 +2412,10 @@ $assert(is_string($recordsUserMysqlRepository) && str_contains($recordsUserMysql
 $adminCredentialMigration = file_get_contents(dirname(__DIR__) . '/database/migrations/008_create_pickup_records_admin_credentials.sql');
 $assert(is_string($adminCredentialMigration) && str_contains($adminCredentialMigration, 'CREATE TABLE IF NOT EXISTS pickup_records_admin_credentials'), 'MySQL should persist administrator password overrides outside source-controlled environment configuration.');
 $assert(str_contains($recordsUserMysqlRepository, 'saveAdminPasswordHash'), 'An administrator should be able to securely rotate the server-defined portal password.');
+$passwordHasherSource = file_get_contents(dirname(__DIR__) . '/src/Shared/Security/PasswordHasher.php');
+$credentialGeneratorSource = file_get_contents(dirname(__DIR__) . '/bin/generate-records-credentials.php');
+$assert(is_string($passwordHasherSource) && str_contains($passwordHasherSource, 'ARGON2_MEMORY_KIB = 19456') && str_contains($passwordHasherSource, 'ARGON2_TIME_COST = 2') && str_contains($passwordHasherSource, 'BCRYPT_COST = 12'), 'Password storage should prefer OWASP-minimum Argon2id parameters with a hardened bcrypt fallback.');
+$assert(is_string($credentialGeneratorSource) && str_contains($credentialGeneratorSource, 'PasswordHasher::hash($password)') && !str_contains($credentialGeneratorSource, 'PASSWORD_DEFAULT'), 'Local credential generation should use the shared OWASP-aligned password hasher.');
 $findActiveMethod = substr($recordsUserMysqlRepository, 0, (int) strpos($recordsUserMysqlRepository, 'public function findById'));
 $assert(!str_contains($findActiveMethod, '$this->ensureSchema();'), 'Anonymous or managed-user authentication must not trigger schema creation.');
 $jumpCloudProviderSource = file_get_contents(dirname(__DIR__) . '/src/Shared/Security/JumpCloudOidcProvider.php');

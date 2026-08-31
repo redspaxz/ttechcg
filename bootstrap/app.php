@@ -58,6 +58,7 @@ use App\Shared\Security\RecordsAccess;
 use App\Shared\Security\RecordsSession;
 use App\Shared\Security\RecordsUserService;
 use App\Shared\Security\SecurityLogger;
+use App\Shared\Security\UnsafeRequestPolicy;
 use App\Shared\View\View;
 
 require __DIR__ . '/autoload.php';
@@ -280,6 +281,7 @@ $router->post('/dhl/pickupsheet/submissions/users', fn (Request $request): Respo
 $router->post('/dhl/pickupsheet/submissions/users/update', fn (Request $request): Response => $pickupsheetController->updateUser($request));
 $router->post('/dhl/pickupsheet/submissions/users/status', fn (Request $request): Response => $pickupsheetController->setUserStatus($request));
 $router->post('/dhl/pickupsheet/submissions/users/delete', fn (Request $request): Response => $pickupsheetController->deleteUser($request));
+$router->get('/dhl/pickupsheet/submissions/users/mfa/reset', fn (Request $request): Response => $pickupsheetController->confirmUserMfaReset($request));
 $router->post('/dhl/pickupsheet/submissions/users/mfa/reset', fn (Request $request): Response => $pickupsheetController->resetUserMfa($request));
 $router->post('/dhl/pickupsheet/submissions/users/login-methods', fn (Request $request): Response => $pickupsheetController->updateLoginMethods($request));
 $router->post('/dhl/pickupsheet/submissions/users/admin-password', fn (Request $request): Response => $pickupsheetController->resetAdminPassword($request));
@@ -302,4 +304,9 @@ $router->get('/privacy', fn (Request $request): Response => $siteController->pri
 $router->get('/health', fn (Request $request): Response => $siteController->health($request));
 $router->fallback(fn (Request $request): Response => $siteController->notFound($request));
 
-return new Application($router, PickupsheetCountryPolicy::fromEnvironment($isProduction), $securityLogger);
+return new Application(
+    $router,
+    PickupsheetCountryPolicy::fromEnvironment($isProduction),
+    $securityLogger,
+    new UnsafeRequestPolicy((string) $config['app_url']),
+);

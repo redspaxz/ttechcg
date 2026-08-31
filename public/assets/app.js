@@ -688,15 +688,6 @@ document.addEventListener('submit', (event) => {
             if (confirmation) confirmation.value = '1';
         }
     }
-    if (event.target.matches('[data-user-mfa-reset-form]')) {
-        const accountName = event.target.dataset.accountName || 'this local account';
-        if (!window.confirm(`Reset two-factor authentication for ${accountName}? They must enroll again at the next sign-in.`)) {
-            event.preventDefault();
-            return;
-        }
-        const confirmation = event.target.querySelector('[data-confirm-mfa-reset]');
-        if (confirmation) confirmation.value = '1';
-    }
     if (event.target.matches('[data-self-mfa-reset]')) {
         const accountName = event.target.dataset.accountName || 'your account';
         if (!window.confirm(`Replace the authenticator for ${accountName}? The current authenticator and unused recovery codes will stop working.`)) {

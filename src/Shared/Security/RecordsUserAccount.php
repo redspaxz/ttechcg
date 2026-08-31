@@ -24,6 +24,11 @@ final class RecordsUserAccount
         return password_verify($password, $this->passwordHash);
     }
 
+    public function needsPasswordRehash(): bool
+    {
+        return PasswordHasher::needsRehash($this->passwordHash);
+    }
+
     public function authenticationVersion(): string
     {
         return hash('sha256', implode('|', [

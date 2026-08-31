@@ -2,6 +2,10 @@
 
 declare(strict_types=1);
 
+use App\Shared\Security\PasswordHasher;
+
+require dirname(__DIR__) . '/bootstrap/autoload.php';
+
 $username = strtolower(trim((string) ($argv[1] ?? 'records-admin')));
 $role = strtolower(trim((string) ($argv[2] ?? 'admin')));
 $firstName = trim((string) ($argv[3] ?? 'Records'));
@@ -27,9 +31,10 @@ foreach (['First name' => $firstName, 'Last name' => $lastName] as $label => $na
 }
 
 $password = rtrim(strtr(base64_encode(random_bytes(24)), '+/', '-_'), '=');
-$passwordHash = password_hash($password, PASSWORD_DEFAULT);
-if (!is_string($passwordHash)) {
-    fwrite(STDERR, "Unable to generate a password hash.\n");
+try {
+    $passwordHash = PasswordHasher::hash($password);
+} catch (RuntimeException $exception) {
+    fwrite(STDERR, $exception->getMessage() . "\n");
     exit(1);
 }
 

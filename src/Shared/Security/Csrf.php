@@ -11,7 +11,7 @@ final class Csrf
     public function token(): string
     {
         if (!isset($_SESSION[self::SESSION_KEY])) {
-            $_SESSION[self::SESSION_KEY] = bin2hex(random_bytes(32));
+            return $this->rotate();
         }
 
         return (string) $_SESSION[self::SESSION_KEY];
@@ -22,6 +22,12 @@ final class Csrf
         return isset($_SESSION[self::SESSION_KEY])
             && $token !== ''
             && hash_equals((string) $_SESSION[self::SESSION_KEY], $token);
+    }
+
+    public function rotate(): string
+    {
+        $_SESSION[self::SESSION_KEY] = bin2hex(random_bytes(32));
+        return (string) $_SESSION[self::SESSION_KEY];
     }
 }
 

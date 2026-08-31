@@ -805,13 +805,17 @@ final class PickupsheetController
                 throw new RuntimeException('Local 2FA is not configured.');
             }
             $account = $this->recordsUserService->account($request->input('id'), $authorization);
+            $reauthenticationMethod = $this->reauthenticateMfaReset($request, $authorization);
             if (!$this->localMfa->reset('local-user:' . $account->id, $this->actorId($authorization))) {
                 throw new InvalidArgumentException('Two-factor authentication is not enrolled for that account.');
             }
+            $this->recordsSession->renewId();
+            $this->csrf->rotate();
             $_SESSION['_records_users_flash'] = sprintf('Two-factor authentication reset for %s. It must be enrolled at the next sign-in.', $account->username);
             $this->securityLogger->event('pickupsheet.records_user_mfa_reset', $request, 'accepted', [
                 'actor_id' => $this->actorId($authorization),
                 'target_id' => substr(hash('sha256', $account->username), 0, 24),
+                'reauthenticated_with' => $reauthenticationMethod,
             ]);
         } catch (InvalidArgumentException $exception) {
             $_SESSION['_records_users_errors'] = [$exception->getMessage()];
@@ -820,8 +824,56 @@ final class PickupsheetController
             error_log($exception->__toString());
             $_SESSION['_records_users_errors'] = ['Two-factor authentication could not be reset. Check migration 015 and MySQL.'];
             $this->securityLogger->event('pickupsheet.records_user_mfa_reset', $request, 'failed');
+        } catch (Throwable $exception) {
+            error_log('Managed-user 2FA reset failed: ' . $exception->getMessage());
+            $_SESSION['_records_users_errors'] = ['Two-factor authentication could not be reset. Please try again.'];
+            $this->securityLogger->event('pickupsheet.records_user_mfa_reset', $request, 'failed');
         }
         return Response::redirect($request->basePath . '/dhl/pickupsheet/submissions/users');
+    }
+
+    public function confirmUserMfaReset(Request $request): Response
+    {
+        $authorization = $this->authorizeRecords($request, 'manage');
+        if ($authorization instanceof Response) {
+            return $authorization;
+        }
+        try {
+            if ($this->localMfa?->isConfigured() !== true) {
+                throw new RuntimeException('Local 2FA is not configured.');
+            }
+            $account = $this->recordsUserService->account($request->queryString('id'), $authorization);
+            if (!$this->localMfa->isEnrolled('local-user:' . $account->id)) {
+                throw new InvalidArgumentException('Two-factor authentication is not enrolled for that account.');
+            }
+        } catch (InvalidArgumentException $exception) {
+            $_SESSION['_records_users_errors'] = [$exception->getMessage()];
+            return Response::redirect($request->basePath . '/dhl/pickupsheet/submissions/users');
+        } catch (RuntimeException $exception) {
+            error_log($exception->__toString());
+            $_SESSION['_records_users_errors'] = ['Two-factor authentication could not be loaded. Check migration 015 and MySQL.'];
+            return Response::redirect($request->basePath . '/dhl/pickupsheet/submissions/users');
+        } catch (Throwable $exception) {
+            error_log('Managed-user 2FA confirmation failed: ' . $exception->getMessage());
+            $_SESSION['_records_users_errors'] = ['Two-factor authentication could not be loaded. Please try again.'];
+            return Response::redirect($request->basePath . '/dhl/pickupsheet/submissions/users');
+        }
+
+        $body = $this->view->render('pickupsheet/admin-mfa-reset', [
+            'pageTitle' => 'Confirm 2FA reset',
+            'pageDescription' => 'Reauthenticate before resetting a managed account authenticator.',
+            'pageRobots' => 'noindex, nofollow',
+            'activePage' => 'pickupsheet',
+            'basePath' => $request->basePath,
+            'assetBase' => $request->basePath . '/public/assets',
+            'config' => $this->config,
+            'csrfToken' => $this->csrf->token(),
+            'principal' => $authorization,
+            'account' => $account,
+            'requiresLocalReauthentication' => $authorization->identityProvider === 'local',
+            'ssoAuthenticationFresh' => $this->recordsSession->authenticatedWithin(300),
+        ]);
+        return Response::html($body, 200, $this->privateHeaders());
     }
 
     public function updateLoginMethods(Request $request): Response
@@ -1226,6 +1278,36 @@ final class PickupsheetController
         }
 
         return null;
+    }
+
+    private function reauthenticateMfaReset(Request $request, RecordsPrincipal $principal): string
+    {
+        if ($principal->identityProvider !== 'local') {
+            if (!$this->recordsSession->authenticatedWithin(300)) {
+                throw new InvalidArgumentException('Sign out and sign in with your identity provider again before resetting another user\'s 2FA.');
+            }
+            return $principal->identityProvider . '_recent';
+        }
+
+        $verified = $this->recordsAccess->authenticateCredentials(
+            $principal->username,
+            $request->rawInput('current_password'),
+        );
+        if ($verified === null
+            || $verified->identityProvider !== 'local'
+            || !hash_equals($principal->securitySubject(), $verified->securitySubject())
+            || !hash_equals($principal->authenticationVersion, $verified->authenticationVersion)) {
+            throw new InvalidArgumentException('Enter your current administrator password.');
+        }
+        if ($this->localMfa?->isConfigured() !== true
+            || !$this->localMfa->isEnrolled($principal->securitySubject())) {
+            throw new InvalidArgumentException('Your administrator account must have two-factor authentication enrolled.');
+        }
+        $method = $this->localMfa->verify($principal->securitySubject(), $request->rawInput('code'));
+        if ($method === null) {
+            throw new InvalidArgumentException('Enter a valid administrator authenticator or recovery code.');
+        }
+        return $method;
     }
 
     private function pickupLifecycleWriteGuard(Request $request, string $action): ?Response
