@@ -389,8 +389,27 @@ $outsideGeoResponse = $geoApplication->handle(new Request('GET', '/dhl/pickupshe
 $spoofedGeoResponse = $geoApplication->handle(new Request('GET', '/dhl/pickupsheet/login', [], [], '', ['REMOTE_ADDR' => '203.0.113.20', 'HTTP_CF_IPCOUNTRY' => 'CM']));
 $missingGeoResponse = $geoApplication->handle(new Request('GET', '/dhl/pickupsheet/login'));
 $publicGeoResponse = $geoApplication->handle(new Request('GET', '/', [], [], '', $cloudflareEdge + ['HTTP_CF_IPCOUNTRY' => 'US']));
-$assert($cameroonGeoResponse->status() === 200 && $nigeriaGeoResponse->status() === 200, 'Pickupsheet geolocation should allow Cameroon and Nigeria.');
-$assert($outsideGeoResponse->status() === 403 && $missingGeoResponse->status() === 403 && $spoofedGeoResponse->status() === 403, 'Pickupsheet geolocation should block every other country, missing country headers, and spoofed Cloudflare headers.');
+$assert($cameroonGeoResponse->status() === 200 && $nigeriaGeoResponse->status() === 200, 'Pickupsheet geolocation should allow countries outside North America.');
+$assert($outsideGeoResponse->status() === 403 && $missingGeoResponse->status() === 403 && $spoofedGeoResponse->status() === 403, 'Pickupsheet geolocation should block North America, missing country headers, and spoofed Cloudflare headers.');
+$blockedNorthAmericaCodes = [
+    'BM', 'CA', 'GL', 'PM', 'US',
+    'BZ', 'CR', 'SV', 'GT', 'HN', 'MX', 'NI', 'PA',
+    'AI', 'AG', 'AW', 'BS', 'BB', 'BQ', 'VG', 'KY', 'CU', 'CW', 'DM', 'DO',
+    'GD', 'GP', 'HT', 'JM', 'MQ', 'MS', 'PR', 'BL', 'KN', 'LC', 'MF', 'VC', 'SX',
+    'TT', 'TC', 'VI',
+];
+$allowedOutsideNorthAmericaCodes = ['CM', 'NG', 'GB', 'FR', 'ZA', 'BR', 'AU', 'JP'];
+$northAmericaPolicy = new PickupsheetCountryPolicy(true);
+foreach ($blockedNorthAmericaCodes as $countryCode) {
+    $countryRequest = new Request('GET', '/dhl/pickupsheet/login', [], [], '', $cloudflareEdge + ['HTTP_CF_IPCOUNTRY' => $countryCode]);
+    $assert(!$northAmericaPolicy->allows($countryRequest), 'The North America denylist should block ' . $countryCode . '.');
+}
+foreach ($allowedOutsideNorthAmericaCodes as $countryCode) {
+    $countryRequest = new Request('GET', '/dhl/pickupsheet/login', [], [], '', $cloudflareEdge + ['HTTP_CF_IPCOUNTRY' => $countryCode]);
+    $assert($northAmericaPolicy->allows($countryRequest), 'The North America denylist should allow ' . $countryCode . '.');
+}
+$assert(!$northAmericaPolicy->allows(new Request('GET', '/dhl/pickupsheet/login', [], [], '', $cloudflareEdge + ['HTTP_CF_IPCOUNTRY' => 'XX']))
+    && !$northAmericaPolicy->allows(new Request('GET', '/dhl/pickupsheet/login', [], [], '', $cloudflareEdge + ['HTTP_CF_IPCOUNTRY' => 'T1'])), 'Unknown and Tor Cloudflare location codes should fail closed.');
 $assert(($outsideGeoResponse->headers()['Cache-Control'] ?? '') === 'private, no-store, max-age=0', 'A geolocation denial should never be cached.');
 $assert($publicGeoResponse->status() === 200, 'Pickupsheet geolocation must not restrict the public corporate site.');
 $disabledGeoApplication = new Application($geoRouter, new PickupsheetCountryPolicy(false));
@@ -414,7 +433,8 @@ $assert(PickupsheetCountryPolicy::fromEnvironment(false)->allows(new Request('GE
 $productionCountryPolicy = PickupsheetCountryPolicy::fromEnvironment(true);
 $assert(!$productionCountryPolicy->allows(new Request('GET', '/dhl/pickupsheet/login')), 'Production country enforcement should fail closed when Cloudflare supplies no country.');
 $assert($productionCountryPolicy->allows(new Request('GET', '/dhl/pickupsheet/login', [], [], '', $cloudflareEdge + ['HTTP_CF_IPCOUNTRY' => 'CM']))
-    && $productionCountryPolicy->allows(new Request('GET', '/dhl/pickupsheet/login', [], [], '', $cloudflareEdge + ['HTTP_CF_IPCOUNTRY' => 'NG'])), 'The production policy should ignore a stale Cameroon-only environment value and continue allowing both approved countries.');
+    && $productionCountryPolicy->allows(new Request('GET', '/dhl/pickupsheet/login', [], [], '', $cloudflareEdge + ['HTTP_CF_IPCOUNTRY' => 'GB']))
+    && !$productionCountryPolicy->allows(new Request('GET', '/dhl/pickupsheet/login', [], [], '', $cloudflareEdge + ['HTTP_CF_IPCOUNTRY' => 'MX'])), 'The production policy should ignore a stale country allowlist environment value and enforce the code-defined North America denylist.');
 putenv($previousGeoEnabled === false ? 'PICKUPSHEET_GEO_RESTRICTION_ENABLED' : 'PICKUPSHEET_GEO_RESTRICTION_ENABLED=' . $previousGeoEnabled);
 putenv($previousGeoCountries === false ? 'PICKUPSHEET_ALLOWED_COUNTRIES' : 'PICKUPSHEET_ALLOWED_COUNTRIES=' . $previousGeoCountries);
 $basicRequest = new Request('GET', '/protected', [], [], '', [
@@ -2191,7 +2211,7 @@ $assert(str_contains($privacy, 'Operators and administrators may maintain busine
 $assert(str_contains($privacy, '10 points per kilogram shipped') && str_contains($privacy, 'required reason, UTC time, and pseudonymous administrator identifier'), 'The privacy notice should disclose weight-based reward points and adjustment-ledger fields.');
 $assert(str_contains($privacy, 'passphrase-encrypted backups') && str_contains($privacy, 'environment secrets and plaintext passwords are excluded'), 'The privacy notice should disclose disaster-recovery processing and its secret boundary.');
 $assert(str_contains($privacy, 'authenticator secrets are encrypted at rest') && str_contains($privacy, 'recovery codes are stored only as keyed hashes'), 'The privacy notice should disclose local 2FA storage protections.');
-$assert(str_contains($privacy, "visitor's country code from the source IP address") && str_contains($privacy, 'restrict portal access to Cameroon and Nigeria'), 'The privacy notice should disclose the Cameroon-and-Nigeria Pickupsheet access boundary.');
+$assert(str_contains($privacy, "visitor's country code from the source IP address") && str_contains($privacy, 'block portal access from Northern America, Central America, and the Caribbean'), 'The privacy notice should disclose the North America Pickupsheet access boundary.');
 
 $environmentExample = file_get_contents(dirname(__DIR__) . '/.env.example');
 $assert(is_string($environmentExample) && str_contains($environmentExample, 'APP_TIMEZONE=Africa/Douala'), 'The environment example should use Cameroon time.');
@@ -2209,7 +2229,7 @@ $assert(is_string($environmentExample) && str_contains($environmentExample, 'JUM
 $assert(is_string($environmentExample) && str_contains($environmentExample, 'Keep at least one direct method'), 'The environment example should warn administrators against disabling every direct sign-in method accidentally.');
 $assert(is_string($environmentExample) && str_contains($environmentExample, 'CLOUDFLARE_ACCESS_ENABLED=false'), 'The environment example should keep the Cloudflare Access handoff disabled until its trust values are supplied.');
 $assert(is_string($environmentExample) && str_contains($environmentExample, 'PICKUPSHEET_GEO_RESTRICTION_ENABLED=true'), 'The environment example should explicitly enable production country enforcement.');
-$assert(is_string($environmentExample) && str_contains($environmentExample, 'PICKUPSHEET_GEO_RESTRICTION_ENABLED=true') && !str_contains($environmentExample, 'PICKUPSHEET_ALLOWED_COUNTRIES='), 'The Pickupsheet production boundary should be enabled and code-defined as Cameroon and Nigeria only.');
+$assert(is_string($environmentExample) && str_contains($environmentExample, 'PICKUPSHEET_GEO_RESTRICTION_ENABLED=true') && !str_contains($environmentExample, 'PICKUPSHEET_ALLOWED_COUNTRIES='), 'The Pickupsheet production boundary should be enabled with a code-defined North America denylist.');
 $assert(is_string($environmentExample) && str_contains($environmentExample, 'CLOUDFLARE_ACCESS_AUDIENCE='), 'The environment example should document the application audience required for token validation.');
 
 $styles = file_get_contents(dirname(__DIR__) . '/public/assets/styles.css');
