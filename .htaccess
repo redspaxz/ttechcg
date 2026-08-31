@@ -1,5 +1,6 @@
-Options -Indexes
+Options -Indexes -MultiViews
 DirectoryIndex index.php
+LimitRequestBody 13631488
 
 <IfModule mod_rewrite.c>
     RewriteEngine On
@@ -13,7 +14,7 @@ DirectoryIndex index.php
     RewriteRule ^ index.php [QSA,L]
 </IfModule>
 
-<FilesMatch "^(\.env|\.env\.example|\.gitignore|\.cpanel\.yml|docker-compose\.yml|README\.md|router\.php|wp-.*\.php|xmlrpc\.php)$">
+<FilesMatch "(?i)(^\.|\.bak$|\.dist$|\.ini$|\.log$|\.md$|\.sql$|\.sqlite$|\.yml$|composer\.(json|lock)$|docker-compose\.yml|router\.php|wp-.*\.php|xmlrpc\.php)$">
     Require all denied
 </FilesMatch>
 
@@ -22,6 +23,7 @@ DirectoryIndex index.php
     Header always set Strict-Transport-Security "max-age=31536000"
     Header always set X-Content-Type-Options "nosniff"
     Header always set X-Frame-Options "DENY"
+    Header always set X-Permitted-Cross-Domain-Policies "none"
     Header always set Referrer-Policy "strict-origin-when-cross-origin"
     Header always set Permissions-Policy "camera=(), microphone=(), geolocation=()"
     Header always set Cross-Origin-Opener-Policy "same-origin"

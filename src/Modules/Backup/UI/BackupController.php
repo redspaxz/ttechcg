@@ -165,6 +165,16 @@ final class BackupController
                 'identity_provider' => $principal->identityProvider,
             ];
             if ($principal->can('backup')) {
+                if (!$this->recordsSession->authenticatedWithin(900)) {
+                    $this->securityLogger->event('pickupsheet.records_access', $request, 'forbidden', $context + [
+                        'reason' => 'fresh_authentication_required',
+                    ]);
+                    return Response::html(
+                        'Backup and restore require a sign-in completed within the previous 15 minutes. Sign out and authenticate again.',
+                        403,
+                        $this->privateHeaders(),
+                    );
+                }
                 $this->securityLogger->event('pickupsheet.records_access', $request, 'granted', $context);
                 return $principal;
             }

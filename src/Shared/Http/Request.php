@@ -4,6 +4,8 @@ declare(strict_types=1);
 
 namespace App\Shared\Http;
 
+use App\Shared\Security\CloudflareRequestTrust;
+
 final class Request
 {
     private ?string $generatedRequestId = null;
@@ -122,7 +124,7 @@ final class Request
 
     public function clientIdentifier(): string
     {
-        $cloudflareAddress = $this->validatedIp($this->serverString('HTTP_CF_CONNECTING_IP'));
+        $cloudflareAddress = $this->validatedIp($this->trustedCloudflareHeader('CF-Connecting-IP'));
         $remoteAddress = $this->validatedIp($this->serverString('REMOTE_ADDR'));
         $address = $cloudflareAddress ?? $remoteAddress ?? 'unknown';
 
@@ -131,12 +133,21 @@ final class Request
 
     public function requestId(): string
     {
-        $cloudflareRay = $this->serverString('HTTP_CF_RAY');
+        $cloudflareRay = $this->trustedCloudflareHeader('CF-Ray');
         if ($cloudflareRay !== '' && preg_match('/^[A-Za-z0-9-]{1,100}$/', $cloudflareRay)) {
             return $cloudflareRay;
         }
 
         return $this->generatedRequestId ??= bin2hex(random_bytes(12));
+    }
+
+    public function trustedCloudflareHeader(string $name): string
+    {
+        $remoteAddress = $this->validatedIp($this->serverString('REMOTE_ADDR'));
+        if ($remoteAddress === null || !CloudflareRequestTrust::contains($remoteAddress)) {
+            return '';
+        }
+        return $this->header($name);
     }
 
     private function serverString(string $key): string

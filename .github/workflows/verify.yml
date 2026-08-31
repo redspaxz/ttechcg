@@ -39,6 +39,9 @@ jobs:
             php -l "$php_file"
           done < <(find . -type f -name '*.php' -not -path './vendor/*' -print0)
 
+      - name: Check repository security invariants
+        run: php bin/security-check.php
+
       - name: Run application tests
         run: php tests/run.php
 

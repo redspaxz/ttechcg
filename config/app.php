@@ -17,6 +17,8 @@ return [
     'contact_email' => getenv('CONTACT_EMAIL') ?: 'info@ttechcg.com',
     'contact_from_email' => getenv('CONTACT_FROM_EMAIL') ?: 'website@ttechcg.com',
     'local_login_enabled' => $localLoginEnabled,
+    'security_event_retention_days' => (int) (getenv('SECURITY_EVENT_RETENTION_DAYS') ?: 365),
+    'session_activity_retention_days' => (int) (getenv('SESSION_ACTIVITY_RETENTION_DAYS') ?: 365),
     'locations' => [
         [
             'city' => 'Bamenda',

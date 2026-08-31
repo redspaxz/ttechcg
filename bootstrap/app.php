@@ -41,6 +41,7 @@ use App\Shared\Infrastructure\MysqlLocalMfaRepository;
 use App\Shared\Infrastructure\MysqlRecordsUserRepository;
 use App\Shared\Infrastructure\MysqlRecordsSessionActivityRepository;
 use App\Shared\Infrastructure\MysqlSecurityEventRepository;
+use App\Shared\Infrastructure\SecurityDataRetention;
 use App\Shared\Infrastructure\UnavailableRecordsUserRepository;
 use App\Shared\Infrastructure\UnavailableLoginMethodSettingsRepository;
 use App\Shared\Infrastructure\UnavailableLocalMfaRepository;
@@ -57,6 +58,7 @@ use App\Shared\Security\RateLimiter;
 use App\Shared\Security\RecordsAccess;
 use App\Shared\Security\RecordsSession;
 use App\Shared\Security\RecordsUserService;
+use App\Shared\Security\SecurityHeaders;
 use App\Shared\Security\SecurityLogger;
 use App\Shared\Security\UnsafeRequestPolicy;
 use App\Shared\View\View;
@@ -68,6 +70,32 @@ Environment::load($root . '/.env');
 $config = require $root . '/config/app.php';
 date_default_timezone_set((string) $config['timezone']);
 $isProduction = $config['environment'] === 'production';
+$applicationUrlParts = parse_url((string) ($config['app_url'] ?? ''));
+if ($isProduction && (!is_array($applicationUrlParts)
+    || ($applicationUrlParts['scheme'] ?? null) !== 'https'
+    || !is_string($applicationUrlParts['host'] ?? null)
+    || strtolower(rtrim($applicationUrlParts['host'], '.')) !== 'ttechcg.com'
+    || !in_array($applicationUrlParts['path'] ?? '', ['', '/'], true)
+    || isset($applicationUrlParts['port'])
+    || isset($applicationUrlParts['user'])
+    || isset($applicationUrlParts['pass'])
+    || isset($applicationUrlParts['query'])
+    || isset($applicationUrlParts['fragment']))) {
+    error_log('Invalid production APP_URL was replaced by the canonical HTTPS origin.');
+    $config['app_url'] = 'https://ttechcg.com';
+}
+
+error_reporting(E_ALL);
+ini_set('display_errors', !$isProduction && ($config['debug'] ?? false) ? '1' : '0');
+ini_set('display_startup_errors', '0');
+ini_set('log_errors', '1');
+ini_set('expose_php', '0');
+ini_set('zend.exception_ignore_args', '1');
+ini_set('zend.exception_string_param_max_len', '0');
+header_remove('X-Powered-By');
+if ($isProduction && ($config['debug'] ?? false)) {
+    error_log('Production APP_DEBUG was ignored by the application security boundary.');
+}
 
 if (session_status() !== PHP_SESSION_ACTIVE) {
     ini_set('session.use_strict_mode', '1');
@@ -75,6 +103,7 @@ if (session_status() !== PHP_SESSION_ACTIVE) {
     ini_set('session.use_trans_sid', '0');
     ini_set('session.sid_length', '48');
     ini_set('session.sid_bits_per_character', '6');
+    ini_set('session.gc_maxlifetime', '28800');
     session_save_path($root . '/storage/sessions');
     session_name($isProduction ? '__Host-ttechcg_session' : 'ttechcg_session');
     session_set_cookie_params([
@@ -95,6 +124,27 @@ if ($connection !== null && $runMigrations) {
     } catch (Throwable $exception) {
         error_log($exception->__toString());
         $connection = null;
+    }
+}
+if ($connection !== null) {
+    try {
+        $retention = new SecurityDataRetention(
+            $connection,
+            $root . '/storage/security',
+            (int) ($config['security_event_retention_days'] ?? 365),
+            (int) ($config['session_activity_retention_days'] ?? 365),
+        );
+        $retentionResult = $retention->runIfDue();
+        if ($retentionResult !== null) {
+            error_log((string) json_encode([
+                'type' => 'security_retention',
+                'events_deleted' => $retentionResult['events'],
+                'sessions_deleted' => $retentionResult['sessions'],
+                'occurred_at' => gmdate(DATE_ATOM),
+            ], JSON_UNESCAPED_SLASHES));
+        }
+    } catch (Throwable $exception) {
+        error_log('Security data retention could not run: ' . $exception->getMessage());
     }
 }
 $inquiryRepository = match (true) {
@@ -160,15 +210,19 @@ $config['jumpcloud_oidc_configured'] = $jumpCloud->isConfigured();
 $config['jumpcloud_login_enabled'] = $jumpCloud->isConfigured();
 $config['jumpcloud_role_groups'] = $jumpCloud->roleGroups();
 $config['cloudflare_access_configured'] = $cloudflareAccess->isConfigured();
-$loginMethodSettings = new LoginMethodSettingsService(
-    $loginMethodSettingsRepository,
-    (bool) ($config['local_login_enabled'] ?? true),
-    $jumpCloud->isConfigured(),
-    $cloudflareAccess->isConfigured(),
-);
 $localMfa = LocalMfaService::fromEnvironment($localMfaRepository);
 $config['local_mfa_enabled'] = $localMfa->isEnabled();
 $config['local_mfa_configured'] = $localMfa->isConfigured();
+$localLoginSecurityReady = (bool) ($config['local_login_enabled'] ?? true)
+    && (!$isProduction || ($localMfa->isEnabled() && $localMfa->isConfigured()));
+$config['local_login_enabled'] = $localLoginSecurityReady;
+$config['local_login_security_ready'] = $localLoginSecurityReady;
+$loginMethodSettings = new LoginMethodSettingsService(
+    $loginMethodSettingsRepository,
+    $localLoginSecurityReady,
+    $jumpCloud->isConfigured(),
+    $cloudflareAccess->isConfigured(),
+);
 $recordsUserService = new RecordsUserService($recordsUserRepository, $recordsAccess->environmentUsernames());
 $contactCaptcha = new Captcha('contact');
 $pickupCaptcha = new Captcha('pickupsheet');
@@ -309,4 +363,5 @@ return new Application(
     PickupsheetCountryPolicy::fromEnvironment($isProduction),
     $securityLogger,
     new UnsafeRequestPolicy((string) $config['app_url']),
+    new SecurityHeaders($isProduction),
 );

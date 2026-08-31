@@ -20,12 +20,15 @@ final class Environment
             }
 
             [$key, $value] = array_map('trim', explode('=', $line, 2));
-            if ($key === '' || getenv($key) !== false) {
+            if (preg_match('/^[A-Z][A-Z0-9_]{0,127}$/', $key) !== 1 || getenv($key) !== false) {
                 continue;
             }
 
             if (strlen($value) >= 2 && (($value[0] === '"' && str_ends_with($value, '"')) || ($value[0] === "'" && str_ends_with($value, "'")))) {
                 $value = substr($value, 1, -1);
+            }
+            if (strlen($value) > 8192 || str_contains($value, "\0")) {
+                continue;
             }
 
             putenv($key . '=' . $value);

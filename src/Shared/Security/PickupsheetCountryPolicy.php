@@ -47,7 +47,7 @@ final class PickupsheetCountryPolicy
             return true;
         }
 
-        $country = strtoupper($request->header('CF-IPCountry'));
+        $country = strtoupper($request->trustedCloudflareHeader('CF-IPCountry'));
         return preg_match('/^[A-Z]{2}$/', $country) === 1
             && isset($this->allowedCountries[$country]);
     }
