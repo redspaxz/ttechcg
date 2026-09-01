@@ -224,14 +224,13 @@ $auditDetails = static function (array $log): string {
                 <div class="pickup-cash-pie-visual">
                     <svg class="pickup-cash-pie-chart" viewBox="0 0 120 120" role="img" aria-labelledby="cash-status-title cash-status-description">
                         <desc id="cash-status-description">Total cash recorded is <?= $e(number_format($totalCashRecordedXaf)) ?> XAF. Unpaid balance is <?= $e(number_format($unpaidBalanceXaf)) ?> XAF.</desc>
-                        <circle class="pickup-cash-pie-track" cx="60" cy="60" r="48" pathLength="100"></circle>
-                        <circle class="pickup-cash-pie-unpaid" cx="60" cy="60" r="48" pathLength="100" stroke-dasharray="<?= $e($unpaidChartValue) ?> <?= $e($settledChartValue) ?>" transform="rotate(-90 60 60)"></circle>
+                        <circle class="pickup-cash-pie-track" cx="60" cy="60" r="29" pathLength="100"></circle>
+                        <circle class="pickup-cash-pie-unpaid" cx="60" cy="60" r="29" pathLength="100" stroke-dasharray="<?= $e($unpaidChartValue) ?> <?= $e($settledChartValue) ?>" transform="rotate(-90 60 60)"></circle>
                     </svg>
-                    <span class="pickup-cash-pie-center"><strong><?= $e($unpaidPercentageLabel) ?></strong><small>Unpaid</small></span>
                 </div>
                 <dl class="pickup-cash-status-values">
                     <div class="is-total"><dt>Total cash recorded</dt><dd><?= $e(number_format($totalCashRecordedXaf)) ?> XAF</dd></div>
-                    <div class="is-unpaid"><dt>Unpaid balance</dt><dd><?= $e(number_format($unpaidBalanceXaf)) ?> XAF</dd></div>
+                    <div class="is-unpaid"><dt>Unpaid balance <small><?= $e($unpaidPercentageLabel) ?> of total</small></dt><dd><?= $e(number_format($unpaidBalanceXaf)) ?> XAF</dd></div>
                     <div class="is-settled"><dt>Settled cash</dt><dd><?= $e(number_format($settledCashXaf)) ?> XAF</dd></div>
                 </dl>
             </div>
