@@ -89,16 +89,54 @@ final class DemoPickupSheetRepository implements PickupSheetRepository
         throw new \RuntimeException('Pickup sheet not found for deletion.');
     }
 
-    public function recent(int $limit, int $offset = 0): array
+    public function recent(int $limit, int $offset = 0, string $search = ''): array
     {
         $sheets = $_SESSION[self::SESSION_KEY] ?? [];
-        return array_slice(array_reverse(is_array($sheets) ? $sheets : []), $offset, $limit);
+        $sheets = array_reverse(is_array($sheets) ? $sheets : []);
+        if ($search !== '') {
+            $sheets = array_values(array_filter(
+                $sheets,
+                fn (mixed $sheet): bool => $sheet instanceof PickupSheet && $this->matchesSearch($sheet, $search),
+            ));
+        }
+
+        return array_slice($sheets, $offset, $limit);
     }
 
-    public function count(): int
+    public function count(string $search = ''): int
     {
         $sheets = $_SESSION[self::SESSION_KEY] ?? [];
-        return is_array($sheets) ? count($sheets) : 0;
+        if (!is_array($sheets)) {
+            return 0;
+        }
+
+        if ($search === '') {
+            return count($sheets);
+        }
+
+        return count(array_filter(
+            $sheets,
+            fn (mixed $sheet): bool => $sheet instanceof PickupSheet && $this->matchesSearch($sheet, $search),
+        ));
+    }
+
+    private function matchesSearch(PickupSheet $sheet, string $search): bool
+    {
+        $values = [
+            $sheet->referenceNumber,
+            $sheet->agentName,
+            $sheet->collectionDate,
+            $sheet->status,
+        ];
+
+        foreach ($sheet->shipments as $shipment) {
+            $values[] = $shipment->consignor;
+            $values[] = $shipment->awbNumber;
+            $values[] = $shipment->destination;
+            $values[] = $shipment->checkedBy;
+        }
+
+        return str_contains(strtolower(implode(' ', $values)), strtolower(trim($search)));
     }
 
     public function summary(): array

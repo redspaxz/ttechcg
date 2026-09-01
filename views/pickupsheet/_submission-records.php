@@ -12,6 +12,7 @@ $canEdit = (bool) ($canEdit ?? false);
 $canMarkPaid = (bool) ($canMarkPaid ?? false);
 $canDelete = (bool) ($canDelete ?? false);
 $pagination = is_array($pagination ?? null) ? $pagination : [];
+$search = trim(is_string($search ?? null) ? $search : '');
 $page = max(1, (int) ($pagination['page'] ?? 1));
 $totalPages = max(1, (int) ($pagination['totalPages'] ?? 1));
 $totalRecords = max(0, (int) ($pagination['totalRecords'] ?? 0));
@@ -20,7 +21,14 @@ $totalXaf = array_reduce(
     static fn (int $total, mixed $sheet): int => $total + (int) ($sheet->totalCashReceivedXaf ?? 0),
     0,
 );
-$pageUrl = static fn (int $target): string => ($basePath ?? '') . '/dhl/pickupsheet/submissions?page=' . $target;
+$pageUrl = static function (int $target) use ($basePath, $search): string {
+    $query = ['page' => $target];
+    if ($search !== '') {
+        $query['q'] = $search;
+    }
+
+    return ($basePath ?? '') . '/dhl/pickupsheet/submissions?' . http_build_query($query, '', '&', PHP_QUERY_RFC3986);
+};
 $trackingUrl = static fn (mixed $awbNumber): string => \App\Modules\Pickupsheet\Domain\DhlTrackingUrl::forAwb((string) $awbNumber);
 ?>
 <?php if (!$pickupOperational): ?>
@@ -37,7 +45,11 @@ $trackingUrl = static fn (mixed $awbNumber): string => \App\Modules\Pickupsheet\
 
 <div class="pickup-record-list">
     <?php if ($pickupSheets === []): ?>
-        <div class="pickup-empty-state"><h2>No submitted sheets yet.</h2><p>Saved pickup sheets will appear here.</p></div>
+        <?php if ($search !== ''): ?>
+            <div class="pickup-empty-state"><h2>No matching sheets.</h2><p>Try another reference, agent, consignor, AWB, destination, or checker.</p></div>
+        <?php else: ?>
+            <div class="pickup-empty-state"><h2>No submitted sheets yet.</h2><p>Saved pickup sheets will appear here.</p></div>
+        <?php endif; ?>
     <?php endif; ?>
 
     <?php foreach ($pickupSheets as $pickupSheet): ?>

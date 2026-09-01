@@ -30,6 +30,15 @@ $e = static fn (mixed $value): string => htmlspecialchars((string) $value, ENT_Q
             </div>
         </header>
 
+        <form class="pickup-submission-search" method="get" action="<?= $e($basePath) ?>/dhl/pickupsheet/submissions" role="search" data-ajax-pager-form="submitted-sheets">
+            <label>
+                <span>Search submitted sheets</span>
+                <input type="search" name="q" value="<?= $e($search ?? '') ?>" maxlength="160" placeholder="Reference, agent, consignor, AWB, destination, or checker" autocomplete="off">
+            </label>
+            <button class="button" type="submit">Search</button>
+            <?php if (($search ?? '') !== ''): ?><a href="<?= $e($basePath) ?>/dhl/pickupsheet/submissions" data-ajax-pager-clear="submitted-sheets">Clear</a><?php endif; ?>
+        </form>
+
         <div
             class="pickup-records-frame"
             data-pickup-records

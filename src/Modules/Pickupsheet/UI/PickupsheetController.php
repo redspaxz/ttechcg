@@ -1112,6 +1112,7 @@ final class PickupsheetController
     /** @return array<string, mixed> */
     private function submissionRecords(Request $request, RecordsPrincipal $principal): array
     {
+        $search = trim($request->queryString('q'));
         $pagination = [
             'items' => [],
             'page' => 1,
@@ -1123,7 +1124,9 @@ final class PickupsheetController
 
         if ($this->pickupOperational) {
             try {
-                $pagination = $this->service->paginated($this->pageNumber($request), 10);
+                $pagination = $this->service->paginated($this->pageNumber($request), 10, $search);
+            } catch (InvalidArgumentException $exception) {
+                $errors = [$exception->getMessage()];
             } catch (RuntimeException $exception) {
                 error_log($exception->__toString());
                 $errors = ['Submitted pickup sheets could not be loaded. Please try again later.'];
@@ -1135,6 +1138,7 @@ final class PickupsheetController
             'pickupOperational' => $this->pickupOperational,
             'pickupSheets' => $pagination['items'],
             'pagination' => $pagination,
+            'search' => $search,
             'errors' => $errors,
             'canPrint' => $principal->can('print'),
             'canExport' => $principal->can('export'),

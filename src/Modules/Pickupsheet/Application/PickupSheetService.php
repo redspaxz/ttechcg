@@ -27,15 +27,20 @@ final class PickupSheetService
     }
 
     /** @return array{items: list<PickupSheet>, page: int, perPage: int, totalRecords: int, totalPages: int} */
-    public function paginated(int $page = 1, int $perPage = 10): array
+    public function paginated(int $page = 1, int $perPage = 10, string $search = ''): array
     {
+        $search = trim($search);
+        if (strlen($search) > 160) {
+            throw new InvalidArgumentException('The submitted-sheet search is too long.');
+        }
+
         $perPage = max(1, min($perPage, 50));
-        $totalRecords = $this->repository->count();
+        $totalRecords = $this->repository->count($search);
         $totalPages = max(1, (int) ceil($totalRecords / $perPage));
         $page = max(1, min($page, $totalPages));
 
         return [
-            'items' => $this->repository->recent($perPage, ($page - 1) * $perPage),
+            'items' => $this->repository->recent($perPage, ($page - 1) * $perPage, $search),
             'page' => $page,
             'perPage' => $perPage,
             'totalRecords' => $totalRecords,

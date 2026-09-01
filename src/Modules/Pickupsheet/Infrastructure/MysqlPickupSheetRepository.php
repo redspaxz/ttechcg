@@ -286,17 +286,21 @@ final class MysqlPickupSheetRepository implements PickupSheetRepository
         }
     }
 
-    public function recent(int $limit, int $offset = 0): array
+    public function recent(int $limit, int $offset = 0, string $search = ''): array
     {
         $this->ensureLifecycleSchema();
+        [$searchSql, $searchParameters] = $this->searchCondition($search);
         $sheetStatement = $this->connection->prepare(
             'SELECT id, reference_number, agent_name, collection_date, total_cash_received_xaf,
                     privacy_consent_at, privacy_notice_version, created_at, status, paid_at
-             FROM pickup_sheets
-             WHERE deleted_at IS NULL
+             FROM pickup_sheets p
+             WHERE p.deleted_at IS NULL' . $searchSql . '
              ORDER BY collection_date DESC, id DESC
              LIMIT :limit OFFSET :offset',
         );
+        foreach ($searchParameters as $name => $value) {
+            $sheetStatement->bindValue(':' . $name, $value, PDO::PARAM_STR);
+        }
         $sheetStatement->bindValue(':limit', $limit, PDO::PARAM_INT);
         $sheetStatement->bindValue(':offset', $offset, PDO::PARAM_INT);
         $sheetStatement->execute();
@@ -354,12 +358,55 @@ final class MysqlPickupSheetRepository implements PickupSheetRepository
         return $pickupSheets;
     }
 
-    public function count(): int
+    public function count(string $search = ''): int
     {
         $this->ensureLifecycleSchema();
-        $statement = $this->connection->prepare('SELECT COUNT(*) FROM pickup_sheets WHERE deleted_at IS NULL');
-        $statement->execute();
+        [$searchSql, $searchParameters] = $this->searchCondition($search);
+        $statement = $this->connection->prepare(
+            'SELECT COUNT(*) FROM pickup_sheets p WHERE p.deleted_at IS NULL' . $searchSql,
+        );
+        $statement->execute($searchParameters);
         return (int) $statement->fetchColumn();
+    }
+
+    /** @return array{0: string, 1: array<string, string>} */
+    private function searchCondition(string $search): array
+    {
+        $search = trim($search);
+        if ($search === '') {
+            return ['', []];
+        }
+
+        $value = strtolower($search);
+        return [
+            ' AND (
+                INSTR(LOWER(p.reference_number), :search_reference) > 0
+                OR INSTR(LOWER(p.agent_name), :search_agent) > 0
+                OR INSTR(LOWER(CAST(p.collection_date AS CHAR)), :search_date) > 0
+                OR INSTR(LOWER(p.status), :search_status) > 0
+                OR EXISTS (
+                    SELECT 1
+                    FROM pickup_shipments searched_shipment
+                    WHERE searched_shipment.pickup_sheet_id = p.id
+                      AND (
+                        INSTR(LOWER(searched_shipment.consignor), :search_consignor) > 0
+                        OR INSTR(LOWER(searched_shipment.awb_number), :search_awb) > 0
+                        OR INSTR(LOWER(searched_shipment.destination), :search_destination) > 0
+                        OR INSTR(LOWER(searched_shipment.checked_by), :search_checker) > 0
+                      )
+                )
+             )',
+            [
+                'search_reference' => $value,
+                'search_agent' => $value,
+                'search_date' => $value,
+                'search_status' => $value,
+                'search_consignor' => $value,
+                'search_awb' => $value,
+                'search_destination' => $value,
+                'search_checker' => $value,
+            ],
+        ];
     }
 
     public function summary(): array

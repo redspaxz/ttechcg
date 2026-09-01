@@ -2203,6 +2203,31 @@ button, a, input, select, textarea { -webkit-tap-highlight-color: transparent; }
 }
 .pickup-submissions-heading > div { width: 100%; }
 .pickup-submissions-heading > div > p:last-child { max-width: 680px; margin: 20px auto 0; color: #655000; line-height: 1.65; }
+.pickup-submission-search {
+    display: grid;
+    grid-template-columns: minmax(0, 1fr) auto auto;
+    gap: 14px;
+    align-items: end;
+    margin-bottom: 24px;
+    padding: 18px;
+    border: 1px solid rgba(69, 50, 0, 0.32);
+    background: #fff7d1;
+}
+.pickup-submission-search label { display: grid; gap: 8px; min-width: 0; }
+.pickup-submission-search label > span { color: #655000; font-size: 0.65rem; font-weight: 850; letter-spacing: 0.07em; text-transform: uppercase; }
+.pickup-submission-search input {
+    width: 100%;
+    min-height: 48px;
+    padding: 0 14px;
+    border: 1px solid rgba(69, 50, 0, 0.42);
+    border-radius: 0;
+    background: #fff;
+    color: #241b00;
+    font: inherit;
+}
+.pickup-submission-search input:focus { border-color: var(--dhl-red); outline: 3px solid rgba(212, 5, 17, 0.16); outline-offset: 1px; }
+.pickup-submission-search > .button { min-height: 48px; background: #241b00; color: #fff; }
+.pickup-submission-search > a { align-self: center; color: #493800; font-size: 0.72rem; font-weight: 850; }
 .pickup-view-summary {
     display: grid;
     grid-template-columns: repeat(2, minmax(0, 1fr));
@@ -2378,6 +2403,8 @@ button, a, input, select, textarea { -webkit-tap-highlight-color: transparent; }
     .pickup-view-workspace { padding: 22px 0 64px; }
     .pickup-submissions-shell { width: min(1120px, calc(100% - 28px)); padding-top: 38px; }
     .pickup-submissions-heading { align-items: flex-start; flex-direction: column; gap: 20px; }
+    .pickup-submission-search { grid-template-columns: 1fr; }
+    .pickup-submission-search > .button { width: 100%; }
     .pickup-view-summary { grid-template-columns: 1fr; }
     .pickup-view-summary > div:first-child { border-right: 0; border-bottom: 1px solid rgba(69, 50, 0, 0.3); }
     .pickup-record-overview { min-height: 0; padding: 18px 16px; }

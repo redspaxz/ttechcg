@@ -267,6 +267,19 @@ $assert(count($firstPickupPage['items']) === 10, 'The first pickup-sheet page sh
 $assert(count($secondPickupPage['items']) === 2, 'The second pickup-sheet page should contain the remaining records.');
 $assert($secondPickupPage['page'] === 2, 'Pagination should retain the requested valid page.');
 $assert($pickupService->paginated(999, 10)['page'] === 2, 'Pagination should clamp out-of-range pages to the final page.');
+$consignorPickupSearch = $pickupService->paginated(1, 10, 'NEKEZIAH PIUS');
+$awbPickupSearch = $pickupService->paginated(1, 10, '1589328716');
+$missingPickupSearch = $pickupService->paginated(1, 10, 'sender-that-does-not-exist');
+$assert($consignorPickupSearch['totalRecords'] === 1 && ($consignorPickupSearch['items'][0]->referenceNumber ?? '') === $pickupSheet->referenceNumber, 'Submitted-sheet search should match shipment consignors case-insensitively.');
+$assert($awbPickupSearch['totalRecords'] === 1 && ($awbPickupSearch['items'][0]->referenceNumber ?? '') === $pickupSheet->referenceNumber, 'Submitted-sheet search should match exact AWB details.');
+$assert($missingPickupSearch['totalRecords'] === 0 && $missingPickupSearch['items'] === [], 'Submitted-sheet search should return an empty page when no sheet or shipment details match.');
+$longPickupSearchRejected = false;
+try {
+    $pickupService->paginated(1, 10, str_repeat('a', 161));
+} catch (InvalidArgumentException) {
+    $longPickupSearchRejected = true;
+}
+$assert($longPickupSearchRejected, 'Submitted-sheet search should reject oversized queries before persistence.');
 
 $existingDemoPickupSheets = $_SESSION['_demo_pickup_sheets'] ?? [];
 $_SESSION['_demo_pickup_sheets'] = [];
@@ -458,6 +471,16 @@ $assert(substr_count($paginationFixture, '<article class="pickup-record">') === 
 $assert(str_contains($paginationFixture, 'Page 2 of 2 · 12 records'), 'The pagination fragment should display accurate page and record totals.');
 $assert(str_contains($paginationFixture, 'data-ajax-page="1" rel="prev"'), 'The second page should provide a normal-link fallback to the previous page.');
 $assert(!str_contains($paginationFixture, 'data-ajax-page="3"'), 'The final page should not link beyond the available records.');
+$filteredSecondPickupPage = $pickupService->paginated(2, 10, 'Pagination');
+$filteredPaginationFixture = $view->renderPartial('pickupsheet/_submission-records', [
+    'basePath' => '',
+    'pickupOperational' => true,
+    'pickupSheets' => $filteredSecondPickupPage['items'],
+    'pagination' => $filteredSecondPickupPage,
+    'search' => 'Pagination',
+    'errors' => [],
+]);
+$assert(str_contains($filteredPaginationFixture, '/dhl/pickupsheet/submissions?page=1&amp;q=Pagination'), 'Normal-link pagination should preserve the submitted-sheet search query.');
 $healthResponse = (new SiteController($view, $config, 'MySQL connected', true))->health(new Request('GET', '/health'));
 $assert($healthResponse->body() === '{"status":"ok"}', 'The public health endpoint should not expose backend component details.');
 $assert(($healthResponse->headers()['Cache-Control'] ?? '') === 'no-store', 'Health status should not be cached.');
@@ -1406,8 +1429,13 @@ $assert(str_contains($openSubmissions->body(), 'data-pickup-delete'), 'An admini
 $assert(str_contains($openSubmissions->body(), 'Records are displayed 10 sheets per page.'), 'The records view should disclose its ten-record page size.');
 $assert(str_contains($openSubmissions->body(), 'data-pickup-records-spinner'), 'The records view should provide an AJAX loading spinner.');
 $assert(str_contains($openSubmissions->body(), 'data-page-endpoint="/dhl/pickupsheet/submissions/page"'), 'The records view should identify its protected pagination endpoint.');
+$assert(str_contains($openSubmissions->body(), 'data-ajax-pager-form="submitted-sheets"') && str_contains($openSubmissions->body(), 'name="q"'), 'Submitted sheets should provide a progressively enhanced search form.');
 $assert(str_contains($openSubmissions->body(), 'Page 1 of 1'), 'The records view should display its current pagination status.');
 $assert(($openSubmissions->headers()['Cache-Control'] ?? '') === 'private, no-store, max-age=0', 'Submitted records should not be cached.');
+$searchedSubmissions = $pickupController->submissions(new Request('GET', '/dhl/pickupsheet/submissions', ['q' => 'controller client'], [], '', $recordsServer));
+$assert(str_contains($searchedSubmissions->body(), 'value="controller client"') && str_contains($searchedSubmissions->body(), $savedReference), 'Submitted-sheet search should retain the query and return matching shipment details.');
+$emptySearchFragment = $pickupController->submissionsPage(new Request('GET', '/dhl/pickupsheet/submissions/page', ['q' => 'missing sender', 'page' => '1'], [], '', $recordsServer));
+$assert($emptySearchFragment->status() === 200 && str_contains($emptySearchFragment->body(), 'No matching sheets.'), 'The AJAX search endpoint should return a clear empty-result state.');
 $pageFragment = $pickupController->submissionsPage(new Request('GET', '/dhl/pickupsheet/submissions/page', ['page' => '1'], [], '', $recordsServer));
 $assert($pageFragment->status() === 200, 'A valid Pickupsheet session should load a paginated AJAX fragment.');
 $assert(str_contains($pageFragment->body(), 'Controller Client'), 'The AJAX page fragment should contain its shipment records.');
@@ -2019,7 +2047,7 @@ $assert(is_string($dhlAsset) && !str_contains($dhlAsset, '<text'), 'The disquali
 $partnerSources = file_get_contents(dirname(__DIR__) . '/public/assets/partners/README.md');
 $assert(is_string($partnerSources) && str_contains($partnerSources, 'www.dhl.com/content/dam/dhl/global/core/images/logos/dhl-logo.svg'), 'The official DHL artwork source should be documented.');
 $assert(!str_contains($home, 'href="/dhl/pickupsheet"'), 'Pickupsheet should not be discoverable from the public site chrome or homepage.');
-$assert(str_contains($home, 'styles.css?v=20260831-owasp-hardening'), 'OWASP-aligned authentication controls and prior Pickupsheet refinements should use a cache-safe stylesheet version.');
+$assert(str_contains($home, 'styles.css?v=20260901-submission-search'), 'Submitted-sheet search and prior Pickupsheet refinements should use a cache-safe stylesheet version.');
 $assert(str_contains($home, 'app.js?v=20260831-owasp-hardening'), 'OWASP-aligned confirmations and progressive AJAX interactions should use a cache-safe script version.');
 $assert(str_contains($home, 'analytics.js?v=20260825-security-hardening'), 'The current consent-aware Google Analytics loader should render on every page.');
 $assert(str_contains($home, 'data-analytics-accept'), 'The site should offer an explicit analytics acceptance control.');

@@ -15,9 +15,9 @@ interface PickupSheetRepository
     public function delete(string $referenceNumber, string $actorId): void;
 
     /** @return list<PickupSheet> */
-    public function recent(int $limit, int $offset = 0): array;
+    public function recent(int $limit, int $offset = 0, string $search = ''): array;
 
-    public function count(): int;
+    public function count(string $search = ''): int;
 
     /** @return array{sheetCount: int, shipmentCount: int, totalCashXaf: int, latestCreatedAt: ?string} */
     public function summary(): array;
