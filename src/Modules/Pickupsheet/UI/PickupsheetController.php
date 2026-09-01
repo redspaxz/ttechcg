@@ -1122,6 +1122,7 @@ final class PickupsheetController
             'perPage' => 10,
             'totalRecords' => 0,
             'totalPages' => 1,
+            'unpaidBalanceXaf' => 0,
         ];
         $errors = [];
 

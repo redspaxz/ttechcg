@@ -120,6 +120,14 @@ final class DemoPickupSheetRepository implements PickupSheetRepository
         ));
     }
 
+    public function unpaidBalance(string $search = ''): int
+    {
+        return array_sum(array_map(
+            static fn (PickupSheet $sheet): int => $sheet->isPaid() ? 0 : $sheet->totalCashReceivedXaf,
+            $this->recent(PHP_INT_MAX, 0, $search),
+        ));
+    }
+
     private function matchesSearch(PickupSheet $sheet, string $search): bool
     {
         $values = [

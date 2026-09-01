@@ -16,6 +16,7 @@ $search = trim(is_string($search ?? null) ? $search : '');
 $page = max(1, (int) ($pagination['page'] ?? 1));
 $totalPages = max(1, (int) ($pagination['totalPages'] ?? 1));
 $totalRecords = max(0, (int) ($pagination['totalRecords'] ?? 0));
+$unpaidBalanceXaf = max(0, (int) ($pagination['unpaidBalanceXaf'] ?? 0));
 $totalXaf = array_reduce(
     $pickupSheets,
     static fn (int $total, mixed $sheet): int => $total + (int) ($sheet->totalCashReceivedXaf ?? 0),
@@ -39,8 +40,8 @@ $trackingUrl = static fn (mixed $awbNumber): string => \App\Modules\Pickupsheet\
 <?php endif; ?>
 
 <div class="pickup-view-summary">
-    <div><span>Sheets on this page</span><strong><?= $e(count($pickupSheets)) ?></strong></div>
     <div><span>Page cash total</span><strong><?= $e(number_format($totalXaf)) ?> XAF</strong></div>
+    <div><span>Unpaid balance</span><strong><?= $e(number_format($unpaidBalanceXaf)) ?> XAF</strong></div>
 </div>
 
 <div class="pickup-record-list">

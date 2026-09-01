@@ -40,6 +40,11 @@ final class UnavailablePickupSheetRepository implements PickupSheetRepository
         throw new RuntimeException('Persistent pickup-sheet storage is unavailable.');
     }
 
+    public function unpaidBalance(string $search = ''): int
+    {
+        throw new RuntimeException('Persistent pickup-sheet storage is unavailable.');
+    }
+
     public function summary(): array
     {
         throw new RuntimeException('Pickup-sheet storage is unavailable.');

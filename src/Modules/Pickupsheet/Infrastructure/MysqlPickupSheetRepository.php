@@ -369,6 +369,19 @@ final class MysqlPickupSheetRepository implements PickupSheetRepository
         return (int) $statement->fetchColumn();
     }
 
+    public function unpaidBalance(string $search = ''): int
+    {
+        $this->ensureLifecycleSchema();
+        [$searchSql, $searchParameters] = $this->searchCondition($search);
+        $statement = $this->connection->prepare(
+            "SELECT COALESCE(SUM(p.total_cash_received_xaf), 0)
+             FROM pickup_sheets p
+             WHERE p.deleted_at IS NULL AND p.status = 'open'" . $searchSql,
+        );
+        $statement->execute($searchParameters);
+        return (int) $statement->fetchColumn();
+    }
+
     /** @return array{0: string, 1: array<string, string>} */
     private function searchCondition(string $search): array
     {

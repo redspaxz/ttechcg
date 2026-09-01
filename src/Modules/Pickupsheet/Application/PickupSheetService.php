@@ -26,7 +26,7 @@ final class PickupSheetService
         return $this->repository->recent(max(1, min($limit, 100)));
     }
 
-    /** @return array{items: list<PickupSheet>, page: int, perPage: int, totalRecords: int, totalPages: int} */
+    /** @return array{items: list<PickupSheet>, page: int, perPage: int, totalRecords: int, totalPages: int, unpaidBalanceXaf: int} */
     public function paginated(int $page = 1, int $perPage = 10, string $search = ''): array
     {
         $search = trim($search);
@@ -45,6 +45,7 @@ final class PickupSheetService
             'perPage' => $perPage,
             'totalRecords' => $totalRecords,
             'totalPages' => $totalPages,
+            'unpaidBalanceXaf' => $this->repository->unpaidBalance($search),
         ];
     }
 

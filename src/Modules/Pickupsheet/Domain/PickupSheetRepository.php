@@ -19,6 +19,8 @@ interface PickupSheetRepository
 
     public function count(string $search = ''): int;
 
+    public function unpaidBalance(string $search = ''): int;
+
     /** @return array{sheetCount: int, shipmentCount: int, totalCashXaf: int, latestCreatedAt: ?string} */
     public function summary(): array;
 
