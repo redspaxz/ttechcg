@@ -151,15 +151,9 @@ final class Request
 
     private function hasTrustedCloudflareConnection(): bool
     {
-        foreach (['REMOTE_ADDR', 'CONN_REMOTE_ADDR'] as $addressKey) {
+        foreach (['REMOTE_ADDR', 'PROXY_REMOTE_ADDR', 'CONN_REMOTE_ADDR'] as $addressKey) {
             $address = $this->validatedIp($this->serverString($addressKey));
             if ($address !== null && CloudflareRequestTrust::contains($address)) {
-                return true;
-            }
-        }
-
-        foreach (['TTECHCG_TRUSTED_CLOUDFLARE_PROXY', 'REDIRECT_TTECHCG_TRUSTED_CLOUDFLARE_PROXY'] as $markerKey) {
-            if (hash_equals('1', $this->serverString($markerKey))) {
                 return true;
             }
         }

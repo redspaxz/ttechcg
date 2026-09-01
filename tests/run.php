@@ -446,24 +446,18 @@ $assert($basicRequest->basicCredentials() === ['records-admin', 'test-password']
 $assert($basicRequest->clientIdentifier() === hash('sha256', '203.0.113.15'), 'Request should hash the validated Cloudflare client address.');
 $restoredClientRequest = new Request('GET', '/protected', [], [], '', [
     'REMOTE_ADDR' => '129.0.78.202',
-    'CONN_REMOTE_ADDR' => '173.245.48.10',
+    'PROXY_REMOTE_ADDR' => '173.245.48.10',
     'HTTP_CF_IPCOUNTRY' => 'CM',
 ]);
-$assert($restoredClientRequest->trustedCloudflareHeader('CF-IPCountry') === 'CM', 'Cloudflare headers should remain trusted when the web server restores REMOTE_ADDR but exposes the Cloudflare connection peer.');
-$redirectMarkerRequest = new Request('GET', '/protected', [], [], '', [
-    'REMOTE_ADDR' => '129.0.78.202',
-    'REDIRECT_TTECHCG_TRUSTED_CLOUDFLARE_PROXY' => '1',
-    'HTTP_CF_IPCOUNTRY' => 'CM',
-]);
-$assert($redirectMarkerRequest->trustedCloudflareHeader('CF-IPCountry') === 'CM', 'The server-generated Cloudflare connection marker should survive an internal front-controller redirect.');
+$assert($restoredClientRequest->trustedCloudflareHeader('CF-IPCountry') === 'CM', 'Cloudflare headers should remain trusted when LiteSpeed restores REMOTE_ADDR but preserves the Cloudflare edge in PROXY_REMOTE_ADDR.');
 $spoofedClientRequest = new Request('GET', '/protected', [], [], '', ['HTTP_CF_CONNECTING_IP' => '203.0.113.15', 'REMOTE_ADDR' => '198.51.100.8']);
 $assert($spoofedClientRequest->clientIdentifier() === hash('sha256', '198.51.100.8'), 'Direct-origin callers must not spoof Cloudflare client addresses to evade throttling.');
-$spoofedMarkerRequest = new Request('GET', '/protected', [], [], '', [
+$spoofedProxyAddressRequest = new Request('GET', '/protected', [], [], '', [
     'REMOTE_ADDR' => '198.51.100.8',
-    'HTTP_TTECHCG_TRUSTED_CLOUDFLARE_PROXY' => '1',
+    'HTTP_PROXY_REMOTE_ADDR' => '173.245.48.10',
     'HTTP_CF_IPCOUNTRY' => 'CM',
 ]);
-$assert($spoofedMarkerRequest->trustedCloudflareHeader('CF-IPCountry') === '', 'A client-supplied header resembling the server-only proxy marker must not establish Cloudflare trust.');
+$assert($spoofedProxyAddressRequest->trustedCloudflareHeader('CF-IPCountry') === '', 'A client-supplied header resembling LiteSpeed PROXY_REMOTE_ADDR must not establish Cloudflare trust.');
 $assert(CloudflareRequestTrust::contains('173.245.48.1') && CloudflareRequestTrust::contains('2606:4700::1') && !CloudflareRequestTrust::contains('203.0.113.1'), 'Cloudflare proxy trust should cover published IPv4 and IPv6 edge ranges without trusting arbitrary Internet addresses.');
 $previousTrustedProxyCidrs = getenv('CLOUDFLARE_TRUSTED_PROXY_CIDRS');
 putenv('CLOUDFLARE_TRUSTED_PROXY_CIDRS=192.0.2.0/24');
@@ -2539,6 +2533,7 @@ $assert(is_string($bootstrap) && str_contains($bootstrap, "'/dhl/pickupsheet/set
 $assert(is_string($bootstrap) && str_contains($bootstrap, "'/dhl/pickupsheet/logout'"), 'Pickupsheet should expose a CSRF-protected logout route.');
 $assert(is_string($bootstrap) && str_contains($bootstrap, "'/dhl/pickupsheet/consignors/search'"), 'Pickupsheet should expose its protected consignor autocomplete route.');
 $cloudflareTrustSource = file_get_contents(dirname(__DIR__) . '/src/Shared/Security/CloudflareRequestTrust.php');
+$requestSource = file_get_contents(dirname(__DIR__) . '/src/Shared/Http/Request.php');
 $securityHeadersSource = file_get_contents(dirname(__DIR__) . '/src/Shared/Security/SecurityHeaders.php');
 $retentionSource = file_get_contents(dirname(__DIR__) . '/src/Shared/Infrastructure/SecurityDataRetention.php');
 $securityPolicy = file_get_contents(dirname(__DIR__) . '/SECURITY.md');
@@ -2548,7 +2543,7 @@ $apacheConfig = file_get_contents(dirname(__DIR__) . '/.htaccess');
 $workflow = file_get_contents(dirname(__DIR__) . '/.github/workflows/verify.yml');
 $environmentLoader = file_get_contents(dirname(__DIR__) . '/src/Shared/Infrastructure/Environment.php');
 $assert(is_string($cloudflareTrustSource) && str_contains($cloudflareTrustSource, "'173.245.48.0/20'") && str_contains($cloudflareTrustSource, "'2606:4700::/32'") && str_contains($cloudflareTrustSource, 'CLOUDFLARE_TRUSTED_PROXY_CIDRS'), 'Cloudflare forwarding headers should be constrained to published or explicitly allowlisted proxy networks.');
-$assert(is_string($apacheConfig) && str_contains($apacheConfig, '%{CONN_REMOTE_ADDR}') && str_contains($apacheConfig, 'TTECHCG_TRUSTED_CLOUDFLARE_PROXY:1'), 'The web-server boundary should preserve Cloudflare trust after cPanel restores the visitor address.');
+$assert(is_string($requestSource) && str_contains($requestSource, "'PROXY_REMOTE_ADDR'") && !str_contains($requestSource, "'HTTP_PROXY_REMOTE_ADDR'"), 'The application should use LiteSpeed server metadata, never a client header, to recover the Cloudflare connection peer.');
 $assert(is_string($securityHeadersSource) && str_contains($securityHeadersSource, 'Content-Security-Policy') && str_contains($securityHeadersSource, 'X-Request-ID') && str_contains($securityHeadersSource, 'Strict-Transport-Security'), 'PHP should enforce security and correlation headers even when Apache header support is unavailable.');
 $assert(is_string($retentionSource) && str_contains($retentionSource, 'pickup_security_events') && str_contains($retentionSource, 'pickup_records_session_activity') && str_contains($retentionSource, 'RUN_INTERVAL_SECONDS = 86400'), 'Security events and session evidence should use a bounded daily retention process.');
 $assert(is_string($backupControllerSource) && str_contains($backupControllerSource, 'authenticatedWithin(900)') && str_contains($backupControllerSource, 'fresh_authentication_required'), 'Sensitive backup administration should require and audit a recently authenticated administrator session.');
