@@ -8,7 +8,6 @@ $errors = is_array($errors ?? null) ? $errors : [];
 $pickupOperational = (bool) ($pickupOperational ?? false);
 $canPrint = (bool) ($canPrint ?? false);
 $canExport = (bool) ($canExport ?? false);
-$canManage = (bool) ($canManage ?? false);
 $canEdit = (bool) ($canEdit ?? false);
 $canMarkPaid = (bool) ($canMarkPaid ?? false);
 $canDelete = (bool) ($canDelete ?? false);
@@ -17,12 +16,6 @@ $search = trim(is_string($search ?? null) ? $search : '');
 $page = max(1, (int) ($pagination['page'] ?? 1));
 $totalPages = max(1, (int) ($pagination['totalPages'] ?? 1));
 $totalRecords = max(0, (int) ($pagination['totalRecords'] ?? 0));
-$unpaidBalanceXaf = max(0, (int) ($pagination['unpaidBalanceXaf'] ?? 0));
-$totalXaf = array_reduce(
-    $pickupSheets,
-    static fn (int $total, mixed $sheet): int => $total + (int) ($sheet->totalCashReceivedXaf ?? 0),
-    0,
-);
 $pageUrl = static function (int $target) use ($basePath, $search): string {
     $query = ['page' => $target];
     if ($search !== '') {
@@ -38,13 +31,6 @@ $trackingUrl = static fn (mixed $awbNumber): string => \App\Modules\Pickupsheet\
 <?php endif; ?>
 <?php if ($errors !== []): ?>
     <div class="notice notice-error" role="alert"><?php foreach ($errors as $error): ?><span><?= $e($error) ?></span><?php endforeach; ?></div>
-<?php endif; ?>
-
-<?php if ($canManage): ?>
-    <div class="pickup-view-summary">
-        <div><span>Page cash total</span><strong><?= $e(number_format($totalXaf)) ?> XAF</strong></div>
-        <div><span>Unpaid balance</span><strong><?= $e(number_format($unpaidBalanceXaf)) ?> XAF</strong></div>
-    </div>
 <?php endif; ?>
 
 <div class="pickup-record-list">

@@ -473,8 +473,8 @@ $paginationFixture = $view->renderPartial('pickupsheet/_submission-records', [
     'canManage' => true,
 ]);
 $assert(substr_count($paginationFixture, '<article class="pickup-record">') === 2, 'The second ten-record page should render only its two remaining sheets.');
-$assert(str_contains($paginationFixture, '<span>Page cash total</span><strong>116,700 XAF</strong>') && str_contains($paginationFixture, '<span>Unpaid balance</span><strong>126,700 XAF</strong>'), 'Submitted-sheet metrics should show the current page cash total and the complete unpaid balance.');
-$assert(!str_contains($paginationFixture, 'Sheets on this page'), 'The non-financial sheet-count metric should no longer be displayed.');
+$assert(!str_contains($paginationFixture, 'pickup-view-summary') && !str_contains($paginationFixture, 'Page cash total') && !str_contains($paginationFixture, 'Unpaid balance'), 'Submitted-sheet fragments should not render metric cards for administrators.');
+$assert(!str_contains($paginationFixture, 'Sheets on this page'), 'Submitted sheets should not display a sheet-count metric card.');
 $assert(str_contains($paginationFixture, 'Page 2 of 2 · 12 records'), 'The pagination fragment should display accurate page and record totals.');
 $assert(str_contains($paginationFixture, 'data-ajax-page="1" rel="prev"'), 'The second page should provide a normal-link fallback to the previous page.');
 $assert(!str_contains($paginationFixture, 'data-ajax-page="3"'), 'The final page should not link beyond the available records.');
@@ -1439,7 +1439,7 @@ $assert(str_contains($openSubmissions->body(), 'Records are displayed 10 sheets 
 $assert(str_contains($openSubmissions->body(), 'data-pickup-records-spinner'), 'The records view should provide an AJAX loading spinner.');
 $assert(str_contains($openSubmissions->body(), 'data-page-endpoint="/dhl/pickupsheet/submissions/page"'), 'The records view should identify its protected pagination endpoint.');
 $assert(str_contains($openSubmissions->body(), 'data-ajax-pager-form="submitted-sheets"') && str_contains($openSubmissions->body(), 'name="q"'), 'Submitted sheets should provide a progressively enhanced search form.');
-$assert(str_contains($openSubmissions->body(), '<span>Page cash total</span><strong>12,000 XAF</strong>') && str_contains($openSubmissions->body(), '<span>Unpaid balance</span><strong>12,000 XAF</strong>'), 'An open submitted sheet should be included in both financial metrics.');
+$assert(!str_contains($openSubmissions->body(), 'pickup-view-summary') && !str_contains($openSubmissions->body(), 'Page cash total') && !str_contains($openSubmissions->body(), 'Unpaid balance'), 'Submitted sheets should not display metric cards, including for administrators.');
 $assert(str_contains($openSubmissions->body(), 'Page 1 of 1'), 'The records view should display its current pagination status.');
 $assert(($openSubmissions->headers()['Cache-Control'] ?? '') === 'private, no-store, max-age=0', 'Submitted records should not be cached.');
 $searchedSubmissions = $pickupController->submissions(new Request('GET', '/dhl/pickupsheet/submissions', ['q' => 'controller client'], [], '', $recordsServer));
@@ -1584,7 +1584,7 @@ $assert($markPaidByAdmin->status() === 303, 'An administrator should change an o
 $paidControllerSheet = (new PickupSheetService(new DemoPickupSheetRepository()))->findByReference($savedReference);
 $assert($paidControllerSheet?->status === 'paid' && $paidControllerSheet->isPaid() && $paidControllerSheet->paidAt !== null, 'The administrator-paid status and timestamp should persist on the pickup sheet.');
 $paidSubmissions = $pickupController->submissions(new Request('GET', '/dhl/pickupsheet/submissions', [], [], '', $recordsServer));
-$assert(str_contains($paidSubmissions->body(), '<span>Unpaid balance</span><strong>0 XAF</strong>'), 'Paid pickup sheets should be excluded from the unpaid balance immediately.');
+$assert(str_contains($paidSubmissions->body(), 'data-status="paid">Paid</small>') && !str_contains($paidSubmissions->body(), 'pickup-view-summary'), 'A paid pickup sheet should show its status without restoring submitted-sheet metric cards.');
 $adminDashboard = $pickupController->dashboard(new Request('GET', '/dhl/pickupsheet/dashboard'));
 $assert($adminDashboard->status() === 200, 'An administrator should open the KPI dashboard.');
 $assert(str_contains($adminDashboard->body(), '14,000'), 'The KPI dashboard should reflect the administrator-corrected cash activity.');
