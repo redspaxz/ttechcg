@@ -40,7 +40,6 @@ use App\Shared\Security\LoginMethodSettingsService;
 use App\Shared\Security\LocalMfaService;
 use App\Shared\Security\OidcHttpClient;
 use App\Shared\Security\PasswordHasher;
-use App\Shared\Security\PickupsheetCountryPolicy;
 use App\Shared\Security\RateLimiter;
 use App\Shared\Security\RecordsAccess;
 use App\Shared\Security\RecordsSession;
@@ -378,45 +377,16 @@ $uploadRequest = new Request('POST', '/upload', [], [], '', [], ['backup_file' =
 ]]);
 $assert(($uploadRequest->uploadedFile('backup_file')['name'] ?? '') === 'backup.json' && ($uploadRequest->uploadedFile('backup_file')['size'] ?? 0) === 2048, 'Request should expose normalized upload metadata without trusting the client path.');
 
-$geoRouter = new Router();
-$geoRouter->get('/', static fn (Request $request): Response => Response::html('Public site'));
-$geoRouter->get('/dhl/pickupsheet/login', static fn (Request $request): Response => Response::html('Pickupsheet login'));
-$geoApplication = new Application($geoRouter, new PickupsheetCountryPolicy(true));
-$cloudflareEdge = ['REMOTE_ADDR' => '173.245.48.10'];
-$cameroonGeoResponse = $geoApplication->handle(new Request('GET', '/dhl/pickupsheet/login', [], [], '', $cloudflareEdge + ['HTTP_CF_IPCOUNTRY' => 'CM']));
-$nigeriaGeoResponse = $geoApplication->handle(new Request('GET', '/dhl/pickupsheet/login', [], [], '', $cloudflareEdge + ['HTTP_CF_IPCOUNTRY' => 'ng']));
-$outsideGeoResponse = $geoApplication->handle(new Request('GET', '/dhl/pickupsheet/login', [], [], '', $cloudflareEdge + ['HTTP_CF_IPCOUNTRY' => 'US']));
-$spoofedGeoResponse = $geoApplication->handle(new Request('GET', '/dhl/pickupsheet/login', [], [], '', ['REMOTE_ADDR' => '203.0.113.20', 'HTTP_CF_IPCOUNTRY' => 'CM']));
-$missingGeoResponse = $geoApplication->handle(new Request('GET', '/dhl/pickupsheet/login'));
-$publicGeoResponse = $geoApplication->handle(new Request('GET', '/', [], [], '', $cloudflareEdge + ['HTTP_CF_IPCOUNTRY' => 'US']));
-$assert($cameroonGeoResponse->status() === 200 && $nigeriaGeoResponse->status() === 200, 'Pickupsheet geolocation should allow countries outside North America.');
-$assert($outsideGeoResponse->status() === 403 && $missingGeoResponse->status() === 403 && $spoofedGeoResponse->status() === 403, 'Pickupsheet geolocation should block North America, missing country headers, and spoofed Cloudflare headers.');
-$blockedNorthAmericaCodes = [
-    'BM', 'CA', 'GL', 'PM', 'US',
-    'BZ', 'CR', 'SV', 'GT', 'HN', 'MX', 'NI', 'PA',
-    'AI', 'AG', 'AW', 'BS', 'BB', 'BQ', 'VG', 'KY', 'CU', 'CW', 'DM', 'DO',
-    'GD', 'GP', 'HT', 'JM', 'MQ', 'MS', 'PR', 'BL', 'KN', 'LC', 'MF', 'VC', 'SX',
-    'TT', 'TC', 'VI',
-];
-$allowedOutsideNorthAmericaCodes = ['CM', 'NG', 'GB', 'FR', 'ZA', 'BR', 'AU', 'JP'];
-$northAmericaPolicy = new PickupsheetCountryPolicy(true);
-foreach ($blockedNorthAmericaCodes as $countryCode) {
-    $countryRequest = new Request('GET', '/dhl/pickupsheet/login', [], [], '', $cloudflareEdge + ['HTTP_CF_IPCOUNTRY' => $countryCode]);
-    $assert(!$northAmericaPolicy->allows($countryRequest), 'The North America denylist should block ' . $countryCode . '.');
-}
-foreach ($allowedOutsideNorthAmericaCodes as $countryCode) {
-    $countryRequest = new Request('GET', '/dhl/pickupsheet/login', [], [], '', $cloudflareEdge + ['HTTP_CF_IPCOUNTRY' => $countryCode]);
-    $assert($northAmericaPolicy->allows($countryRequest), 'The North America denylist should allow ' . $countryCode . '.');
-}
-$assert(!$northAmericaPolicy->allows(new Request('GET', '/dhl/pickupsheet/login', [], [], '', $cloudflareEdge + ['HTTP_CF_IPCOUNTRY' => 'XX']))
-    && !$northAmericaPolicy->allows(new Request('GET', '/dhl/pickupsheet/login', [], [], '', $cloudflareEdge + ['HTTP_CF_IPCOUNTRY' => 'T1'])), 'Unknown and Tor Cloudflare location codes should fail closed.');
-$assert(($outsideGeoResponse->headers()['Cache-Control'] ?? '') === 'private, no-store, max-age=0', 'A geolocation denial should never be cached.');
-$assert($publicGeoResponse->status() === 200, 'Pickupsheet geolocation must not restrict the public corporate site.');
-$disabledGeoApplication = new Application($geoRouter, new PickupsheetCountryPolicy(false));
-$assert($disabledGeoApplication->handle(new Request('GET', '/dhl/pickupsheet/login'))->status() === 200, 'Local development should be able to disable the production geolocation boundary.');
+$applicationRouter = new Router();
+$applicationRouter->get('/', static fn (Request $request): Response => Response::html('Public site'));
+$applicationRouter->get('/dhl/pickupsheet/login', static fn (Request $request): Response => Response::html('Pickupsheet login'));
+$unrestrictedApplication = new Application($applicationRouter);
+$assert($unrestrictedApplication->handle(new Request('GET', '/dhl/pickupsheet/login'))->status() === 200
+    && $unrestrictedApplication->handle(new Request('GET', '/dhl/pickupsheet/login', [], [], '', ['HTTP_CF_IPCOUNTRY' => 'US']))->status() === 200
+    && $unrestrictedApplication->handle(new Request('GET', '/dhl/pickupsheet/login', [], [], '', ['HTTP_CF_IPCOUNTRY' => 'XX']))->status() === 200, 'Pickupsheet access should not depend on a visitor country header.');
 $unsafeRouter = new Router();
 $unsafeRouter->post('/change', static fn (Request $request): Response => Response::html('Changed'));
-$unsafeApplication = new Application($unsafeRouter, null, null, new UnsafeRequestPolicy('https://ttechcg.com'));
+$unsafeApplication = new Application($unsafeRouter, null, new UnsafeRequestPolicy('https://ttechcg.com'));
 $crossSiteWrite = $unsafeApplication->handle(new Request('POST', '/change', [], [], '', ['HTTP_SEC_FETCH_SITE' => 'cross-site']));
 $sameSiteSiblingWrite = $unsafeApplication->handle(new Request('POST', '/change', [], [], '', ['HTTP_SEC_FETCH_SITE' => 'same-site']));
 $mismatchedOriginWrite = $unsafeApplication->handle(new Request('POST', '/change', [], [], '', ['HTTP_ORIGIN' => 'https://attacker.example']));
@@ -425,18 +395,6 @@ $legacyWrite = $unsafeApplication->handle(new Request('POST', '/change'));
 $assert($crossSiteWrite->status() === 403 && $sameSiteSiblingWrite->status() === 403 && $mismatchedOriginWrite->status() === 403, 'Unsafe cross-site, sibling-site, and mismatched-origin writes should fail before routing.');
 $assert(($crossSiteWrite->headers()['Vary'] ?? '') === 'Sec-Fetch-Site, Origin', 'Cross-site request denials should be safe for intermediary caches.');
 $assert($sameOriginWrite->status() === 200 && $legacyWrite->status() === 200, 'Same-origin writes and legacy clients should proceed to mandatory route-level CSRF validation.');
-$previousGeoEnabled = getenv('PICKUPSHEET_GEO_RESTRICTION_ENABLED');
-$previousGeoCountries = getenv('PICKUPSHEET_ALLOWED_COUNTRIES');
-putenv('PICKUPSHEET_GEO_RESTRICTION_ENABLED=true');
-putenv('PICKUPSHEET_ALLOWED_COUNTRIES=CM');
-$assert(PickupsheetCountryPolicy::fromEnvironment(false)->allows(new Request('GET', '/dhl/pickupsheet/login')), 'Non-production environments should ignore production country enforcement.');
-$productionCountryPolicy = PickupsheetCountryPolicy::fromEnvironment(true);
-$assert(!$productionCountryPolicy->allows(new Request('GET', '/dhl/pickupsheet/login')), 'Production country enforcement should fail closed when Cloudflare supplies no country.');
-$assert($productionCountryPolicy->allows(new Request('GET', '/dhl/pickupsheet/login', [], [], '', $cloudflareEdge + ['HTTP_CF_IPCOUNTRY' => 'CM']))
-    && $productionCountryPolicy->allows(new Request('GET', '/dhl/pickupsheet/login', [], [], '', $cloudflareEdge + ['HTTP_CF_IPCOUNTRY' => 'GB']))
-    && !$productionCountryPolicy->allows(new Request('GET', '/dhl/pickupsheet/login', [], [], '', $cloudflareEdge + ['HTTP_CF_IPCOUNTRY' => 'MX'])), 'The production policy should ignore a stale country allowlist environment value and enforce the code-defined North America denylist.');
-putenv($previousGeoEnabled === false ? 'PICKUPSHEET_GEO_RESTRICTION_ENABLED' : 'PICKUPSHEET_GEO_RESTRICTION_ENABLED=' . $previousGeoEnabled);
-putenv($previousGeoCountries === false ? 'PICKUPSHEET_ALLOWED_COUNTRIES' : 'PICKUPSHEET_ALLOWED_COUNTRIES=' . $previousGeoCountries);
 $basicRequest = new Request('GET', '/protected', [], [], '', [
     'HTTP_AUTHORIZATION' => 'Basic ' . base64_encode('records-admin:test-password'),
     'HTTP_CF_CONNECTING_IP' => '203.0.113.15',
@@ -447,17 +405,17 @@ $assert($basicRequest->clientIdentifier() === hash('sha256', '203.0.113.15'), 'R
 $restoredClientRequest = new Request('GET', '/protected', [], [], '', [
     'REMOTE_ADDR' => '129.0.78.202',
     'PROXY_REMOTE_ADDR' => '173.245.48.10',
-    'HTTP_CF_IPCOUNTRY' => 'CM',
+    'HTTP_CF_RAY' => 'trusted-ray-DLA',
 ]);
-$assert($restoredClientRequest->trustedCloudflareHeader('CF-IPCountry') === 'CM', 'Cloudflare headers should remain trusted when LiteSpeed restores REMOTE_ADDR but preserves the Cloudflare edge in PROXY_REMOTE_ADDR.');
+$assert($restoredClientRequest->trustedCloudflareHeader('CF-Ray') === 'trusted-ray-DLA', 'Cloudflare headers should remain trusted when LiteSpeed restores REMOTE_ADDR but preserves the Cloudflare edge in PROXY_REMOTE_ADDR.');
 $spoofedClientRequest = new Request('GET', '/protected', [], [], '', ['HTTP_CF_CONNECTING_IP' => '203.0.113.15', 'REMOTE_ADDR' => '198.51.100.8']);
 $assert($spoofedClientRequest->clientIdentifier() === hash('sha256', '198.51.100.8'), 'Direct-origin callers must not spoof Cloudflare client addresses to evade throttling.');
 $spoofedProxyAddressRequest = new Request('GET', '/protected', [], [], '', [
     'REMOTE_ADDR' => '198.51.100.8',
     'HTTP_PROXY_REMOTE_ADDR' => '173.245.48.10',
-    'HTTP_CF_IPCOUNTRY' => 'CM',
+    'HTTP_CF_RAY' => 'spoofed-ray',
 ]);
-$assert($spoofedProxyAddressRequest->trustedCloudflareHeader('CF-IPCountry') === '', 'A client-supplied header resembling LiteSpeed PROXY_REMOTE_ADDR must not establish Cloudflare trust.');
+$assert($spoofedProxyAddressRequest->trustedCloudflareHeader('CF-Ray') === '', 'A client-supplied header resembling LiteSpeed PROXY_REMOTE_ADDR must not establish Cloudflare trust.');
 $assert(CloudflareRequestTrust::contains('173.245.48.1') && CloudflareRequestTrust::contains('2606:4700::1') && !CloudflareRequestTrust::contains('203.0.113.1'), 'Cloudflare proxy trust should cover published IPv4 and IPv6 edge ranges without trusting arbitrary Internet addresses.');
 $previousTrustedProxyCidrs = getenv('CLOUDFLARE_TRUSTED_PROXY_CIDRS');
 putenv('CLOUDFLARE_TRUSTED_PROXY_CIDRS=192.0.2.0/24');
@@ -467,7 +425,7 @@ $generatedRequestId = $basicRequest->requestId();
 $assert(preg_match('/^[a-f0-9]{24}$/', $generatedRequestId) === 1, 'Requests without a Cloudflare Ray should receive a pseudorandom correlation identifier.');
 $assert($basicRequest->requestId() === $generatedRequestId, 'A generated request identifier should remain stable for the lifetime of its request object.');
 $assert((new Request('GET', '/basic'))->requestId() !== $generatedRequestId, 'Separate requests should not share a generated correlation identifier.');
-$securityHeaderApplication = new Application($geoRouter, null, null, null, new SecurityHeaders(true));
+$securityHeaderApplication = new Application($applicationRouter, null, null, new SecurityHeaders(true));
 $securityHeaderResponse = $securityHeaderApplication->handle(new Request('GET', '/dhl/pickupsheet/login'));
 $assert(($securityHeaderResponse->headers()['Strict-Transport-Security'] ?? '') === 'max-age=31536000' && ($securityHeaderResponse->headers()['Content-Security-Policy'] ?? '') !== '', 'Production responses should receive defense-in-depth transport and content security headers from PHP.');
 $assert(($securityHeaderResponse->headers()['Cache-Control'] ?? '') === 'private, no-store, max-age=0' && preg_match('/^[a-f0-9]{24}$/', $securityHeaderResponse->headers()['X-Request-ID'] ?? '') === 1, 'Sensitive workspace responses should be non-cacheable and correlated by a safe request identifier.');
@@ -2223,7 +2181,7 @@ $assert(str_contains($privacy, 'Operators and administrators may maintain busine
 $assert(str_contains($privacy, '10 points per kilogram shipped') && str_contains($privacy, 'required reason, UTC time, and pseudonymous administrator identifier'), 'The privacy notice should disclose weight-based reward points and adjustment-ledger fields.');
 $assert(str_contains($privacy, 'passphrase-encrypted backups') && str_contains($privacy, 'environment secrets and plaintext passwords are excluded'), 'The privacy notice should disclose disaster-recovery processing and its secret boundary.');
 $assert(str_contains($privacy, 'authenticator secrets are encrypted at rest') && str_contains($privacy, 'recovery codes are stored only as keyed hashes'), 'The privacy notice should disclose local 2FA storage protections.');
-$assert(str_contains($privacy, "visitor's country code from the source IP address") && str_contains($privacy, 'block portal access from Northern America, Central America, and the Caribbean'), 'The privacy notice should disclose the North America Pickupsheet access boundary.');
+$assert(!str_contains($privacy, "visitor's country code from the source IP address") && !str_contains($privacy, 'block portal access from'), 'The privacy notice should not claim that Pickupsheet applies geolocation restrictions.');
 
 $environmentExample = file_get_contents(dirname(__DIR__) . '/.env.example');
 $assert(is_string($environmentExample) && str_contains($environmentExample, 'APP_TIMEZONE=Africa/Douala'), 'The environment example should use Cameroon time.');
@@ -2240,8 +2198,7 @@ $assert(is_string($environmentExample) && str_contains($environmentExample, 'JUM
 $assert(is_string($environmentExample) && str_contains($environmentExample, 'JUMPCLOUD_RBAC_ADMIN_GROUP=Pickupsheet Admins'), 'The environment example should map JumpCloud groups to Pickupsheet roles.');
 $assert(is_string($environmentExample) && str_contains($environmentExample, 'Keep at least one direct method'), 'The environment example should warn administrators against disabling every direct sign-in method accidentally.');
 $assert(is_string($environmentExample) && str_contains($environmentExample, 'CLOUDFLARE_ACCESS_ENABLED=false'), 'The environment example should keep the Cloudflare Access handoff disabled until its trust values are supplied.');
-$assert(is_string($environmentExample) && str_contains($environmentExample, 'PICKUPSHEET_GEO_RESTRICTION_ENABLED=true'), 'The environment example should explicitly enable production country enforcement.');
-$assert(is_string($environmentExample) && str_contains($environmentExample, 'PICKUPSHEET_GEO_RESTRICTION_ENABLED=true') && !str_contains($environmentExample, 'PICKUPSHEET_ALLOWED_COUNTRIES='), 'The Pickupsheet production boundary should be enabled with a code-defined North America denylist.');
+$assert(is_string($environmentExample) && !str_contains($environmentExample, 'PICKUPSHEET_GEO_RESTRICTION_ENABLED=') && !str_contains($environmentExample, 'PICKUPSHEET_ALLOWED_COUNTRIES='), 'The environment example should not expose obsolete country restriction settings.');
 $assert(is_string($environmentExample) && str_contains($environmentExample, 'CLOUDFLARE_ACCESS_AUDIENCE='), 'The environment example should document the application audience required for token validation.');
 
 $styles = file_get_contents(dirname(__DIR__) . '/public/assets/styles.css');
@@ -2508,7 +2465,7 @@ $assert(is_string($bootstrap) && str_contains($bootstrap, 'RecordsAccess::fromEn
 $assert(is_string($bootstrap) && str_contains($bootstrap, 'JumpCloudOidcProvider::fromEnvironment()'), 'Pickupsheet should initialize the optional JumpCloud OIDC provider from server-managed configuration.');
 $assert(is_string($bootstrap) && str_contains($bootstrap, 'CloudflareAccessProvider::fromEnvironment()'), 'Pickupsheet should initialize the optional Cloudflare Access handoff from server-managed configuration.');
 $assert(is_string($bootstrap) && str_contains($bootstrap, 'LocalMfaService::fromEnvironment($localMfaRepository)'), 'Pickupsheet should initialize local 2FA from server-managed configuration.');
-$assert(is_string($bootstrap) && str_contains($bootstrap, 'PickupsheetCountryPolicy::fromEnvironment($isProduction)'), 'The HTTP boundary should initialize fail-closed production country enforcement.');
+$assert(is_string($bootstrap) && !str_contains($bootstrap, 'PickupsheetCountryPolicy') && !is_file(dirname(__DIR__) . '/src/Shared/Security/PickupsheetCountryPolicy.php'), 'The HTTP boundary should not initialize or retain a geolocation policy.');
 $assert(is_string($bootstrap) && str_contains($bootstrap, "'/dhl/pickupsheet/auth/jumpcloud/callback'"), 'Pickupsheet should expose the exact JumpCloud OIDC callback route.');
 $assert(is_string($bootstrap) && str_contains($bootstrap, "'/dhl/pickupsheet'"), 'Pickupsheet should be routed under the DHL namespace.');
 $assert(is_string($bootstrap) && str_contains($bootstrap, "'/dhl/pickupsheet/submissions/page'"), 'Pickupsheet should expose a protected AJAX pagination endpoint.');

@@ -30,7 +30,6 @@ $auditEventLabel = static fn (string $event): string => match ($event) {
     'pickupsheet.crm_reward_adjustment' => 'CRM rewards adjusted',
     'pickupsheet.backup_download' => 'Encrypted backup created',
     'pickupsheet.backup_restore' => 'Encrypted backup restored',
-    'pickupsheet.country_access' => 'Country restriction',
     default => ucwords(str_replace(['pickupsheet.', '_', '.'], ['', ' ', ' '], $event)),
 };
 $auditOutcomeClass = static fn (string $outcome): string => match ($outcome) {

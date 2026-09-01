@@ -4,7 +4,6 @@ declare(strict_types=1);
 
 namespace App\Shared\Http;
 
-use App\Shared\Security\PickupsheetCountryPolicy;
 use App\Shared\Security\SecurityHeaders;
 use App\Shared\Security\SecurityLogger;
 use App\Shared\Security\UnsafeRequestPolicy;
@@ -14,7 +13,6 @@ final class Application
 {
     public function __construct(
         private readonly Router $router,
-        private readonly ?PickupsheetCountryPolicy $countryPolicy = null,
         private readonly ?SecurityLogger $securityLogger = null,
         private readonly ?UnsafeRequestPolicy $unsafeRequestPolicy = null,
         private readonly ?SecurityHeaders $securityHeaders = null,
@@ -35,21 +33,6 @@ final class Application
                     [
                         'Cache-Control' => 'private, no-store, max-age=0',
                         'Vary' => 'Sec-Fetch-Site, Origin',
-                        'X-Robots-Tag' => 'noindex, nofollow',
-                    ],
-                ), $request);
-            }
-            if ($this->countryPolicy?->allows($request) === false) {
-                $country = strtoupper($request->trustedCloudflareHeader('CF-IPCountry'));
-                $this->securityLogger?->event('pickupsheet.country_access', $request, 'denied', [
-                    'country' => preg_match('/^[A-Z]{2}$/', $country) === 1 ? $country : 'missing_or_invalid',
-                ]);
-                return $this->respond(Response::html(
-                    '<h1>Access unavailable</h1><p>Pickupsheet is not available from this location.</p>',
-                    403,
-                    [
-                        'Cache-Control' => 'private, no-store, max-age=0',
-                        'Vary' => 'CF-IPCountry',
                         'X-Robots-Tag' => 'noindex, nofollow',
                     ],
                 ), $request);

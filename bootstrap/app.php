@@ -53,7 +53,6 @@ use App\Shared\Security\Csrf;
 use App\Shared\Security\JumpCloudOidcProvider;
 use App\Shared\Security\LoginMethodSettingsService;
 use App\Shared\Security\LocalMfaService;
-use App\Shared\Security\PickupsheetCountryPolicy;
 use App\Shared\Security\RateLimiter;
 use App\Shared\Security\RecordsAccess;
 use App\Shared\Security\RecordsSession;
@@ -360,7 +359,6 @@ $router->fallback(fn (Request $request): Response => $siteController->notFound($
 
 return new Application(
     $router,
-    PickupsheetCountryPolicy::fromEnvironment($isProduction),
     $securityLogger,
     new UnsafeRequestPolicy((string) $config['app_url']),
     new SecurityHeaders($isProduction),
