@@ -543,6 +543,8 @@ $adminPrincipal = $recordsAccess->authenticate(new Request('GET', '/protected', 
 $viewerPrincipal = $recordsAccess->authenticate(new Request('GET', '/protected', [], [], '', $viewerServer));
 $operatorPrincipal = $recordsAccess->authenticate(new Request('GET', '/protected', [], [], '', $operatorServer));
 $assert($adminPrincipal?->role === 'admin' && $adminPrincipal->can('manage') && $adminPrincipal->can('dashboard') && $adminPrincipal->can('backup'), 'An admin should manage users, backups, and the activity dashboard.');
+$environmentAdministrators = $recordsAccess->environmentAdministrators();
+$assert(count($environmentAdministrators) === 1 && $environmentAdministrators[0]->username === $recordsUsername && $environmentAdministrators[0]->securitySubject() === 'local-env:' . $recordsUsername, 'Server-defined administrators should be available to the protected user directory without exposing credentials.');
 $assert($adminPrincipal?->can('crm') === true && $adminPrincipal->can('crm_update') === true, 'Administrators should retain full CRM management access.');
 $assert($operatorPrincipal?->can('crm_view') === true && $operatorPrincipal->can('crm_update') === true && $operatorPrincipal->can('crm') === false, 'Operators should view and update existing CRM profiles without administrative CRM rights.');
 $assert($viewerPrincipal?->can('crm_view') === false && $viewerPrincipal->can('crm_update') === false, 'Viewers should not receive CRM profile access.');
@@ -1735,6 +1737,7 @@ $assert(str_contains($adminUsers->body(), 'Reset my admin password'), 'The admin
 $assert(str_contains($adminUsers->body(), 'Email or username') && str_contains($adminUsers->body(), 'Account status'), 'Account management should expose flexible login IDs and explicit account status.');
 $assert(str_contains($adminUsers->body(), 'name="first_name"') && str_contains($adminUsers->body(), 'name="last_name"'), 'Account management should require first and last names.');
 $assert(str_contains($adminUsers->body(), 'data-login-method-toggle="local"') && str_contains($adminUsers->body(), 'data-login-method-card="jumpcloud" data-enabled="false" data-configured="false"') && str_contains($adminUsers->body(), 'OIDC configuration is incomplete'), 'Administrators should receive operational toggles only for methods allowed by server configuration.');
+$assert(str_contains($adminUsers->body(), 'data-account-source="server"') && str_contains($adminUsers->body(), $recordsUsername) && str_contains($adminUsers->body(), 'Server-defined administrator') && str_contains($adminUsers->body(), 'Protected account'), 'The local account table should show the records administrator as a protected user.');
 
 $saveLoginMethods = $pickupController->updateLoginMethods(new Request('POST', '/dhl/pickupsheet/submissions/users/login-methods', [], [
     '_token' => $pickupCsrf->token(),
@@ -2047,7 +2050,7 @@ $assert(is_string($dhlAsset) && !str_contains($dhlAsset, '<text'), 'The disquali
 $partnerSources = file_get_contents(dirname(__DIR__) . '/public/assets/partners/README.md');
 $assert(is_string($partnerSources) && str_contains($partnerSources, 'www.dhl.com/content/dam/dhl/global/core/images/logos/dhl-logo.svg'), 'The official DHL artwork source should be documented.');
 $assert(!str_contains($home, 'href="/dhl/pickupsheet"'), 'Pickupsheet should not be discoverable from the public site chrome or homepage.');
-$assert(str_contains($home, 'styles.css?v=20260901-submission-search'), 'Submitted-sheet search and prior Pickupsheet refinements should use a cache-safe stylesheet version.');
+$assert(str_contains($home, 'styles.css?v=20260901-admin-user-row'), 'The local administrator row and prior Pickupsheet refinements should use a cache-safe stylesheet version.');
 $assert(str_contains($home, 'app.js?v=20260831-owasp-hardening'), 'OWASP-aligned confirmations and progressive AJAX interactions should use a cache-safe script version.');
 $assert(str_contains($home, 'analytics.js?v=20260825-security-hardening'), 'The current consent-aware Google Analytics loader should render on every page.');
 $assert(str_contains($home, 'data-analytics-accept'), 'The site should offer an explicit analytics acceptance control.');

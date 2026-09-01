@@ -214,6 +214,30 @@ final class RecordsAccess
         return array_keys($this->users);
     }
 
+    /** @return list<RecordsPrincipal> */
+    public function environmentAdministrators(): array
+    {
+        $administrators = [];
+        foreach ($this->users as $username => $user) {
+            if ($user['role'] !== 'admin') {
+                continue;
+            }
+
+            $administrators[] = new RecordsPrincipal(
+                $username,
+                $user['role'],
+                '',
+                $user['firstName'],
+                $user['lastName'],
+                'local',
+                '',
+                'local-env:' . $username,
+            );
+        }
+
+        return $administrators;
+    }
+
     private function validUsername(string $username): bool
     {
         $validEmail = filter_var($username, FILTER_VALIDATE_EMAIL) !== false && strlen($username) <= 100;

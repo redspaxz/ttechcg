@@ -4,6 +4,8 @@ declare(strict_types=1);
 
 $e = static fn (mixed $value): string => htmlspecialchars((string) $value, ENT_QUOTES, 'UTF-8');
 $accounts = is_array($accounts ?? null) ? $accounts : [];
+$administratorAccounts = is_array($administratorAccounts ?? null) ? $administratorAccounts : [];
+$localAccountCount = count($administratorAccounts) + count($accounts);
 $errors = is_array($errors ?? null) ? $errors : [];
 $old = is_array($old ?? null) ? $old : [];
 $cloudflareIdentity = ($recordsIdentityProvider ?? 'local') === 'cloudflare_access';
@@ -117,17 +119,29 @@ $jumpCloudGroups = is_array($config['jumpcloud_role_groups'] ?? null) ? $config[
 
         <section class="records-user-list" aria-labelledby="managed-accounts-title">
             <div class="records-user-list-heading">
-                <div><span>Managed accounts</span><h2 id="managed-accounts-title">Local operators and viewers</h2><p>Review accounts at a glance, then select Edit only when a change is needed.</p></div>
-                <strong><?= $e(count($accounts)) ?> account<?= count($accounts) === 1 ? '' : 's' ?></strong>
+                <div><span>Local identities</span><h2 id="managed-accounts-title">Local user accounts</h2><p>Server-defined administrators are protected. Database-managed operators and viewers can be edited below.</p></div>
+                <strong><?= $e($localAccountCount) ?> account<?= $localAccountCount === 1 ? '' : 's' ?></strong>
             </div>
 
             <div class="records-user-table-wrap">
                 <table class="records-user-table">
                     <thead><tr><th>User</th><th>Login ID</th><th>Role</th><th>Status</th><th>2FA</th><th>Last updated</th><th>Actions</th></tr></thead>
                     <tbody>
-                    <?php if ($accounts === []): ?>
-                        <tr><td colspan="7"><div class="pickup-empty-state"><h2>No lower-tier accounts yet.</h2><p>Create an operator or viewer using the form above.</p></div></td></tr>
+                    <?php if ($administratorAccounts === [] && $accounts === []): ?>
+                        <tr><td colspan="7"><div class="pickup-empty-state"><h2>No local accounts yet.</h2><p>Create an operator or viewer using the form above.</p></div></td></tr>
                     <?php endif; ?>
+                    <?php foreach ($administratorAccounts as $administratorAccount): ?>
+                        <?php $administratorMfaEnrolled = ($mfaStatuses[$administratorAccount->securitySubject()] ?? false) === true; ?>
+                        <tr class="records-user-summary-row records-user-server-row" data-active="true" data-account-source="server">
+                            <td><div class="records-user-table-identity"><strong><?= $e($administratorAccount->fullName()) ?></strong><small>Server-defined administrator</small></div></td>
+                            <td><span class="records-user-login-id"><?= $e($administratorAccount->username) ?></span></td>
+                            <td><span class="records-user-role"><?= $e($administratorAccount->role) ?></span></td>
+                            <td><span class="records-user-status" data-active="true">Active</span></td>
+                            <td><span class="records-user-mfa-status" data-enabled="<?= $administratorMfaEnrolled ? 'true' : 'false' ?>"><?= !$localMfaEnabled ? 'Not required' : ($administratorMfaEnrolled ? 'Enabled' : 'Not enrolled') ?></span></td>
+                            <td><span class="records-user-updated">Server managed<small>.env / security settings</small></span></td>
+                            <td class="records-user-action-cell"><span class="records-user-protected">Protected account</span></td>
+                        </tr>
+                    <?php endforeach; ?>
                     <?php foreach ($accounts as $account): ?>
                         <?php $editorId = 'user-editor-' . (int) $account->id; $mfaSubject = 'local-user:' . (int) $account->id; $mfaEnrolled = ($mfaStatuses[$mfaSubject] ?? false) === true; ?>
                         <tr class="records-user-summary-row" data-active="<?= $account->active ? 'true' : 'false' ?>">

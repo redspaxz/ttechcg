@@ -569,6 +569,7 @@ final class PickupsheetController
         unset($_SESSION['_records_users_flash'], $_SESSION['_records_users_errors'], $_SESSION['_records_users_old']);
 
         $accounts = [];
+        $administratorAccounts = $this->recordsAccess->environmentAdministrators();
         $loginMethods = $this->effectiveLoginMethods();
         $mfaStatuses = [];
         try {
@@ -577,21 +578,22 @@ final class PickupsheetController
             error_log($exception->__toString());
             $errors = ['Account storage could not be initialized. Confirm that the MySQL user can create tables, or apply migration 005 in phpMyAdmin.'];
         }
-        if ($accounts !== [] && $this->localMfa?->isEnabled() === true && $this->localMfa->isConfigured()) {
+        $mfaSubjects = array_merge(
+            array_map(static fn (RecordsPrincipal $account): string => $account->securitySubject(), $administratorAccounts),
+            array_map(static fn ($account): string => 'local-user:' . $account->id, $accounts),
+        );
+        if ($mfaSubjects !== [] && $this->localMfa?->isEnabled() === true && $this->localMfa->isConfigured()) {
             try {
-                $mfaStatuses = $this->localMfa->statuses(array_map(
-                    static fn ($account): string => 'local-user:' . $account->id,
-                    $accounts,
-                ));
+                $mfaStatuses = $this->localMfa->statuses($mfaSubjects);
             } catch (Throwable $exception) {
-                error_log('Managed account 2FA status could not be loaded: ' . $exception->getMessage());
+                error_log('Local account 2FA status could not be loaded: ' . $exception->getMessage());
                 $errors[] = 'Two-factor status could not be loaded. Apply migration 015 and check MySQL.';
             }
         }
 
         $body = $this->view->render('pickupsheet/users', [
             'pageTitle' => 'Pickup records access',
-            'pageDescription' => 'Manage lower-tier pickup records accounts.',
+            'pageDescription' => 'Review local administrators and manage pickup records accounts.',
             'pageRobots' => 'noindex, nofollow',
             'activePage' => 'pickupsheet',
             'basePath' => $request->basePath,
@@ -599,6 +601,7 @@ final class PickupsheetController
             'config' => $this->config,
             'csrfToken' => $this->csrf->token(),
             'accounts' => $accounts,
+            'administratorAccounts' => $administratorAccounts,
             'flash' => is_string($flash) ? $flash : null,
             'errors' => is_array($errors) ? $errors : [],
             'old' => is_array($old) ? $old : [],
