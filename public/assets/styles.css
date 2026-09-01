@@ -1126,7 +1126,7 @@ button, a, input, select, textarea { -webkit-tap-highlight-color: transparent; }
 .pickup-cash-pie-visual { position: relative; width: min(168px, 100%); aspect-ratio: 1; margin-inline: auto; }
 .pickup-cash-pie-chart { display: block; width: 100%; height: 100%; overflow: visible; }
 .pickup-cash-pie-chart circle { fill: none; stroke-width: 58; }
-.pickup-cash-pie-track { stroke: #66666d; }
+.pickup-cash-pie-track { stroke: #168a45; }
 .pickup-cash-pie-unpaid { stroke: var(--copper); }
 .pickup-cash-status-values { display: grid; margin: 0; }
 .pickup-cash-status-values > div { display: grid; grid-template-columns: minmax(0, 1fr) auto; gap: 14px; align-items: center; min-height: 52px; padding: 8px 0; border-bottom: 1px solid #2f2f32; }
@@ -1135,7 +1135,7 @@ button, a, input, select, textarea { -webkit-tap-highlight-color: transparent; }
 .pickup-cash-status-values dt small { color: #777; font-size: 0.61rem; letter-spacing: 0.04em; }
 .pickup-cash-status-values dt::before { width: 9px; height: 9px; flex: 0 0 auto; border-radius: 50%; background: #fff; content: ""; }
 .pickup-cash-status-values .is-unpaid dt::before { background: var(--copper); }
-.pickup-cash-status-values .is-settled dt::before { background: #505054; }
+.pickup-cash-status-values .is-settled dt::before { background: #168a45; }
 .pickup-cash-status-values dd { margin: 0; color: #fff; font-size: clamp(1rem, 2.5vw, 1.45rem); font-weight: 850; font-variant-numeric: tabular-nums; letter-spacing: -0.035em; text-align: right; white-space: nowrap; }
 .pickup-destination-list { display: grid; gap: 22px; margin-top: 30px; }
 .pickup-destination-list > div { display: grid; gap: 10px; }

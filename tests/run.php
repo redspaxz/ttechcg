@@ -1592,7 +1592,7 @@ $assert(str_contains($adminDashboard->body(), 'pickup-activity-chart'), 'The das
 $assert(substr_count($adminDashboard->body(), 'class="pickup-activity-axis-label"') === 5 && str_contains($adminDashboard->body(), '>0</text>'), 'The daily cash graph should render a readable five-level numeric vertical scale.');
 $assert(str_contains($adminDashboard->body(), 'pickup-cash-pie-chart') && str_contains($adminDashboard->body(), '<dt>Total cash recorded</dt><dd>14,000 XAF</dd>') && str_contains($adminDashboard->body(), '<dt>Unpaid balance <small>0% of total</small></dt><dd>0 XAF</dd>'), 'The administrator dashboard should chart total recorded cash and the current unpaid balance.');
 $assert(str_contains($adminDashboard->body(), 'stroke-dasharray="0.00 100.00"'), 'A fully settled cash balance should render an empty unpaid pie segment.');
-$assert(str_contains($adminDashboard->body(), 'fill="none" stroke="#66666d" stroke-width="58"') && str_contains($adminDashboard->body(), 'fill="none" stroke="#d40511" stroke-width="58"'), 'The cash pie should retain explicit SVG fallback colors and dimensions before its stylesheet loads.');
+$assert(str_contains($adminDashboard->body(), 'fill="none" stroke="#168a45" stroke-width="58"') && str_contains($adminDashboard->body(), 'fill="none" stroke="#d40511" stroke-width="58"') && str_contains($adminDashboard->body(), '<dt>Paid cash</dt><dd>14,000 XAF</dd>'), 'The cash pie should retain explicit green paid and red unpaid SVG segments before its stylesheet loads.');
 $assert(str_contains($adminDashboard->body(), 'pickup-sender-chart') && str_contains($adminDashboard->body(), 'Top 10 senders'), 'The administrator dashboard should render the rolling sender performance chart.');
 $assert(str_contains($adminDashboard->body(), 'Controller Client') && str_contains($adminDashboard->body(), '1 shipment'), 'The sender chart should display shipment frequency for the ranked consignor.');
 $assert(str_contains($adminDashboard->body(), 'User login frequency') && str_contains($adminDashboard->body(), 'Last 30 days'), 'The administrator dashboard should show per-user login frequency for the documented window.');
@@ -2066,7 +2066,7 @@ $assert(is_string($dhlAsset) && !str_contains($dhlAsset, '<text'), 'The disquali
 $partnerSources = file_get_contents(dirname(__DIR__) . '/public/assets/partners/README.md');
 $assert(is_string($partnerSources) && str_contains($partnerSources, 'www.dhl.com/content/dam/dhl/global/core/images/logos/dhl-logo.svg'), 'The official DHL artwork source should be documented.');
 $assert(!str_contains($home, 'href="/dhl/pickupsheet"'), 'Pickupsheet should not be discoverable from the public site chrome or homepage.');
-$assert(str_contains($home, 'styles.css?v=20260902-cash-pie'), 'The cash pie chart and prior Pickupsheet refinements should use a cache-safe stylesheet version.');
+$assert(str_contains($home, 'styles.css?v=20260902-paid-pie-green'), 'The paid-cash chart colors and prior Pickupsheet refinements should use a cache-safe stylesheet version.');
 $assert(str_contains($home, 'app.js?v=20260831-owasp-hardening'), 'OWASP-aligned confirmations and progressive AJAX interactions should use a cache-safe script version.');
 $assert(str_contains($home, 'analytics.js?v=20260825-security-hardening'), 'The current consent-aware Google Analytics loader should render on every page.');
 $assert(str_contains($home, 'data-analytics-accept'), 'The site should offer an explicit analytics acceptance control.');
