@@ -202,7 +202,7 @@ final class PickupsheetController
             return $authorization;
         }
 
-        $summary = ['sheetCount' => 0, 'shipmentCount' => 0, 'totalCashXaf' => 0, 'latestCreatedAt' => null];
+        $summary = ['sheetCount' => 0, 'shipmentCount' => 0, 'totalCashXaf' => 0, 'unpaidBalanceXaf' => 0, 'latestCreatedAt' => null];
         $activity = [];
         $destinations = [];
         $senders = [];

@@ -1101,6 +1101,7 @@ button, a, input, select, textarea { -webkit-tap-highlight-color: transparent; }
 .pickup-dashboard-grid { display: grid; grid-template-columns: minmax(0, 1.55fr) minmax(300px, 0.75fr); gap: 28px; }
 .pickup-chart-card,
 .pickup-destination-card,
+.pickup-cash-status-card,
 .pickup-sender-performance,
 .pickup-user-activity,
 .pickup-audit-log,
@@ -1120,6 +1121,24 @@ button, a, input, select, textarea { -webkit-tap-highlight-color: transparent; }
 .pickup-activity-chart rect { fill: var(--copper); }
 .pickup-activity-chart text { fill: #888; font-size: 10px; text-anchor: middle; }
 .pickup-activity-chart .pickup-activity-axis-label { fill: #b8b8bc; font-size: 9.5px; font-variant-numeric: tabular-nums; text-anchor: end; }
+.pickup-cash-status-card { margin-top: 18px; padding: 22px; }
+.pickup-cash-status-layout { display: grid; grid-template-columns: minmax(180px, 0.42fr) minmax(0, 1.58fr); gap: 30px; align-items: center; margin-top: 20px; }
+.pickup-cash-pie-visual { position: relative; width: min(190px, 100%); aspect-ratio: 1; margin-inline: auto; }
+.pickup-cash-pie-chart { display: block; width: 100%; height: 100%; overflow: visible; }
+.pickup-cash-pie-chart circle { fill: none; stroke-width: 18; }
+.pickup-cash-pie-track { stroke: #505054; }
+.pickup-cash-pie-unpaid { stroke: var(--copper); }
+.pickup-cash-pie-center { position: absolute; inset: 0; display: grid; place-content: center; text-align: center; pointer-events: none; }
+.pickup-cash-pie-center strong { color: #fff; font-size: clamp(1.65rem, 4vw, 2.4rem); letter-spacing: -0.055em; line-height: 1; }
+.pickup-cash-pie-center small { margin-top: 6px; color: #999; font-size: 0.62rem; font-weight: 850; letter-spacing: 0.08em; text-transform: uppercase; }
+.pickup-cash-status-values { display: grid; margin: 0; }
+.pickup-cash-status-values > div { display: grid; grid-template-columns: minmax(0, 1fr) auto; gap: 18px; align-items: center; min-height: 62px; padding: 12px 0; border-bottom: 1px solid #2f2f32; }
+.pickup-cash-status-values > div:last-child { border-bottom: 0; }
+.pickup-cash-status-values dt { display: flex; align-items: center; gap: 10px; color: #aaa; font-size: 0.68rem; font-weight: 850; letter-spacing: 0.07em; text-transform: uppercase; }
+.pickup-cash-status-values dt::before { width: 9px; height: 9px; flex: 0 0 auto; border-radius: 50%; background: #fff; content: ""; }
+.pickup-cash-status-values .is-unpaid dt::before { background: var(--copper); }
+.pickup-cash-status-values .is-settled dt::before { background: #505054; }
+.pickup-cash-status-values dd { margin: 0; color: #fff; font-size: clamp(1rem, 2.5vw, 1.45rem); font-weight: 850; font-variant-numeric: tabular-nums; letter-spacing: -0.035em; text-align: right; white-space: nowrap; }
 .pickup-destination-list { display: grid; gap: 22px; margin-top: 30px; }
 .pickup-destination-list > div { display: grid; gap: 10px; }
 .pickup-destination-list span { display: flex; align-items: end; justify-content: space-between; gap: 14px; }
@@ -1276,6 +1295,11 @@ button, a, input, select, textarea { -webkit-tap-highlight-color: transparent; }
     .pickup-admin-actions a:last-child,
     .pickup-kpi-grid article:last-child { border-bottom: 0; }
     .pickup-card-heading { align-items: flex-start; flex-direction: column; gap: 10px; }
+    .pickup-cash-status-card { padding: 18px 16px; }
+    .pickup-cash-status-layout { grid-template-columns: 1fr; gap: 18px; }
+    .pickup-cash-pie-visual { width: min(170px, 100%); }
+    .pickup-cash-status-values > div { grid-template-columns: 1fr; gap: 5px; }
+    .pickup-cash-status-values dd { padding-left: 19px; text-align: left; }
     .pickup-sender-chart li { grid-template-columns: 36px minmax(0, 1fr) auto; gap: 10px 14px; }
     .pickup-sender-chart progress { grid-column: 2 / -1; }
 }

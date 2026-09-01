@@ -38,6 +38,15 @@ $cashNiceFactor = match (true) {
 };
 $cashTickStep = max(1, (int) ceil($cashNiceFactor * $cashMagnitude));
 $cashScaleMaximum = $cashTickStep * $cashScaleIntervals;
+$totalCashRecordedXaf = max(0, (int) ($summary['totalCashXaf'] ?? 0));
+$unpaidBalanceXaf = max(0, (int) ($summary['unpaidBalanceXaf'] ?? 0));
+$settledCashXaf = max(0, $totalCashRecordedXaf - $unpaidBalanceXaf);
+$unpaidPercentage = $totalCashRecordedXaf > 0
+    ? min(100, ($unpaidBalanceXaf / $totalCashRecordedXaf) * 100)
+    : 0;
+$unpaidChartValue = number_format($unpaidPercentage, 2, '.', '');
+$settledChartValue = number_format(100 - $unpaidPercentage, 2, '.', '');
+$unpaidPercentageLabel = rtrim(rtrim(number_format($unpaidPercentage, 1, '.', ''), '0'), '.') . '%';
 $maximumSenderShipments = max([1, ...array_map(static fn (array $row): int => (int) ($row['shipmentCount'] ?? 0), $senders)]);
 $activeSessions = max(0, (int) ($userActivity['activeRecords'] ?? 0));
 $formatDuration = static function (int $seconds): string {
@@ -205,6 +214,28 @@ $auditDetails = static function (array $log): string {
                 </div>
             </section>
         </div>
+
+        <section class="pickup-cash-status-card" aria-labelledby="cash-status-title">
+            <div class="pickup-card-heading">
+                <div><span>Cash settlement</span><h2 id="cash-status-title">Recorded cash and unpaid balance</h2></div>
+                <small>All-time XAF</small>
+            </div>
+            <div class="pickup-cash-status-layout">
+                <div class="pickup-cash-pie-visual">
+                    <svg class="pickup-cash-pie-chart" viewBox="0 0 120 120" role="img" aria-labelledby="cash-status-title cash-status-description">
+                        <desc id="cash-status-description">Total cash recorded is <?= $e(number_format($totalCashRecordedXaf)) ?> XAF. Unpaid balance is <?= $e(number_format($unpaidBalanceXaf)) ?> XAF.</desc>
+                        <circle class="pickup-cash-pie-track" cx="60" cy="60" r="48" pathLength="100"></circle>
+                        <circle class="pickup-cash-pie-unpaid" cx="60" cy="60" r="48" pathLength="100" stroke-dasharray="<?= $e($unpaidChartValue) ?> <?= $e($settledChartValue) ?>" transform="rotate(-90 60 60)"></circle>
+                    </svg>
+                    <span class="pickup-cash-pie-center"><strong><?= $e($unpaidPercentageLabel) ?></strong><small>Unpaid</small></span>
+                </div>
+                <dl class="pickup-cash-status-values">
+                    <div class="is-total"><dt>Total cash recorded</dt><dd><?= $e(number_format($totalCashRecordedXaf)) ?> XAF</dd></div>
+                    <div class="is-unpaid"><dt>Unpaid balance</dt><dd><?= $e(number_format($unpaidBalanceXaf)) ?> XAF</dd></div>
+                    <div class="is-settled"><dt>Settled cash</dt><dd><?= $e(number_format($settledCashXaf)) ?> XAF</dd></div>
+                </dl>
+            </div>
+        </section>
 
         <section class="pickup-sender-performance" aria-labelledby="sender-performance-title">
             <div class="pickup-card-heading">

@@ -154,6 +154,10 @@ final class DemoPickupSheetRepository implements PickupSheetRepository
             'sheetCount' => count($sheets),
             'shipmentCount' => array_sum(array_map(static fn (PickupSheet $sheet): int => $sheet->shipmentCount(), $sheets)),
             'totalCashXaf' => array_sum(array_map(static fn (PickupSheet $sheet): int => $sheet->totalCashReceivedXaf, $sheets)),
+            'unpaidBalanceXaf' => array_sum(array_map(
+                static fn (PickupSheet $sheet): int => $sheet->isPaid() ? 0 : $sheet->totalCashReceivedXaf,
+                $sheets,
+            )),
             'latestCreatedAt' => $sheets[0]->createdAt ?? null,
         ];
     }

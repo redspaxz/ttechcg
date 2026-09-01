@@ -268,6 +268,8 @@ $assert(count($secondPickupPage['items']) === 2, 'The second pickup-sheet page s
 $assert($secondPickupPage['page'] === 2, 'Pagination should retain the requested valid page.');
 $assert($pickupService->paginated(999, 10)['page'] === 2, 'Pagination should clamp out-of-range pages to the final page.');
 $assert($firstPickupPage['unpaidBalanceXaf'] === 126700 && $secondPickupPage['unpaidBalanceXaf'] === 126700, 'Every page should report the unpaid balance across all open pickup sheets.');
+$pickupCashSummary = $pickupService->summary();
+$assert(($pickupCashSummary['totalCashXaf'] ?? 0) === 126700 && ($pickupCashSummary['unpaidBalanceXaf'] ?? 0) === 126700, 'Dashboard cash summaries should aggregate recorded and unpaid cash from the same complete data set.');
 $consignorPickupSearch = $pickupService->paginated(1, 10, 'NEKEZIAH PIUS');
 $awbPickupSearch = $pickupService->paginated(1, 10, '1589328716');
 $missingPickupSearch = $pickupService->paginated(1, 10, 'sender-that-does-not-exist');
@@ -1588,6 +1590,8 @@ $assert($adminDashboard->status() === 200, 'An administrator should open the KPI
 $assert(str_contains($adminDashboard->body(), '14,000'), 'The KPI dashboard should reflect the administrator-corrected cash activity.');
 $assert(str_contains($adminDashboard->body(), 'pickup-activity-chart'), 'The dashboard should render its activity graph without client-side chart dependencies.');
 $assert(substr_count($adminDashboard->body(), 'class="pickup-activity-axis-label"') === 5 && str_contains($adminDashboard->body(), '>0</text>'), 'The daily cash graph should render a readable five-level numeric vertical scale.');
+$assert(str_contains($adminDashboard->body(), 'pickup-cash-pie-chart') && str_contains($adminDashboard->body(), '<dt>Total cash recorded</dt><dd>14,000 XAF</dd>') && str_contains($adminDashboard->body(), '<dt>Unpaid balance</dt><dd>0 XAF</dd>'), 'The administrator dashboard should chart total recorded cash and the current unpaid balance.');
+$assert(str_contains($adminDashboard->body(), 'stroke-dasharray="0.00 100.00"'), 'A fully settled cash balance should render an empty unpaid pie segment.');
 $assert(str_contains($adminDashboard->body(), 'pickup-sender-chart') && str_contains($adminDashboard->body(), 'Top 10 senders'), 'The administrator dashboard should render the rolling sender performance chart.');
 $assert(str_contains($adminDashboard->body(), 'Controller Client') && str_contains($adminDashboard->body(), '1 shipment'), 'The sender chart should display shipment frequency for the ranked consignor.');
 $assert(str_contains($adminDashboard->body(), 'User login frequency') && str_contains($adminDashboard->body(), 'Last 30 days'), 'The administrator dashboard should show per-user login frequency for the documented window.');
@@ -2290,6 +2294,7 @@ $assert(is_string($styles) && str_contains($styles, '.pickup-mfa-setup') && str_
 $assert(is_string($styles) && str_contains($styles, '/* Signed-in user settings */') && str_contains($styles, '.pickup-settings-grid') && str_contains($styles, '.pickup-settings-status[data-enabled="true"]'), 'Signed-in account and 2FA settings should have a dedicated responsive visual system.');
 $assert(is_string($styles) && str_contains($styles, '/* Pickupsheet login portal */'), 'Pickupsheet should have a dedicated responsive login portal.');
 $assert(is_string($styles) && str_contains($styles, '.pickup-admin-workspace') && str_contains($styles, '.pickup-kpi-grid'), 'The administrator should have a dedicated KPI control-panel layout.');
+$assert(is_string($styles) && str_contains($styles, '.pickup-cash-status-layout') && str_contains($styles, '.pickup-cash-pie-unpaid') && str_contains($styles, '.pickup-cash-status-values'), 'The administrator cash-status pie chart should have a responsive, labeled visual layout.');
 $assert(is_string($styles) && str_contains($styles, '.shipment-editor > *') && str_contains($styles, 'max-width: 1180px;'), 'The cash-shipment editor should be centered within the available screen width.');
 $assert(is_string($styles) && str_contains($styles, '.shipment-editor-heading > div { grid-column: 2; text-align: center; }'), 'The Cash Shipments heading should remain visually centered beside its row action.');
 $assert(is_string($styles) && str_contains($styles, '.shipment-table {') && str_contains($styles, 'min-width: 0;'), 'Shipment tables should shrink to the available desktop width instead of forcing horizontal overflow.');
