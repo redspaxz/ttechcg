@@ -8,6 +8,7 @@ $errors = is_array($errors ?? null) ? $errors : [];
 $pickupOperational = (bool) ($pickupOperational ?? false);
 $canPrint = (bool) ($canPrint ?? false);
 $canExport = (bool) ($canExport ?? false);
+$canManage = (bool) ($canManage ?? false);
 $canEdit = (bool) ($canEdit ?? false);
 $canMarkPaid = (bool) ($canMarkPaid ?? false);
 $canDelete = (bool) ($canDelete ?? false);
@@ -39,10 +40,12 @@ $trackingUrl = static fn (mixed $awbNumber): string => \App\Modules\Pickupsheet\
     <div class="notice notice-error" role="alert"><?php foreach ($errors as $error): ?><span><?= $e($error) ?></span><?php endforeach; ?></div>
 <?php endif; ?>
 
-<div class="pickup-view-summary">
-    <div><span>Page cash total</span><strong><?= $e(number_format($totalXaf)) ?> XAF</strong></div>
-    <div><span>Unpaid balance</span><strong><?= $e(number_format($unpaidBalanceXaf)) ?> XAF</strong></div>
-</div>
+<?php if ($canManage): ?>
+    <div class="pickup-view-summary">
+        <div><span>Page cash total</span><strong><?= $e(number_format($totalXaf)) ?> XAF</strong></div>
+        <div><span>Unpaid balance</span><strong><?= $e(number_format($unpaidBalanceXaf)) ?> XAF</strong></div>
+    </div>
+<?php endif; ?>
 
 <div class="pickup-record-list">
     <?php if ($pickupSheets === []): ?>

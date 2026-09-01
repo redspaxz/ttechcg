@@ -468,6 +468,7 @@ $paginationFixture = $view->renderPartial('pickupsheet/_submission-records', [
     'errors' => [],
     'canPrint' => true,
     'canExport' => true,
+    'canManage' => true,
 ]);
 $assert(substr_count($paginationFixture, '<article class="pickup-record">') === 2, 'The second ten-record page should render only its two remaining sheets.');
 $assert(str_contains($paginationFixture, '<span>Page cash total</span><strong>116,700 XAF</strong>') && str_contains($paginationFixture, '<span>Unpaid balance</span><strong>126,700 XAF</strong>'), 'Submitted-sheet metrics should show the current page cash total and the complete unpaid balance.');
@@ -1480,6 +1481,7 @@ $assert(!str_contains($viewerSubmissions->body(), 'Edit record'), 'A viewer shou
 $assert(!str_contains($viewerSubmissions->body(), 'Mark paid') && !str_contains($viewerSubmissions->body(), 'data-pickup-delete'), 'A viewer should not receive paid-status or delete controls.');
 $assert(!str_contains($viewerSubmissions->body(), 'Print / PDF') && !str_contains($viewerSubmissions->body(), 'Export Excel'), 'A viewer should not be shown actions they cannot use.');
 $assert(!str_contains($viewerSubmissions->body(), 'Manage access'), 'A viewer should not be shown administrator account controls.');
+$assert(!str_contains($viewerSubmissions->body(), 'Page cash total') && !str_contains($viewerSubmissions->body(), 'Unpaid balance') && !str_contains($viewerPageFragment->body(), 'Unpaid balance'), 'A viewer should not receive administrator financial metrics in full or AJAX responses.');
 $assert($viewerPrint->status() === 403 && $viewerExport->status() === 403, 'A viewer should be forbidden from printing and exporting pickup sheets.');
 $assert($viewerPaid->status() === 403 && $viewerDelete->status() === 403, 'A viewer should be forbidden from changing status or deleting pickup sheets.');
 $assert(!isset($viewerPrint->headers()['WWW-Authenticate']), 'A forbidden authenticated user should not receive another login challenge.');
@@ -1494,6 +1496,7 @@ $operatorSubmissions = $pickupController->submissions(new Request('GET', '/dhl/p
 $assert($operatorCreate->status() === 200 && $operatorSubmissions->status() === 200, 'An operator should be able to enter and view pickup records.');
 $assert($operatorPrint->status() === 200 && $operatorExport->status() === 200, 'An operator should print pickup-sheet PDFs and export Excel files.');
 $assert(!str_contains($operatorSubmissions->body(), 'Manage access'), 'An operator should not be shown administrator account controls.');
+$assert(!str_contains($operatorSubmissions->body(), 'Page cash total') && !str_contains($operatorSubmissions->body(), 'Unpaid balance'), 'An operator should not receive administrator financial metrics.');
 $assert(str_contains($operatorSubmissions->body(), 'Customer CRM'), 'An operator should receive a direct link to the customer directory.');
 $assert(!str_contains($operatorSubmissions->body(), 'Edit record'), 'An operator should not receive record-edit actions.');
 $assert(!str_contains($operatorSubmissions->body(), 'Mark paid'), 'An operator should not receive the paid-status action.');
