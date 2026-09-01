@@ -1220,7 +1220,7 @@ button, a, input, select, textarea { -webkit-tap-highlight-color: transparent; }
     .pickup-admin-actions a:nth-child(odd) { border-right: 1px solid #333; }
     .pickup-admin-actions a:nth-child(even),
     .pickup-kpi-grid article:nth-child(2) { border-right: 0; }
-    .pickup-admin-actions a:last-child { border-bottom: 0; }
+    .pickup-admin-actions a:last-child { grid-column: 1 / -1; border-right: 0; border-bottom: 0; }
     .pickup-kpi-grid article:nth-child(-n + 2) { border-bottom: 1px solid #333; }
     .pickup-dashboard-grid { grid-template-columns: 1fr; }
 }
@@ -1772,7 +1772,7 @@ button, a, input, select, textarea { -webkit-tap-highlight-color: transparent; }
     font-weight: 850;
     letter-spacing: -0.055em;
 }
-.pickup-header-links { display: flex; align-items: center; justify-content: flex-end; gap: 18px; }
+.pickup-header-links { display: flex; min-width: 0; flex-wrap: wrap; align-items: center; justify-content: flex-end; gap: 8px 18px; }
 .pickup-form-shell { padding-top: 54px; }
 .pickup-form-heading {
     display: grid;
@@ -2119,8 +2119,8 @@ button, a, input, select, textarea { -webkit-tap-highlight-color: transparent; }
 
 @media (max-width: 900px) {
     .pickup-workspace { padding: 22px 0 64px; }
-    .pickup-workspace-header { max-height: 48vh; min-height: 86px; align-items: flex-start; flex-direction: column; justify-content: flex-start; gap: 10px; overflow-y: auto; padding-block: 12px; }
-    .pickup-header-links { width: 100%; align-items: flex-start; flex-direction: column; gap: 8px; }
+    .pickup-workspace-header { min-height: 86px; align-items: flex-start; flex-direction: column; justify-content: flex-start; gap: 10px; padding-block: 12px; }
+    .pickup-header-links { width: 100%; align-items: center; flex-direction: row; justify-content: flex-start; gap: 8px 14px; }
     .pickup-form-shell { padding-top: 38px; }
     .pickup-form-heading { padding-bottom: 26px; }
     .pickup-form-heading h1 { font-size: clamp(3rem, 16vw, 4.6rem); }

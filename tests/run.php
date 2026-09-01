@@ -2302,6 +2302,8 @@ $assert(is_string($styles) && str_contains($styles, '.pickup-customer-history .p
 $assert(is_string($styles) && str_contains($styles, '.pickup-crm-directory-content > .pickup-card-heading') && str_contains($styles, '.pickup-crm-directory .pickup-crm-table-wrap td,') && str_contains($styles, '.pickup-crm-directory .pickup-pagination,'), 'The AJAX-wrapped Customer directory card should retain compact heading, row, and pager padding.');
 $assert(is_string($styles) && str_contains($styles, '.pickup-workspace-header {') && str_contains($styles, 'position: sticky;') && str_contains($styles, 'z-index: 1150;') && str_contains($styles, 'top: 0;'), 'Pickupsheet workspace headers should remain visible while their pages scroll.');
 $assert(is_string($styles) && str_contains($styles, '.pickup-admin-workspace > .pickup-workspace-header') && str_contains($styles, 'box-shadow: 0 0 0 100vmax #0b0b0c;'), 'Sticky administrator headers should retain their full-width dark background.');
+$assert(is_string($styles) && str_contains($styles, '.pickup-header-links { display: flex; min-width: 0; flex-wrap: wrap;') && str_contains($styles, 'flex-direction: row; justify-content: flex-start; gap: 8px 14px;'), 'Link-heavy administrator headers should wrap compactly instead of becoming a tall scrolling column.');
+$assert(is_string($styles) && str_contains($styles, '.pickup-admin-actions a:last-child { grid-column: 1 / -1; border-right: 0; border-bottom: 0; }'), 'An odd final dashboard action should fill its tablet row without leaving an empty grid cell.');
 
 $script = file_get_contents(dirname(__DIR__) . '/public/assets/app.js');
 $assert(is_string($script) && str_contains($script, "event.key === 'Escape'"), 'The mobile navigation should close with Escape.');
