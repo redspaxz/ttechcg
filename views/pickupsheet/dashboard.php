@@ -20,9 +20,24 @@ $chartHeight = 230;
 $plotTop = 24;
 $plotHeight = 146;
 $plotBottom = $plotTop + $plotHeight;
+$plotLeft = 82;
+$plotRight = $chartWidth - 15;
 $barGap = 6;
-$barWidth = max(8, (int) floor(($chartWidth - 70) / max(1, count($activity))) - $barGap);
-$maximumCash = max([1, ...array_map(static fn (array $row): int => (int) ($row['totalCashXaf'] ?? 0), $activity)]);
+$barWidth = max(8, (int) floor(($plotRight - $plotLeft) / max(1, count($activity))) - $barGap);
+$maximumCash = max([0, ...array_map(static fn (array $row): int => (int) ($row['totalCashXaf'] ?? 0), $activity)]);
+$cashScaleIntervals = 4;
+$cashRawStep = max(1, $maximumCash) / $cashScaleIntervals;
+$cashMagnitude = 10 ** floor(log10($cashRawStep));
+$cashNormalizedStep = $cashRawStep / $cashMagnitude;
+$cashNiceFactor = match (true) {
+    $cashNormalizedStep <= 1 => 1,
+    $cashNormalizedStep <= 2 => 2,
+    $cashNormalizedStep <= 2.5 => 2.5,
+    $cashNormalizedStep <= 5 => 5,
+    default => 10,
+};
+$cashTickStep = max(1, (int) ceil($cashNiceFactor * $cashMagnitude));
+$cashScaleMaximum = $cashTickStep * $cashScaleIntervals;
 $maximumSenderShipments = max([1, ...array_map(static fn (array $row): int => (int) ($row['shipmentCount'] ?? 0), $senders)]);
 $activeSessions = max(0, (int) ($userActivity['activeRecords'] ?? 0));
 $formatDuration = static function (int $seconds): string {
@@ -155,12 +170,22 @@ $auditDetails = static function (array $log): string {
                 <div class="pickup-card-heading"><div><span>14-day activity</span><h2 id="cash-activity-title">Cash recorded by day</h2></div><small>XAF</small></div>
                 <div class="pickup-chart-scroll">
                     <svg class="pickup-activity-chart" viewBox="0 0 <?= $e($chartWidth) ?> <?= $e($chartHeight) ?>" role="img" aria-label="Cash recorded during the last fourteen days">
-                        <line x1="45" y1="<?= $e($plotBottom) ?>" x2="<?= $e($chartWidth - 15) ?>" y2="<?= $e($plotBottom) ?>"></line>
+                        <desc>Daily cash totals in XAF, from 0 to <?= $e(number_format($cashScaleMaximum)) ?>.</desc>
+                        <?php for ($tickIndex = 0; $tickIndex <= $cashScaleIntervals; $tickIndex++): ?>
+                            <?php
+                            $tickValue = $cashScaleMaximum - ($tickIndex * $cashTickStep);
+                            $tickY = $plotTop + (($plotHeight / $cashScaleIntervals) * $tickIndex);
+                            ?>
+                            <g class="pickup-activity-axis-tick">
+                                <line class="pickup-activity-grid-line" x1="<?= $e($plotLeft) ?>" y1="<?= $e($tickY) ?>" x2="<?= $e($plotRight) ?>" y2="<?= $e($tickY) ?>"></line>
+                                <text class="pickup-activity-axis-label" x="<?= $e($plotLeft - 10) ?>" y="<?= $e($tickY + 3) ?>"><?= $e(number_format($tickValue)) ?></text>
+                            </g>
+                        <?php endfor; ?>
                         <?php foreach ($activity as $index => $row): ?>
                             <?php
                             $value = (int) ($row['totalCashXaf'] ?? 0);
-                            $height = $value === 0 ? 2 : max(4, (int) round(($value / $maximumCash) * $plotHeight));
-                            $x = 50 + $index * ($barWidth + $barGap);
+                            $height = $value === 0 ? 2 : max(4, (int) round(($value / $cashScaleMaximum) * $plotHeight));
+                            $x = $plotLeft + $index * ($barWidth + $barGap);
                             $y = $plotBottom - $height;
                             ?>
                             <g><title><?= $e($row['date']) ?>: <?= $e(number_format($value)) ?> XAF</title><rect x="<?= $e($x) ?>" y="<?= $e($y) ?>" width="<?= $e($barWidth) ?>" height="<?= $e($height) ?>"></rect><text x="<?= $e($x + (int) floor($barWidth / 2)) ?>" y="<?= $e($plotBottom + 22) ?>"><?= $e(substr((string) $row['date'], 8, 2)) ?></text></g>

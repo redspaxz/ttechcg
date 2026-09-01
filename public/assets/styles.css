@@ -1116,8 +1116,10 @@ button, a, input, select, textarea { -webkit-tap-highlight-color: transparent; }
 .pickup-chart-scroll { margin-top: 28px; overflow-x: auto; }
 .pickup-activity-chart { display: block; min-width: 680px; }
 .pickup-activity-chart line { stroke: #444; stroke-width: 1; }
+.pickup-activity-chart .pickup-activity-grid-line { stroke: #363639; }
 .pickup-activity-chart rect { fill: var(--copper); }
 .pickup-activity-chart text { fill: #888; font-size: 10px; text-anchor: middle; }
+.pickup-activity-chart .pickup-activity-axis-label { fill: #b8b8bc; font-size: 9.5px; font-variant-numeric: tabular-nums; text-anchor: end; }
 .pickup-destination-list { display: grid; gap: 22px; margin-top: 30px; }
 .pickup-destination-list > div { display: grid; gap: 10px; }
 .pickup-destination-list span { display: flex; align-items: end; justify-content: space-between; gap: 14px; }

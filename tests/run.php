@@ -1587,6 +1587,7 @@ $adminDashboard = $pickupController->dashboard(new Request('GET', '/dhl/pickupsh
 $assert($adminDashboard->status() === 200, 'An administrator should open the KPI dashboard.');
 $assert(str_contains($adminDashboard->body(), '14,000'), 'The KPI dashboard should reflect the administrator-corrected cash activity.');
 $assert(str_contains($adminDashboard->body(), 'pickup-activity-chart'), 'The dashboard should render its activity graph without client-side chart dependencies.');
+$assert(substr_count($adminDashboard->body(), 'class="pickup-activity-axis-label"') === 5 && str_contains($adminDashboard->body(), '>0</text>'), 'The daily cash graph should render a readable five-level numeric vertical scale.');
 $assert(str_contains($adminDashboard->body(), 'pickup-sender-chart') && str_contains($adminDashboard->body(), 'Top 10 senders'), 'The administrator dashboard should render the rolling sender performance chart.');
 $assert(str_contains($adminDashboard->body(), 'Controller Client') && str_contains($adminDashboard->body(), '1 shipment'), 'The sender chart should display shipment frequency for the ranked consignor.');
 $assert(str_contains($adminDashboard->body(), 'User login frequency') && str_contains($adminDashboard->body(), 'Last 30 days'), 'The administrator dashboard should show per-user login frequency for the documented window.');
