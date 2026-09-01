@@ -224,8 +224,8 @@ $auditDetails = static function (array $log): string {
                 <div class="pickup-cash-pie-visual">
                     <svg class="pickup-cash-pie-chart" viewBox="0 0 120 120" role="img" aria-labelledby="cash-status-title cash-status-description">
                         <desc id="cash-status-description">Total cash recorded is <?= $e(number_format($totalCashRecordedXaf)) ?> XAF. Unpaid balance is <?= $e(number_format($unpaidBalanceXaf)) ?> XAF.</desc>
-                        <circle class="pickup-cash-pie-track" cx="60" cy="60" r="29" pathLength="100"></circle>
-                        <circle class="pickup-cash-pie-unpaid" cx="60" cy="60" r="29" pathLength="100" stroke-dasharray="<?= $e($unpaidChartValue) ?> <?= $e($settledChartValue) ?>" transform="rotate(-90 60 60)"></circle>
+                        <circle class="pickup-cash-pie-track" cx="60" cy="60" r="29" pathLength="100" fill="none" stroke="#66666d" stroke-width="58"></circle>
+                        <circle class="pickup-cash-pie-unpaid" cx="60" cy="60" r="29" pathLength="100" fill="none" stroke="#d40511" stroke-width="58" stroke-dasharray="<?= $e($unpaidChartValue) ?> <?= $e($settledChartValue) ?>" transform="rotate(-90 60 60)"></circle>
                     </svg>
                 </div>
                 <dl class="pickup-cash-status-values">
