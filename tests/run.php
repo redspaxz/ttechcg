@@ -1621,6 +1621,7 @@ $assert(str_contains($customerDirectory->body(), 'class="pickup-crm-directory-co
 $customerDirectoryFragment = $customerController->page(new Request('GET', '/dhl/pickupsheet/customers/page', ['page' => '1']));
 $assert($customerDirectoryFragment->status() === 200 && str_contains($customerDirectoryFragment->body(), 'Customer directory') && str_contains($customerDirectoryFragment->body(), 'data-ajax-current-page="1"'), 'The customer directory endpoint should return a normal-link-compatible page fragment.');
 $assert($customerProfile->status() === 200 && str_contains($customerProfile->body(), 'Recent shipments') && str_contains($customerProfile->body(), 'pickup-customer-history-content') && str_contains($customerProfile->body(), $savedReference), 'A synchronized customer profile should show linked shipment history inside its compact AJAX card content.');
+$assert(str_contains($customerProfile->body(), 'pickup-crm-heading pickup-customer-profile-heading'), 'Customer profiles should use a dedicated, compact name heading.');
 $assert(str_contains($customerProfile->body(), 'data-ajax-pager-id="customer-shipments"') && str_contains($customerProfile->body(), 'data-ajax-pager-id="customer-redemptions"'), 'Qualified customer history tables should paginate independently without a full page refresh.');
 $customerShipmentFragment = $customerController->shipmentPage(new Request('GET', '/dhl/pickupsheet/customers/shipments/page', ['customer' => $customerKey, 'shipment_page' => '1']));
 $customerRedemptionFragment = $customerController->redemptionPage(new Request('GET', '/dhl/pickupsheet/customers/redemptions/page', ['customer' => $customerKey, 'redemption_page' => '1']));
@@ -2067,7 +2068,7 @@ $assert(is_string($dhlAsset) && !str_contains($dhlAsset, '<text'), 'The disquali
 $partnerSources = file_get_contents(dirname(__DIR__) . '/public/assets/partners/README.md');
 $assert(is_string($partnerSources) && str_contains($partnerSources, 'www.dhl.com/content/dam/dhl/global/core/images/logos/dhl-logo.svg'), 'The official DHL artwork source should be documented.');
 $assert(!str_contains($home, 'href="/dhl/pickupsheet"'), 'Pickupsheet should not be discoverable from the public site chrome or homepage.');
-$assert(str_contains($home, 'styles.css?v=20260902-paid-pie-green'), 'The paid-cash chart colors and prior Pickupsheet refinements should use a cache-safe stylesheet version.');
+$assert(str_contains($home, 'styles.css?v=20260902-customer-name'), 'The compact customer-profile heading and prior Pickupsheet refinements should use a cache-safe stylesheet version.');
 $assert(str_contains($home, 'app.js?v=20260831-owasp-hardening'), 'OWASP-aligned confirmations and progressive AJAX interactions should use a cache-safe script version.');
 $assert(str_contains($home, 'analytics.js?v=20260825-security-hardening'), 'The current consent-aware Google Analytics loader should render on every page.');
 $assert(str_contains($home, 'data-analytics-accept'), 'The site should offer an explicit analytics acceptance control.');

@@ -30,7 +30,7 @@ $status = (string) $value('status', $customer?->status ?? 'lead');
     <div class="container pickup-customer-shell">
         <?php if (is_string($flash ?? null) && $flash !== ''): ?><div class="notice notice-success" role="status"><?= $e($flash) ?></div><?php endif; ?>
         <?php if ($errors !== []): ?><div class="notice notice-error" role="alert"><?php foreach ($errors as $error): ?><span><?= $e($error) ?></span><?php endforeach; ?></div><?php endif; ?>
-        <header class="pickup-crm-heading">
+        <header class="pickup-crm-heading pickup-customer-profile-heading">
             <div><p class="eyebrow eyebrow-red"><?= $customer === null ? 'New relationship' : 'Customer profile' ?></p><h1><?= $e($customer?->displayName ?? 'Add customer') ?></h1><p>Maintain contact details, relationship status, internal notes, and the next follow-up date.</p></div>
             <?php if ($customer !== null): ?><span class="pickup-customer-status is-<?= $e($customer->status) ?>"><?= $e($customer->status === 'attention' ? 'Needs attention' : ucfirst($customer->status)) ?></span><?php endif; ?>
         </header>

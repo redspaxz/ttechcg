@@ -2501,6 +2501,7 @@ button, a, input, select, textarea { -webkit-tap-highlight-color: transparent; }
 .pickup-customer-shell { width: min(1220px, calc(100% - 48px)); padding-top: 54px; }
 .pickup-crm-heading { display: flex; align-items: end; justify-content: space-between; gap: 32px; margin-bottom: 28px; }
 .pickup-crm-heading h1 { margin: 7px 0 0; color: #241b00; font-size: clamp(3rem, 7vw, 6.2rem); letter-spacing: -0.075em; line-height: 0.9; }
+.pickup-customer-profile-heading h1 { max-width: 860px; font-size: clamp(2rem, 4vw, 3.75rem); letter-spacing: -0.045em; line-height: 1; overflow-wrap: anywhere; }
 .pickup-crm-heading p:last-child { max-width: 720px; margin: 20px 0 0; color: #655000; line-height: 1.65; }
 .pickup-crm-add,
 .pickup-customer-form .button { background: var(--dhl-red); color: #fff; }
