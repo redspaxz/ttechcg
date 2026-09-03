@@ -91,7 +91,7 @@ final class BackupController
             $this->log($request, $principal, 'pickupsheet.backup_download', 'denied', ['reason' => 'validation']);
         } catch (RuntimeException $exception) {
             error_log($exception->__toString());
-            $_SESSION['_backup_errors'] = ['The encrypted backup could not be created. Check MySQL and OpenSSL.'];
+            $_SESSION['_backup_errors'] = [$this->creationFailureMessage($exception)];
             $this->log($request, $principal, 'pickupsheet.backup_download', 'failed');
         }
         return $this->redirect($request);
@@ -230,6 +230,22 @@ final class BackupController
     private function redirect(Request $request): Response
     {
         return Response::redirect($request->basePath . '/dhl/pickupsheet/admin/backup');
+    }
+
+    private function creationFailureMessage(RuntimeException $exception): string
+    {
+        $message = $exception->getMessage();
+        return match (true) {
+            str_starts_with($message, 'Core backup table is unavailable:')
+                => 'Core pickup-sheet storage is incomplete. Apply database migrations 003, 004, and 007 in phpMyAdmin.',
+            str_contains($message, 'too many rows'), str_contains($message, 'exceeds the 12 MB')
+                => $message,
+            str_contains($message, 'AES-256-GCM'), str_contains($message, 'encryption failed')
+                => 'AES-256-GCM encryption is unavailable in the active PHP runtime. Ask the host to enable the PHP OpenSSL extension.',
+            str_contains($message, 'database snapshot')
+                => 'MySQL could not read the backup data. Confirm that the application database user has SELECT permission on every Pickupsheet table.',
+            default => 'The encrypted backup could not be created. Review the server PHP error log for the protected failure detail.',
+        };
     }
 
     /** @return array<string, string> */

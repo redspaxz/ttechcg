@@ -7,6 +7,7 @@ namespace App\Modules\Backup\Infrastructure;
 use App\Modules\Backup\Domain\BackupRepository;
 use InvalidArgumentException;
 use PDO;
+use PDOException;
 use RuntimeException;
 use Throwable;
 
@@ -28,6 +29,11 @@ final class MysqlBackupRepository implements BackupRepository
         'pickup_customers',
         'pickup_customer_reward_adjustments',
     ];
+    /** These tables contain the primary Pickupsheet records and must exist in every backup. */
+    private const REQUIRED_TABLES = [
+        'pickup_sheets',
+        'pickup_shipments',
+    ];
     private const MAX_ROWS = 250000;
 
     public function __construct(private readonly PDO $connection)
@@ -41,7 +47,13 @@ final class MysqlBackupRepository implements BackupRepository
             $tables = [];
             $rowCount = 0;
             foreach (self::TABLES as $table) {
-                $columns = $this->columns($table);
+                $columns = $this->columnsIfExists($table);
+                if ($columns === null) {
+                    if (in_array($table, self::REQUIRED_TABLES, true)) {
+                        throw new RuntimeException('Core backup table is unavailable: ' . $table);
+                    }
+                    continue;
+                }
                 $columnSql = implode(', ', array_map($this->quoteIdentifier(...), $columns));
                 $rows = $this->connection->query('SELECT ' . $columnSql . ' FROM ' . $this->quoteIdentifier($table))->fetchAll();
                 $rowCount += count($rows);
@@ -64,23 +76,38 @@ final class MysqlBackupRepository implements BackupRepository
 
     public function restoreTables(array $tables): array
     {
-        $expectedTables = self::TABLES;
         $suppliedTables = array_keys($tables);
-        sort($expectedTables);
-        sort($suppliedTables);
-        if ($suppliedTables !== $expectedTables) {
+        foreach ($suppliedTables as $table) {
+            if (!is_string($table) || !in_array($table, self::TABLES, true)) {
+                throw new InvalidArgumentException('The backup does not match the required Pickupsheet data set.');
+            }
+        }
+        foreach (self::REQUIRED_TABLES as $table) {
+            if (!array_key_exists($table, $tables)) {
+                throw new InvalidArgumentException('The backup does not contain the core Pickupsheet data set.');
+            }
+        }
+        if ($suppliedTables === []) {
             throw new InvalidArgumentException('The backup does not match the required Pickupsheet data set.');
         }
 
         $validated = [];
+        $targetColumns = [];
         $totalRows = 0;
         foreach (self::TABLES as $table) {
+            $targetColumns[$table] = $this->columnsIfExists($table);
+            if (!array_key_exists($table, $tables)) {
+                continue;
+            }
+            if ($targetColumns[$table] === null) {
+                throw new RuntimeException('Backup target table is unavailable: ' . $table);
+            }
             $backupTable = $tables[$table] ?? null;
             if (!is_array($backupTable) || !is_array($backupTable['columns'] ?? null) || !is_array($backupTable['rows'] ?? null)) {
                 throw new InvalidArgumentException('The backup table structure is invalid.');
             }
             $columns = array_values($backupTable['columns']);
-            if ($columns !== $this->columns($table)) {
+            if ($columns !== $targetColumns[$table]) {
                 throw new InvalidArgumentException('The backup schema does not match the current application schema.');
             }
             $expectedKeys = $columns;
@@ -111,12 +138,18 @@ final class MysqlBackupRepository implements BackupRepository
         $this->connection->beginTransaction();
         try {
             foreach (array_reverse(self::TABLES) as $table) {
+                if ($targetColumns[$table] === null) {
+                    continue;
+                }
                 $this->connection->exec('DELETE FROM ' . $this->quoteIdentifier($table));
             }
             $counts = [];
             foreach (self::TABLES as $table) {
-                $columns = $validated[$table]['columns'];
-                $rows = $validated[$table]['rows'];
+                if ($targetColumns[$table] === null) {
+                    continue;
+                }
+                $columns = $validated[$table]['columns'] ?? $targetColumns[$table];
+                $rows = $validated[$table]['rows'] ?? [];
                 $counts[$table] = count($rows);
                 if ($rows === []) {
                     continue;
@@ -140,22 +173,28 @@ final class MysqlBackupRepository implements BackupRepository
         }
     }
 
-    /** @return list<string> */
-    private function columns(string $table): array
+    /** @return list<string>|null */
+    private function columnsIfExists(string $table): ?array
     {
         try {
             $rows = $this->connection->query('SHOW COLUMNS FROM ' . $this->quoteIdentifier($table))->fetchAll();
         } catch (Throwable $exception) {
+            if ($exception instanceof PDOException && $this->missingTable($exception)) {
+                return null;
+            }
             throw new RuntimeException('Required backup table is unavailable: ' . $table, 0, $exception);
         }
         $columns = array_values(array_filter(array_map(
             static fn (array $row): string => is_string($row['Field'] ?? null) ? $row['Field'] : '',
             $rows,
         )));
-        if ($columns === []) {
-            throw new RuntimeException('Required backup table is unavailable: ' . $table);
-        }
-        return $columns;
+        return $columns === [] ? null : $columns;
+    }
+
+    private function missingTable(PDOException $exception): bool
+    {
+        return (string) $exception->getCode() === '42S02'
+            || (int) ($exception->errorInfo[1] ?? 0) === 1146;
     }
 
     private function quoteIdentifier(string $identifier): string
