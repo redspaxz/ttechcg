@@ -70,13 +70,24 @@ if (pickupForm) {
     const countOutput = pickupForm.querySelector('[data-shipment-count]');
     const totalOutput = pickupForm.querySelector('[data-shipment-total]');
     const consignorSuggestionList = pickupForm.querySelector('[data-consignor-suggestions]');
+    const consignorSortKey = (value) => value
+        .trim()
+        .replace(/\s+/g, ' ')
+        .normalize('NFKD')
+        .replace(/[\u0300-\u036f]/g, '')
+        .toLocaleLowerCase('en');
+    const compareConsignorSuggestions = (left, right) => {
+        const leftKey = consignorSortKey(left);
+        const rightKey = consignorSortKey(right);
+        if (leftKey < rightKey) return -1;
+        if (leftKey > rightKey) return 1;
+        return left.trim().localeCompare(right.trim(), 'en', { sensitivity: 'variant', numeric: false });
+    };
     const consignorSuggestionNames = Array.from(consignorSuggestionList?.querySelectorAll('option') ?? [])
         .map((option) => option.value.trim())
-        .filter(Boolean);
+        .filter(Boolean)
+        .sort(compareConsignorSuggestions);
     const consignorSearchEndpoint = consignorSuggestionList?.dataset?.searchEndpoint || '';
-    const compareConsignorSuggestions = (left, right) => (
-        left.localeCompare(right, undefined, { sensitivity: 'base' }) || left.localeCompare(right)
-    );
     const maximumRows = 50;
     const fieldLabels = {
         consignor: 'consignor',
@@ -210,16 +221,17 @@ if (pickupForm) {
 
     const showConsignorSuggestions = (input, source = consignorSuggestionNames) => {
         if (!consignorPopup) return;
-        const query = input.value.trim().toLowerCase();
+        const query = consignorSortKey(input.value);
         if (query === '') {
             closeConsignorSuggestions();
             return;
         }
         const seenMatches = new Set();
         const matches = source
-            .filter((name) => name.toLowerCase().includes(query))
+            .map((name) => name.trim())
+            .filter((name) => consignorSortKey(name).includes(query))
             .filter((name) => {
-                const normalizedName = name.trim().toLowerCase();
+                const normalizedName = consignorSortKey(name);
                 if (seenMatches.has(normalizedName)) return false;
                 seenMatches.add(normalizedName);
                 return true;
