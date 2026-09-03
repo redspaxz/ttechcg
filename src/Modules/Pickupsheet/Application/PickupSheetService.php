@@ -94,7 +94,9 @@ final class PickupSheetService
             throw new InvalidArgumentException('The consignor search is too long.');
         }
         $suggestions = $this->repository->consignorSuggestions($query, max(1, min($limit, 50)));
-        usort($suggestions, static fn (string $left, string $right): int => strcasecmp($left, $right) ?: strcmp($left, $right));
+        if ($query === '') {
+            usort($suggestions, static fn (string $left, string $right): int => strcasecmp($left, $right) ?: strcmp($left, $right));
+        }
         return $suggestions;
     }
 

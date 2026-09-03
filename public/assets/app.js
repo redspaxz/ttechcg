@@ -83,6 +83,15 @@ if (pickupForm) {
         if (leftKey > rightKey) return 1;
         return left.trim().localeCompare(right.trim(), 'en', { sensitivity: 'variant', numeric: false });
     };
+    const compareConsignorRelevance = (left, right, query) => {
+        const leftKey = consignorSortKey(left);
+        const rightKey = consignorSortKey(right);
+        const leftExact = leftKey === query;
+        const rightExact = rightKey === query;
+        if (leftExact !== rightExact) return leftExact ? -1 : 1;
+        const completionOrder = (leftKey.length - query.length) - (rightKey.length - query.length);
+        return completionOrder || compareConsignorSuggestions(left, right);
+    };
     const consignorSuggestionNames = Array.from(consignorSuggestionList?.querySelectorAll('option') ?? [])
         .map((option) => option.value.trim())
         .filter(Boolean)
@@ -219,7 +228,7 @@ if (pickupForm) {
         });
     };
 
-    const showConsignorSuggestions = (input, source = consignorSuggestionNames) => {
+    const showConsignorSuggestions = (input, source = consignorSuggestionNames, preserveRanking = false) => {
         if (!consignorPopup) return;
         const query = consignorSortKey(input.value);
         if (query === '') {
@@ -229,15 +238,17 @@ if (pickupForm) {
         const seenMatches = new Set();
         const matches = source
             .map((name) => name.trim())
-            .filter((name) => consignorSortKey(name).includes(query))
+            .filter((name) => consignorSortKey(name).startsWith(query))
             .filter((name) => {
                 const normalizedName = consignorSortKey(name);
                 if (seenMatches.has(normalizedName)) return false;
                 seenMatches.add(normalizedName);
                 return true;
-            })
-            .sort(compareConsignorSuggestions)
-            .slice(0, 12);
+            });
+        if (!preserveRanking) {
+            matches.sort((left, right) => compareConsignorRelevance(left, right, query));
+        }
+        matches.splice(12);
         if (matches.length === 0) {
             closeConsignorSuggestions();
             return;
@@ -306,11 +317,12 @@ if (pickupForm) {
                 if (!response.ok) return;
                 const payload = await response.json();
                 const suggestions = Array.isArray(payload.suggestions)
-                    ? Array.from(new Set(payload.suggestions.filter((name) => typeof name === 'string' && name.trim() !== '')))
-                        .sort(compareConsignorSuggestions)
+                    ? payload.suggestions
+                        .filter((name) => typeof name === 'string' && name.trim() !== '')
+                        .map((name) => name.trim())
                     : [];
                 if (searchGeneration === consignorSearchGeneration && activeConsignorInput === input && input.value.trim() === query) {
-                    showConsignorSuggestions(input, [...consignorSuggestionNames, ...suggestions]);
+                    showConsignorSuggestions(input, suggestions, true);
                 }
             } catch (error) {
                 if (error?.name !== 'AbortError') {

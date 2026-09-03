@@ -81,7 +81,7 @@ const suggestionList = {
     dataset: { searchEndpoint: '/dhl/pickupsheet/consignors/search' },
     querySelectorAll(selector) {
         return selector === 'option'
-            ? [{ value: 'Gamma Freight' }, { value: 'beta Logistics' }, { value: 'Alpha Cargo' }]
+            ? [{ value: 'Gamma Freight' }, { value: 'Cab Freight' }, { value: 'beta Logistics' }, { value: 'Alpha Cargo' }]
             : [];
     },
 };
@@ -177,4 +177,14 @@ assert.equal(consignorInput.value, 'beta Logistics');
 assert.equal(consignorInput.getAttribute('aria-expanded'), 'false');
 assert.equal(popup.hasAttribute('data-open'), false, 'selection should animate the popup closed');
 
-console.log('Consignor autocomplete tests passed.');
+consignorInput.value = 'b';
+consignorInput.emit('input');
+setImmediate(() => {
+    assert.deepEqual(
+        popup.children.map((option) => option.textContent),
+        ['Bravo Air', 'beta Logistics'],
+        'the AJAX relevance order should replace the temporary local order without an alphabetical re-sort',
+    );
+    assert.equal(popup.children.some((option) => option.textContent === 'Cab Freight'), false, 'substring-only names should never appear');
+    console.log('Consignor autocomplete tests passed.');
+});

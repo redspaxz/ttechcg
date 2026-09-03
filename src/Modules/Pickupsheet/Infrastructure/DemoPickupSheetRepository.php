@@ -233,15 +233,39 @@ final class DemoPickupSheetRepository implements PickupSheetRepository
         foreach ($this->recent(PHP_INT_MAX) as $sheet) {
             foreach ($sheet->shipments as $shipment) {
                 $sender = trim($shipment->consignor);
-                if ($sender === '' || ($normalizedQuery !== '' && !str_contains(strtolower($sender), $normalizedQuery))) {
+                if ($sender === '' || ($normalizedQuery !== '' && !str_starts_with(strtolower($sender), $normalizedQuery))) {
                     continue;
                 }
                 $key = strtolower($sender);
-                $senders[$key] ??= $sender;
+                $senders[$key] ??= ['name' => $sender, 'frequency' => 0, 'latest' => '0000-00-00'];
+                $senders[$key]['frequency']++;
+                if ($sheet->collectionDate > $senders[$key]['latest']) {
+                    $senders[$key]['latest'] = $sheet->collectionDate;
+                }
             }
         }
-        $names = array_values($senders);
-        usort($names, static fn (string $left, string $right): int => strcasecmp($left, $right));
+        $rankedSenders = array_values($senders);
+        $today = new DateTimeImmutable('today');
+        $score = static function (array $sender) use ($normalizedQuery, $today): int {
+            $exactMatch = $normalizedQuery !== '' && strtolower($sender['name']) === $normalizedQuery ? 1000000 : 0;
+            $frequency = min((int) $sender['frequency'], 9999) * 100;
+            $latest = DateTimeImmutable::createFromFormat('!Y-m-d', (string) $sender['latest']);
+            $ageDays = $latest instanceof DateTimeImmutable
+                ? max(0, (int) $today->diff($latest)->format('%r%a') * -1)
+                : 365;
+            $recency = max(0, 365 - min($ageDays, 365));
+            return $exactMatch + $frequency + $recency;
+        };
+        usort($rankedSenders, static function (array $left, array $right) use ($normalizedQuery, $score): int {
+            if ($normalizedQuery !== '') {
+                $scoreOrder = $score($right) <=> $score($left);
+                if ($scoreOrder !== 0) {
+                    return $scoreOrder;
+                }
+            }
+            return strcasecmp($left['name'], $right['name']) ?: strcmp($left['name'], $right['name']);
+        });
+        $names = array_map(static fn (array $sender): string => $sender['name'], $rankedSenders);
         return array_slice($names, 0, max(1, min($limit, 50)));
     }
 

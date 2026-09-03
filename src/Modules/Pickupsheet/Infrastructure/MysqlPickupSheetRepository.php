@@ -527,19 +527,35 @@ final class MysqlPickupSheetRepository implements PickupSheetRepository
     public function consignorSuggestions(string $query, int $limit): array
     {
         $this->ensureLifecycleSchema();
-        $statement = $this->connection->prepare(
-            'SELECT MIN(TRIM(ps.consignor)) AS consignor
-             FROM pickup_shipments ps
-             INNER JOIN pickup_sheets p ON p.id = ps.pickup_sheet_id
-             WHERE p.deleted_at IS NULL AND TRIM(ps.consignor) <> \'\'
-               AND (:query_empty = 1 OR LOCATE(:query_value, LOWER(TRIM(ps.consignor))) > 0)
-             GROUP BY LOWER(TRIM(ps.consignor))
-             ORDER BY LOWER(consignor) ASC, consignor ASC
-             LIMIT :limit',
-        );
-        $normalizedQuery = strtolower(trim($query));
-        $statement->bindValue(':query_empty', $normalizedQuery === '' ? 1 : 0, PDO::PARAM_INT);
-        $statement->bindValue(':query_value', $normalizedQuery);
+        $normalizedQuery = trim($query);
+        if ($normalizedQuery === '') {
+            $statement = $this->connection->prepare(
+                'SELECT MIN(TRIM(ps.consignor)) AS consignor
+                 FROM pickup_shipments ps
+                 INNER JOIN pickup_sheets p ON p.id = ps.pickup_sheet_id
+                 WHERE p.deleted_at IS NULL AND TRIM(ps.consignor) <> \'\'
+                 GROUP BY LOWER(TRIM(ps.consignor))
+                 ORDER BY LOWER(consignor) ASC, consignor ASC
+                 LIMIT :limit',
+            );
+        } else {
+            $statement = $this->connection->prepare(
+                'SELECT MIN(TRIM(ps.consignor)) AS consignor,
+                        (CASE WHEN LOWER(MIN(TRIM(ps.consignor))) = LOWER(:query_exact) THEN 1000000 ELSE 0 END
+                         + LEAST(COUNT(*), 9999) * 100
+                         + GREATEST(0, 365 - DATEDIFF(UTC_DATE(), MAX(p.collection_date)))) AS relevance_score
+                 FROM pickup_shipments ps
+                 INNER JOIN pickup_sheets p ON p.id = ps.pickup_sheet_id
+                 WHERE p.deleted_at IS NULL AND TRIM(ps.consignor) <> \'\'
+                   AND LEFT(LOWER(TRIM(ps.consignor)), CHAR_LENGTH(LOWER(:query_length))) = LOWER(:query_prefix)
+                 GROUP BY LOWER(TRIM(ps.consignor))
+                 ORDER BY relevance_score DESC, LOWER(consignor) ASC, consignor ASC
+                 LIMIT :limit',
+            );
+            $statement->bindValue(':query_exact', $normalizedQuery);
+            $statement->bindValue(':query_length', $normalizedQuery);
+            $statement->bindValue(':query_prefix', $normalizedQuery);
+        }
         $statement->bindValue(':limit', max(1, min($limit, 50)), PDO::PARAM_INT);
         $statement->execute();
 

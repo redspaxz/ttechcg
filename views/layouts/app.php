@@ -22,7 +22,7 @@ $analyticsPageView = $isPickupsheet ? 'disabled' : 'enabled';
     <title><?= $e($pageTitle ?? 'T&Tech Consulting Group') ?> | T&amp;Tech</title>
     <link rel="icon" href="<?= $e($assetBase) ?>/ttechcg-mark.svg" type="image/svg+xml">
     <link rel="stylesheet" href="<?= $e($assetBase) ?>/styles.css?v=20260902-customer-name-compact">
-    <script src="<?= $e($assetBase) ?>/app.js?v=20260903-consignor-az" defer></script>
+    <script src="<?= $e($assetBase) ?>/app.js?v=20260903-consignor-relevance" defer></script>
     <script src="<?= $e($assetBase) ?>/analytics.js?v=20260825-security-hardening" defer></script>
 </head>
 <body>

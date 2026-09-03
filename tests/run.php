@@ -338,7 +338,7 @@ usort($sortedConsignorSuggestions, static fn (string $left, string $right): int 
 $assert($consignorSuggestions === $sortedConsignorSuggestions && ($consignorSuggestions[0] ?? '') === 'Legacy Leader', 'Consignor suggestions should be listed in case-insensitive A-Z order.');
 $assert(count(array_filter($consignorSuggestions, static fn (string $name): bool => strtolower($name) === 'sender 01')) === 1, 'Consignor suggestions should group casing variants.');
 $assert(in_array('Legacy Leader', $consignorSuggestions, true), 'Consignor suggestions should include previously used names outside the performance-chart window.');
-$assert($senderPerformanceService->consignorSuggestions('02', 12) === ['Sender 02'], 'Consignor suggestions should search saved names by a case-insensitive substring.');
+$assert($senderPerformanceService->consignorSuggestions('Sender 02', 12) === ['Sender 02'], 'Consignor suggestions should match saved names by a case-insensitive prefix.');
 $senderPerformanceService->submit([
     'agent_name' => 'Alphabetical Agent',
     'collection_date' => (new DateTimeImmutable('today'))->format('Y-m-d'),
@@ -347,9 +347,11 @@ $senderPerformanceService->submit([
         ['consignor' => 'ACB Query Sender', 'awb_number' => '7200000001', 'destination' => 'DLA', 'amount' => '1000', 'pieces' => '1', 'weight_kg' => '0.5', 'checked_by' => 'Alphabetical Checker'],
         ['consignor' => 'ABC Query Sender', 'awb_number' => '7200000002', 'destination' => 'DLA', 'amount' => '1000', 'pieces' => '1', 'weight_kg' => '0.5', 'checked_by' => 'Alphabetical Checker'],
         ['consignor' => 'BAC Query Sender', 'awb_number' => '7200000003', 'destination' => 'DLA', 'amount' => '1000', 'pieces' => '1', 'weight_kg' => '0.5', 'checked_by' => 'Alphabetical Checker'],
+        ['consignor' => 'ACB Query Sender', 'awb_number' => '7200000004', 'destination' => 'DLA', 'amount' => '1000', 'pieces' => '1', 'weight_kg' => '0.5', 'checked_by' => 'Alphabetical Checker'],
     ],
 ]);
-$assert($senderPerformanceService->consignorSuggestions('query', 12) === ['ABC Query Sender', 'ACB Query Sender', 'BAC Query Sender'], 'A populated autocomplete query should return every visible match in strict A-Z order.');
+$assert($senderPerformanceService->consignorSuggestions('A', 12) === ['ACB Query Sender', 'ABC Query Sender'], 'Autocomplete should reject non-prefix matches and rank a more frequently used matching consignor first.');
+$assert($senderPerformanceService->consignorSuggestions('ABC Query Sender', 12) === ['ABC Query Sender'], 'An exact consignor query should receive the highest relevance priority.');
 $_SESSION['_demo_pickup_sheets'] = $existingDemoPickupSheets;
 
 $pickupConsentFailed = false;
@@ -2080,7 +2082,7 @@ $partnerSources = file_get_contents(dirname(__DIR__) . '/public/assets/partners/
 $assert(is_string($partnerSources) && str_contains($partnerSources, 'www.dhl.com/content/dam/dhl/global/core/images/logos/dhl-logo.svg'), 'The official DHL artwork source should be documented.');
 $assert(!str_contains($home, 'href="/dhl/pickupsheet"'), 'Pickupsheet should not be discoverable from the public site chrome or homepage.');
 $assert(str_contains($home, 'styles.css?v=20260902-customer-name-compact'), 'The compact customer-profile heading and prior Pickupsheet refinements should use a cache-safe stylesheet version.');
-$assert(str_contains($home, 'app.js?v=20260903-consignor-az'), 'Deterministic A-Z autocomplete and prior OWASP-aligned interactions should use a cache-safe script version.');
+$assert(str_contains($home, 'app.js?v=20260903-consignor-relevance'), 'Prefix-ranked autocomplete and prior OWASP-aligned interactions should use a cache-safe script version.');
 $assert(str_contains($home, 'analytics.js?v=20260825-security-hardening'), 'The current consent-aware Google Analytics loader should render on every page.');
 $assert(str_contains($home, 'data-analytics-accept'), 'The site should offer an explicit analytics acceptance control.');
 $assert(str_contains($home, 'data-analytics-decline'), 'The site should offer an explicit analytics decline control.');
@@ -2176,7 +2178,7 @@ $assert(str_contains($product, 'action="/dhl/pickupsheet"'), 'The pickup form sh
 $assert(str_contains($product, 'shipments[0][consignor]'), 'The pickup form should collect a consignor for each row.');
 $assert(str_contains($product, 'data-consignor-input') && str_contains($product, 'aria-autocomplete="list"'), 'The consignor field should expose an accessible suggestion popup while preserving text entry.');
 $assert(str_contains($product, 'data-search-endpoint="/dhl/pickupsheet/consignors/search"'), 'The consignor autocomplete should identify its protected saved-name search endpoint.');
-$assert(str_contains($product, '<option value="Acme &amp; Sons"></option>') && str_contains($product, 'listed A-Z, or enter a new name'), 'Consignor suggestions should be escaped safely and explain their order and manual-entry fallback.');
+$assert(str_contains($product, '<option value="Acme &amp; Sons"></option>') && str_contains($product, 'prioritize exact, frequent, and recent senders'), 'Consignor suggestions should be escaped safely and explain their relevance order and manual-entry fallback.');
 $assert(str_contains($product, 'shipments[0][awb_number]'), 'The pickup form should collect the AWB number from the PDF.');
 $assert(str_contains($product, 'shipments[0][destination]'), 'The pickup form should collect the destination code from the PDF.');
 $assert(str_contains($product, 'shipments[0][amount]'), 'The pickup form should collect cash amounts from the PDF.');
@@ -2346,8 +2348,9 @@ $assert(is_string($script) && str_contains($script, "event.target.matches('[data
 $assert(is_string($script) && str_contains($script, "document.querySelector('[data-login-method-form]')") && str_contains($script, "'X-Requested-With': 'XMLHttpRequest'"), 'Sign-in toggles should save asynchronously without refreshing account management.');
 $assert(is_string($script) && str_contains($script, 'consignorSuggestionNames') && str_contains($script, "input.removeAttribute('list')"), 'JavaScript should enhance the native consignor datalist without removing its no-script fallback from the HTML.');
 $assert(is_string($script) && str_contains($script, "event.key === 'ArrowDown'") && str_contains($script, "aria-activedescendant") && str_contains($script, 'selectConsignorSuggestion'), 'The animated consignor autocomplete should support accessible keyboard navigation and selection.');
-$assert(is_string($script) && str_contains($script, "if (query === '')") && str_contains($script, '.filter((name) => consignorSortKey(name).includes(query))') && str_contains($script, '.sort(compareConsignorSuggestions)') && str_contains($script, '.slice(0, 12)'), 'The consignor popup should stay closed for empty input, then alphabetize first-letter matches before keeping the visible choice list bounded.');
+$assert(is_string($script) && str_contains($script, "if (query === '')") && str_contains($script, '.filter((name) => consignorSortKey(name).startsWith(query))') && str_contains($script, 'compareConsignorRelevance') && str_contains($script, 'matches.splice(12)'), 'The consignor popup should stay closed for empty input, enforce prefix matching, rank immediate matches, and keep the visible choice list bounded.');
 $assert(is_string($script) && str_contains($script, ".normalize('NFKD')") && str_contains($script, "toLocaleLowerCase('en')") && str_contains($script, 'if (leftKey < rightKey) return -1;'), 'Autocomplete ordering should normalize names and compare deterministic A-Z keys independently of the browser locale.');
+$assert(is_string($script) && str_contains($script, 'showConsignorSuggestions(input, suggestions, true)') && !str_contains($script, '[...consignorSuggestionNames, ...suggestions]'), 'AJAX autocomplete should preserve the server relevance ranking instead of merging it back into an alphabetical cache.');
 $assert(is_string($script) && str_contains($script, 'consignorSearchEndpoint') && str_contains($script, "endpoint.searchParams.set('q', query)") && str_contains($script, 'consignorSearchGeneration') && str_contains($script, "setAttribute('aria-busy'") && str_contains($script, 'option.animate(') && str_contains($script, '}, 140);'), 'The consignor autocomplete should progressively debounce protected AJAX searches, reject stale results, expose loading state, and animate refreshed options with JavaScript.');
 $assert(is_string($script) && !str_contains($script, 'scrollIntoView'), 'AJAX pagination should update in place without moving the user\'s viewport.');
 
@@ -2413,8 +2416,9 @@ $assert(str_contains($pickupMysqlRepository, 'pickup_sheet_lifecycle_audit'), 'P
 $assert(str_contains($pickupMysqlRepository, 'GROUP BY LOWER(TRIM(ps.consignor))'), 'MySQL sender performance should group sender name casing consistently.');
 $assert(str_contains($pickupMysqlRepository, 'p.collection_date >= :minimum_date') && str_contains($pickupMysqlRepository, 'p.collection_date <= :maximum_date'), 'MySQL sender performance should use a bounded rolling collection-date window.');
 $assert(str_contains($pickupMysqlRepository, 'ORDER BY shipment_count DESC, sender ASC'), 'MySQL sender performance should rank the most frequent senders first with deterministic ties.');
-$assert(str_contains($pickupMysqlRepository, 'public function consignorSuggestions') && str_contains($pickupMysqlRepository, 'ORDER BY LOWER(consignor) ASC, consignor ASC'), 'MySQL should provide deterministic case-insensitive alphabetical consignor suggestions.');
-$assert(str_contains($pickupMysqlRepository, 'LOCATE(:query_value, LOWER(TRIM(ps.consignor))) > 0'), 'MySQL consignor autocomplete should safely search normalized saved names by substring.');
+$assert(str_contains($pickupMysqlRepository, 'public function consignorSuggestions') && str_contains($pickupMysqlRepository, 'ORDER BY relevance_score DESC, LOWER(consignor) ASC, consignor ASC'), 'MySQL should rank matching consignors by relevance with deterministic alphabetical ties.');
+$assert(str_contains($pickupMysqlRepository, 'LEFT(LOWER(TRIM(ps.consignor)), CHAR_LENGTH(LOWER(:query_length))) = LOWER(:query_prefix)'), 'MySQL consignor autocomplete should enforce a normalized prefix match without wildcard input.');
+$assert(str_contains($pickupMysqlRepository, 'LEAST(COUNT(*), 9999) * 100') && str_contains($pickupMysqlRepository, 'DATEDIFF(UTC_DATE(), MAX(p.collection_date))'), 'MySQL relevance scoring should safely combine exact-match, bounded frequency, and recency signals.');
 $assert(str_contains($pickupMysqlRepository, 'p.deleted_at IS NULL') && str_contains($pickupMysqlRepository, "TRIM(ps.consignor) <> \\'\\'"), 'Consignor suggestions should exclude deleted sheets and blank names.');
 $sessionActivityMigration = file_get_contents(dirname(__DIR__) . '/database/migrations/010_create_pickup_records_session_activity.sql');
 $assert(is_string($sessionActivityMigration) && str_contains($sessionActivityMigration, 'CREATE TABLE IF NOT EXISTS pickup_records_session_activity'), 'MySQL should persist successful staff session activity idempotently.');
