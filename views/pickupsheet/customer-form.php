@@ -13,6 +13,8 @@ $canEditCustomerNames = (bool) ($canEditCustomerNames ?? false);
 $canAdjustRewards = (bool) ($canAdjustRewards ?? false);
 $value = static fn (string $field, mixed $fallback = ''): mixed => array_key_exists($field, $old) ? $old[$field] : $fallback;
 $status = (string) $value('status', $customer?->status ?? 'lead');
+$phoneValue = (string) $value('phone', $customer?->phone ?? '');
+$phoneValue = preg_replace('/^(?:\+237|00237)[\s.-]*/', '', trim($phoneValue)) ?? '';
 ?>
 <section class="pickup-view-workspace pickup-crm-workspace">
     <div class="container pickup-workspace-header">
@@ -84,16 +86,16 @@ $status = (string) $value('status', $customer?->status ?? 'lead');
                 <input type="hidden" name="_token" value="<?= $e($csrfToken) ?>">
                 <input type="hidden" name="customer_key" value="<?= $e($customer?->customerKey ?? '') ?>">
                 <fieldset><legend>Organization</legend>
-                    <label class="pickup-field pickup-field-wide"><span>Customer or organization name</span><input name="display_name" value="<?= $e($value('display_name', $customer?->displayName ?? '')) ?>" maxlength="160" required autocomplete="organization" <?= $canEditCustomerNames ? '' : 'readonly aria-readonly="true"' ?>><?php if (!$canEditCustomerNames): ?><small>Customer names can only be changed by an administrator.</small><?php endif; ?></label>
+                    <label class="pickup-field pickup-field-wide"><span>Customer or organization name</span><input name="display_name" value="<?= $e($value('display_name', $customer?->displayName ?? '')) ?>" maxlength="160" required autocomplete="organization" <?= $canEditCustomerNames ? '' : 'readonly aria-readonly="true"' ?>><?php if (!$canEditCustomerNames): ?><small>Customer names can only be changed by an administrator.</small><?php elseif ($customer !== null): ?><small>Changing this name also updates the consignor name on existing pickup sheets.</small><?php endif; ?></label>
                     <label class="pickup-field"><span>Relationship status</span><select name="status" required><?php foreach (['lead' => 'Lead', 'active' => 'Active', 'attention' => 'Needs attention', 'inactive' => 'Inactive'] as $option => $label): ?><option value="<?= $e($option) ?>" <?= $status === $option ? 'selected' : '' ?>><?= $e($label) ?></option><?php endforeach; ?></select></label>
-                    <label class="pickup-field"><span>Country</span><select name="country_code"><option value="">Not specified</option><option value="CM" <?= $value('country_code', $customer?->countryCode ?? '') === 'CM' ? 'selected' : '' ?>>Cameroon</option><option value="NG" <?= $value('country_code', $customer?->countryCode ?? '') === 'NG' ? 'selected' : '' ?>>Nigeria</option></select></label>
+                    <label class="pickup-field"><span>Country</span><input value="Cameroon" readonly aria-readonly="true"><input type="hidden" name="country_code" value="CM"><small>Cameroon is the default customer country.</small></label>
                     <label class="pickup-field"><span>City</span><input name="city" value="<?= $e($value('city', $customer?->city ?? '')) ?>" maxlength="100" autocomplete="address-level2"></label>
                     <label class="pickup-field pickup-field-wide"><span>Address</span><input name="address" value="<?= $e($value('address', $customer?->address ?? '')) ?>" maxlength="255" autocomplete="street-address"></label>
                 </fieldset>
                 <fieldset><legend>Primary contact</legend>
                     <label class="pickup-field"><span>Contact name</span><input name="contact_name" value="<?= $e($value('contact_name', $customer?->contactName ?? '')) ?>" maxlength="100" autocomplete="name" <?= $canEditCustomerNames ? '' : 'readonly aria-readonly="true"' ?>></label>
                     <label class="pickup-field"><span>Email</span><input type="email" name="email" value="<?= $e($value('email', $customer?->email ?? '')) ?>" maxlength="254" autocomplete="email"></label>
-                    <label class="pickup-field"><span>Phone</span><input type="tel" name="phone" value="<?= $e($value('phone', $customer?->phone ?? '')) ?>" maxlength="32" autocomplete="tel"></label>
+                    <label class="pickup-field"><span>Phone</span><div class="pickup-customer-phone"><span aria-label="Cameroon calling code">+237</span><input type="tel" name="phone" value="<?= $e($phoneValue) ?>" maxlength="20" inputmode="tel" autocomplete="tel-national" placeholder="6XX XXX XXX"></div><small>Enter the 9-digit local number. The country calling code is added automatically.</small></label>
                     <label class="pickup-field"><span>Next follow-up</span><input type="date" name="next_follow_up_on" value="<?= $e($value('next_follow_up_on', $customer?->nextFollowUpOn ?? '')) ?>"></label>
                     <label class="pickup-field pickup-field-wide"><span>Internal notes</span><textarea name="notes" maxlength="2000" rows="7" placeholder="Relationship context, preferences, follow-up outcome, or service opportunity"><?= $e($value('notes', $customer?->notes ?? '')) ?></textarea><small>Visible to operators and administrators.</small></label>
                 </fieldset>
@@ -103,7 +105,7 @@ $status = (string) $value('status', $customer?->status ?? 'lead');
             <aside class="pickup-customer-context">
                 <h2>Customer context</h2>
                 <?php if ($customer === null): ?><p>Create a lead or customer profile. If the organization later appears as a shipment consignor, its shipment metrics are connected automatically by normalized name.</p><?php else: ?>
-                    <dl><div><dt>Profile source</dt><dd><?= $customer->source === 'shipment' ? 'Shipment consignor' : 'Manual entry' ?></dd></div><div><dt>Updated</dt><dd><?= $e($customer->updatedAt ?? 'Not available') ?> UTC</dd></div><div><dt>Customer ID</dt><dd><?= $e(substr($customer->customerKey, 0, 12)) ?></dd></div></dl>
+                    <dl><div><dt>Assigned to</dt><dd>Administrator</dd></div><div><dt>Profile source</dt><dd><?= $customer->source === 'shipment' ? 'Shipment consignor' : 'Manual entry' ?></dd></div><div><dt>Updated</dt><dd><?= $e($customer->updatedAt ?? 'Not available') ?> UTC</dd></div><div><dt>Customer ID</dt><dd><?= $e(substr($customer->customerKey, 0, 12)) ?></dd></div></dl>
                     <?php if ($customer->email !== ''): ?><a href="mailto:<?= $e($customer->email) ?>">Email customer</a><?php endif; ?>
                     <?php if ($customer->phone !== ''): ?><a href="tel:<?= $e(preg_replace('/[^+0-9]/', '', $customer->phone) ?? '') ?>">Call customer</a><?php endif; ?>
                 <?php endif; ?>

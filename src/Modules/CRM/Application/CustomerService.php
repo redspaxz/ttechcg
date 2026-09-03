@@ -12,6 +12,8 @@ use InvalidArgumentException;
 final class CustomerService
 {
     private const STATUSES = ['lead', 'active', 'attention', 'inactive'];
+    private const DEFAULT_COUNTRY_CODE = 'CM';
+    private const COUNTRY_CALLING_CODES = ['CM' => '+237'];
 
     public function __construct(private readonly CustomerRepository $repository)
     {
@@ -186,7 +188,8 @@ final class CustomerService
         $phone = $this->text($input['phone'] ?? '', 32);
         $address = $this->text($input['address'] ?? '', 255);
         $city = $this->text($input['city'] ?? '', 100);
-        $countryCode = strtoupper($this->text($input['country_code'] ?? '', 2));
+        $countryCode = strtoupper($this->text($input['country_code'] ?? self::DEFAULT_COUNTRY_CODE, 2));
+        $countryCode = $countryCode === '' ? self::DEFAULT_COUNTRY_CODE : $countryCode;
         $status = strtolower($this->text($input['status'] ?? 'active', 20));
         $notes = $this->multilineText($input['notes'] ?? '', 2000);
         $nextFollowUpOn = $this->date($input['next_follow_up_on'] ?? '');
@@ -197,12 +200,10 @@ final class CustomerService
         if ($email !== '' && filter_var($email, FILTER_VALIDATE_EMAIL) === false) {
             throw new InvalidArgumentException('Provide a valid customer email address.');
         }
-        if ($phone !== '' && preg_match('/^[+0-9() .-]{7,32}$/', $phone) !== 1) {
-            throw new InvalidArgumentException('Provide a valid customer phone number.');
+        if (!isset(self::COUNTRY_CALLING_CODES[$countryCode])) {
+            throw new InvalidArgumentException('Customer country must be Cameroon.');
         }
-        if ($countryCode !== '' && !in_array($countryCode, ['CM', 'NG'], true)) {
-            throw new InvalidArgumentException('Customer country must be Cameroon or Nigeria.');
-        }
+        $phone = $this->phone($phone, $countryCode);
         if (!in_array($status, self::STATUSES, true)) {
             throw new InvalidArgumentException('Select a valid customer status.');
         }
@@ -266,6 +267,26 @@ final class CustomerService
             throw new InvalidArgumentException('Customer notes are invalid or exceed 2,000 characters.');
         }
         return $text;
+    }
+
+    private function phone(string $value, string $countryCode): string
+    {
+        if ($value === '') {
+            return '';
+        }
+
+        $callingCode = self::COUNTRY_CALLING_CODES[$countryCode];
+        $callingDigits = preg_quote(ltrim($callingCode, '+'), '/');
+        $localNumber = preg_replace('/^(?:\+' . $callingDigits . '|00' . $callingDigits . ')[\s.-]*/', '', trim($value)) ?? '';
+        if (preg_match('/^[0-9() .-]+$/', $localNumber) !== 1) {
+            throw new InvalidArgumentException('Enter the customer phone number without the country calling code.');
+        }
+        $digits = preg_replace('/\D+/', '', $localNumber) ?? '';
+        if (strlen($digits) !== 9) {
+            throw new InvalidArgumentException('Provide a valid 9-digit Cameroon phone number.');
+        }
+
+        return $callingCode . ' ' . implode(' ', str_split($digits, 3));
     }
 
     private function date(mixed $value): ?string

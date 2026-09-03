@@ -170,15 +170,23 @@ final class CustomerController
         $_SESSION['_crm_old'] = $input;
 
         try {
+            $previousDisplayName = $canEditNames && preg_match('/^[a-f0-9]{64}$/', $key) === 1
+                ? $this->service->find($key)?->displayName
+                : null;
             $saved = $canEditNames
                 ? $this->service->save($key === '' ? null : $key, $input, $this->actorId($principal))
                 : $this->service->updateDetailsWithoutNames($key, $input, $this->actorId($principal));
+            $nameChanged = is_string($previousDisplayName)
+                && trim($previousDisplayName) !== trim($saved->displayName);
             unset($_SESSION['_crm_old'], $_SESSION['_crm_errors']);
-            $_SESSION['_crm_flash'] = 'Customer profile saved.';
+            $_SESSION['_crm_flash'] = $nameChanged
+                ? 'Customer profile and existing pickup-sheet consignor names updated.'
+                : 'Customer profile saved.';
             $this->log($request, $principal, 'pickupsheet.crm_customer_save', 'accepted', [
                 'resource_id' => substr($saved->customerKey, 0, 24),
                 'customer_status' => $saved->status,
                 'source' => $saved->source,
+                'organization_name_changed' => $nameChanged,
             ]);
             return Response::redirect($request->basePath . '/dhl/pickupsheet/customers/edit?customer=' . rawurlencode($saved->customerKey));
         } catch (InvalidArgumentException $exception) {

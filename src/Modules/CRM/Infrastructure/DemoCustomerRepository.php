@@ -8,6 +8,7 @@ use App\Modules\CRM\Domain\CustomerProfile;
 use App\Modules\CRM\Domain\CustomerRepository;
 use App\Modules\Pickupsheet\Domain\PickupSheet;
 use App\Modules\Pickupsheet\Domain\PickupSheetRepository;
+use App\Modules\Pickupsheet\Domain\PickupShipment;
 use InvalidArgumentException;
 use RuntimeException;
 
@@ -23,8 +24,15 @@ final class DemoCustomerRepository implements CustomerRepository
     public function synchronizeFromShipments(): void
     {
         $profiles = $this->profiles();
+        $profileNames = [];
+        foreach ($profiles as $profileKey => $profile) {
+            if (is_array($profile)) {
+                $profiles[$profileKey]['countryCode'] = 'CM';
+                $profileNames[$this->key((string) ($profile['displayName'] ?? ''))] = true;
+            }
+        }
         foreach ($this->metrics() as $key => $metric) {
-            if (isset($profiles[$key])) {
+            if (isset($profiles[$key]) || isset($profileNames[$key])) {
                 continue;
             }
             $profiles[$key] = [
@@ -36,7 +44,7 @@ final class DemoCustomerRepository implements CustomerRepository
                 'phone' => '',
                 'address' => '',
                 'city' => '',
-                'countryCode' => '',
+                'countryCode' => 'CM',
                 'status' => 'active',
                 'notes' => '',
                 'nextFollowUpOn' => null,
@@ -44,6 +52,7 @@ final class DemoCustomerRepository implements CustomerRepository
                 'createdAt' => gmdate('Y-m-d H:i:s'),
                 'updatedAt' => gmdate('Y-m-d H:i:s'),
             ];
+            $profileNames[$key] = true;
         }
         $_SESSION[self::SESSION_KEY] = $profiles;
     }
@@ -74,7 +83,10 @@ final class DemoCustomerRepository implements CustomerRepository
 
         return [
             'items' => array_map(
-                fn (array $profile): CustomerProfile => $this->profile($profile, $metrics[$profile['customerKey']] ?? []),
+                fn (array $profile): CustomerProfile => $this->profile(
+                    $profile,
+                    $metrics[$this->key((string) ($profile['displayName'] ?? ''))] ?? [],
+                ),
                 array_slice($profiles, max(0, $offset), max(1, $limit)),
             ),
             'totalRecords' => count($profiles),
@@ -98,15 +110,22 @@ final class DemoCustomerRepository implements CustomerRepository
     public function find(string $customerKey): ?CustomerProfile
     {
         $profile = $this->profiles()[$customerKey] ?? null;
-        return is_array($profile) ? $this->profile($profile, $this->metrics()[$customerKey] ?? []) : null;
+        return is_array($profile)
+            ? $this->profile($profile, $this->metrics()[$this->key((string) ($profile['displayName'] ?? ''))] ?? [])
+            : null;
     }
 
     public function recentShipments(string $customerKey, int $limit, int $offset = 0): array
     {
+        $profile = $this->profiles()[$customerKey] ?? null;
+        if (!is_array($profile)) {
+            return [];
+        }
+        $profileNameKey = $this->key((string) ($profile['displayName'] ?? ''));
         $shipments = [];
         foreach ($this->pickupSheets->recent(PHP_INT_MAX) as $sheet) {
             foreach ($sheet->shipments as $shipment) {
-                if ($this->key($shipment->consignor) !== $customerKey) {
+                if ($this->key($shipment->consignor) !== $profileNameKey) {
                     continue;
                 }
                 $shipments[] = [
@@ -132,6 +151,21 @@ final class DemoCustomerRepository implements CustomerRepository
     {
         $profiles = $this->profiles();
         $existing = $profiles[$customer->customerKey] ?? null;
+        foreach ($profiles as $key => $profile) {
+            if ($key !== $customer->customerKey
+                && is_array($profile)
+                && $this->key((string) ($profile['displayName'] ?? '')) === $this->key($customer->displayName)) {
+                throw new InvalidArgumentException('A customer profile already uses this organization name.');
+            }
+        }
+        if (is_array($existing)
+            && trim((string) ($existing['displayName'] ?? '')) !== trim($customer->displayName)) {
+            $this->renameExistingShipments(
+                (string) ($existing['displayName'] ?? ''),
+                $customer->displayName,
+                $actorId,
+            );
+        }
         $now = gmdate('Y-m-d H:i:s');
         $profiles[$customer->customerKey] = [
             'id' => is_array($existing) ? (int) $existing['id'] : count($profiles) + 1,
@@ -152,6 +186,52 @@ final class DemoCustomerRepository implements CustomerRepository
         ];
         $_SESSION[self::SESSION_KEY] = $profiles;
         return $this->find($customer->customerKey) ?? $customer;
+    }
+
+    private function renameExistingShipments(string $previousName, string $newName, string $actorId): void
+    {
+        $previousKey = $this->key($previousName);
+        foreach ($this->pickupSheets->recent(PHP_INT_MAX) as $sheet) {
+            if (!$sheet instanceof PickupSheet) {
+                continue;
+            }
+            $changed = false;
+            $shipments = [];
+            foreach ($sheet->shipments as $shipment) {
+                if ($this->key($shipment->consignor) !== $previousKey) {
+                    $shipments[] = $shipment;
+                    continue;
+                }
+                $changed = true;
+                $shipments[] = new PickupShipment(
+                    $shipment->lineNumber,
+                    $newName,
+                    $shipment->awbNumber,
+                    $shipment->destination,
+                    $shipment->amountXaf,
+                    $shipment->pieces,
+                    $shipment->weightKg,
+                    $shipment->collectionTime,
+                    $shipment->checkedBy,
+                );
+            }
+            if (!$changed) {
+                continue;
+            }
+            $this->pickupSheets->update(new PickupSheet(
+                $sheet->id,
+                $sheet->referenceNumber,
+                $sheet->agentName,
+                $sheet->collectionDate,
+                $shipments,
+                $sheet->totalCashReceivedXaf,
+                $sheet->privacyConsentAt,
+                $sheet->privacyNoticeVersion,
+                $sheet->createdAt,
+                $sheet->status,
+                $sheet->paidAt,
+            ), $actorId);
+        }
     }
 
     public function rewardAdjustments(string $customerKey, int $limit): array
@@ -272,7 +352,7 @@ final class DemoCustomerRepository implements CustomerRepository
             (string) ($profile['phone'] ?? ''),
             (string) ($profile['address'] ?? ''),
             (string) ($profile['city'] ?? ''),
-            (string) ($profile['countryCode'] ?? ''),
+            (string) ($profile['countryCode'] ?? 'CM'),
             (string) ($profile['status'] ?? 'active'),
             (string) ($profile['notes'] ?? ''),
             isset($profile['nextFollowUpOn']) ? (string) $profile['nextFollowUpOn'] : null,

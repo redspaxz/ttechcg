@@ -2528,6 +2528,9 @@ button, a, input, select, textarea { -webkit-tap-highlight-color: transparent; }
 .pickup-customer-form textarea { width: 100%; min-height: 48px; padding: 11px 13px; border: 1px solid rgba(69, 50, 0, 0.38); border-radius: 0; background: #fff; color: #241b00; font: inherit; }
 .pickup-customer-form textarea { min-height: 146px; resize: vertical; }
 .pickup-customer-form input[readonly] { border-style: dashed; background: #f2ecd2; color: #655000; cursor: not-allowed; }
+.pickup-customer-phone { display: grid; grid-template-columns: auto minmax(0, 1fr); align-items: stretch; }
+.pickup-customer-phone > span { display: inline-flex; align-items: center; min-height: 48px; padding: 0 13px; border: 1px solid rgba(69, 50, 0, 0.38); border-right: 0; background: #f2ecd2; color: #493800; font-weight: 850; }
+.pickup-customer-form .pickup-customer-phone > input { min-width: 0; }
 .pickup-crm-filter input:focus,
 .pickup-crm-filter select:focus,
 .pickup-customer-form input:focus,

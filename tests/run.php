@@ -1003,6 +1003,38 @@ $assert($controllerResponse->status() === 303, 'An incorrect CAPTCHA should retu
 $assert(str_contains((string) ($_SESSION['_errors'][0] ?? ''), 'human verification'), 'An incorrect CAPTCHA should produce a useful form error.');
 
 $_SESSION = [];
+$renamePickupRepository = new DemoPickupSheetRepository();
+$renamePickupService = new PickupSheetService($renamePickupRepository);
+$renameSheet = $renamePickupService->submit([
+    'agent_name' => 'CRM Rename Test Agent',
+    'collection_date' => '2026-09-01',
+    'privacy_consent' => '1',
+    'shipments' => [[
+        'consignor' => 'Original Customer Name',
+        'awb_number' => '1234567890',
+        'destination' => 'DLA',
+        'amount' => '25000',
+        'pieces' => '1',
+        'weight_kg' => '2.5',
+        'checked_by' => 'CRM Rename Checker',
+    ]],
+]);
+$renameCustomerService = new CustomerService(new DemoCustomerRepository($renamePickupRepository));
+$renameCustomerKey = hash('sha256', strtolower('Original Customer Name'));
+$renamedCustomer = $renameCustomerService->save($renameCustomerKey, [
+    'display_name' => 'Renamed Customer Company',
+    'contact_name' => 'Customer Contact',
+    'phone' => '670000000',
+    'status' => 'active',
+], str_repeat('a', 24));
+$renamedSheet = $renamePickupService->findByReference($renameSheet->referenceNumber);
+$assert($renamedSheet?->shipments[0]->consignor === 'Renamed Customer Company', 'Changing a CRM organization name should update matching consignors on existing pickup sheets.');
+$assert($renamedCustomer->customerKey === $renameCustomerKey && $renamedCustomer->shipmentCount === 1 && $renamedCustomer->totalCashXaf === 25000, 'A renamed CRM profile should retain its stable identity and linked shipment metrics.');
+$assert($renamedCustomer->countryCode === 'CM' && $renamedCustomer->phone === '+237 670 000 000', 'CRM profiles should default to Cameroon and automatically add +237 to a local phone number.');
+$assert(($renameCustomerService->recentShipments($renameCustomerKey)[0]['referenceNumber'] ?? '') === $renameSheet->referenceNumber, 'A renamed CRM profile should retain its existing shipment history.');
+$assert($renamePickupService->consignorSuggestions('Ren', 10) === ['Renamed Customer Company'], 'Consignor autocomplete should immediately use a customer name changed in CRM.');
+
+$_SESSION = [];
 $pickupCsrf = new Csrf();
 $pickupCaptcha = new Captcha('pickupsheet-test');
 $loginMethodSettings = new LoginMethodSettingsService(
@@ -1658,7 +1690,7 @@ $saveCustomer = $customerController->save(new Request('POST', '/dhl/pickupsheet/
     'display_name' => 'Controller Client',
     'contact_name' => 'Camille Customer',
     'email' => 'camille@example.com',
-    'phone' => '+237 670 000 000',
+    'phone' => '670 000 000',
     'address' => 'Commercial Avenue',
     'city' => 'Bamenda',
     'country_code' => 'CM',
@@ -1668,7 +1700,10 @@ $saveCustomer = $customerController->save(new Request('POST', '/dhl/pickupsheet/
 ]));
 $assert($saveCustomer->status() === 303 && str_contains((string) ($saveCustomer->headers()['Location'] ?? ''), $customerKey), 'An administrator should save an enriched CRM customer profile.');
 $updatedCustomerProfile = $customerController->edit(new Request('GET', '/dhl/pickupsheet/customers/edit', ['customer' => $customerKey]));
-$assert(str_contains($updatedCustomerProfile->body(), 'Camille Customer') && str_contains($updatedCustomerProfile->body(), 'camille@example.com'), 'Saved CRM contact details should persist.');
+$assert(str_contains($updatedCustomerProfile->body(), 'Camille Customer') && str_contains($updatedCustomerProfile->body(), 'camille@example.com') && str_contains($updatedCustomerProfile->body(), '670 000 000'), 'Saved CRM contact details should persist.');
+$assert(str_contains($updatedCustomerProfile->body(), 'value="Cameroon"') && str_contains($updatedCustomerProfile->body(), 'value="CM"') && !str_contains($updatedCustomerProfile->body(), '>Nigeria<'), 'CRM customer profiles should default to Cameroon as their only country option.');
+$assert(str_contains($updatedCustomerProfile->body(), 'Cameroon calling code') && str_contains($updatedCustomerProfile->body(), '+237') && str_contains($updatedCustomerProfile->body(), 'calling code is added automatically'), 'CRM phone entry should show the automatic Cameroon calling code beside the local number.');
+$assert(str_contains($updatedCustomerProfile->body(), '<dt>Assigned to</dt><dd>Administrator</dd>'), 'Every CRM customer profile should be assigned to the administrator role.');
 $assert(str_contains($updatedCustomerProfile->body(), 'Needs attention') && str_contains($updatedCustomerProfile->body(), 'Confirm the next collection schedule.'), 'Saved CRM relationship status and notes should persist.');
 $newCustomerPage = $customerController->create(new Request('GET', '/dhl/pickupsheet/customers/new'));
 $assert($newCustomerPage->status() === 200 && str_contains($newCustomerPage->body(), 'Add customer') && str_contains($newCustomerPage->body(), 'New relationship'), 'Administrators should be able to open a prospective-customer form.');
@@ -1748,7 +1783,7 @@ $operatorCustomerSave = $customerController->save(new Request('POST', '/dhl/pick
     'display_name' => 'Forged Organization Name',
     'contact_name' => 'Forged Contact Name',
     'email' => 'operator-updated@example.com',
-    'phone' => '+237 699 111 222',
+    'phone' => '699 111 222',
     'address' => 'Bonapriso Business District',
     'city' => 'Douala',
     'country_code' => 'CM',
@@ -1759,7 +1794,7 @@ $operatorCustomerSave = $customerController->save(new Request('POST', '/dhl/pick
 $operatorUpdatedProfile = $customerController->edit(new Request('GET', '/dhl/pickupsheet/customers/edit', ['customer' => $customerKey]));
 $assert($operatorCustomerSave->status() === 303, 'An operator should save changes to an existing customer profile.');
 $assert(str_contains($operatorUpdatedProfile->body(), 'Controller Client') && str_contains($operatorUpdatedProfile->body(), 'Camille Customer') && !str_contains($operatorUpdatedProfile->body(), 'Forged Organization Name') && !str_contains($operatorUpdatedProfile->body(), 'Forged Contact Name'), 'The server must preserve both customer and contact names when an operator submits forged name fields.');
-$assert(str_contains($operatorUpdatedProfile->body(), 'operator-updated@example.com') && str_contains($operatorUpdatedProfile->body(), '+237 699 111 222') && str_contains($operatorUpdatedProfile->body(), 'Bonapriso Business District') && str_contains($operatorUpdatedProfile->body(), 'Douala') && str_contains($operatorUpdatedProfile->body(), 'Operator updated the customer profile details.') && str_contains($operatorUpdatedProfile->body(), '2026-09-15'), 'An operator should update all permitted customer profile details.');
+$assert(str_contains($operatorUpdatedProfile->body(), 'operator-updated@example.com') && str_contains($operatorUpdatedProfile->body(), '+237') && str_contains($operatorUpdatedProfile->body(), '699 111 222') && str_contains($operatorUpdatedProfile->body(), 'Bonapriso Business District') && str_contains($operatorUpdatedProfile->body(), 'Douala') && str_contains($operatorUpdatedProfile->body(), 'Operator updated the customer profile details.') && str_contains($operatorUpdatedProfile->body(), '2026-09-15'), 'An operator should update all permitted customer profile details.');
 $recordsSession->login($adminPrincipal);
 $adminUsers = $pickupController->users(new Request('GET', '/dhl/pickupsheet/submissions/users', [], [], '', $recordsServer));
 $assert($adminUsers->status() === 200, 'An administrator should open records-user management.');
@@ -2239,7 +2274,7 @@ $assert(str_contains($privacy, 'Access token is used only to complete the handof
 $assert(str_contains($privacy, 'successful staff login, last-activity, and logout times'), 'The privacy notice should disclose administrative login-frequency and session-duration monitoring.');
 $assert(str_contains($privacy, 'event action, result, protected route, request identifier, and pseudonymous client identifier'), 'The privacy notice should disclose the detailed user audit fields.');
 $assert(str_contains($privacy, 'Shipment consignor names are synchronized into the restricted customer directory'), 'The privacy notice should disclose shipment-to-CRM synchronization.');
-$assert(str_contains($privacy, 'Operators and administrators may maintain business email, phone, address, city') && str_contains($privacy, 'profile creation, name changes, and manual reward controls remain limited to administrators'), 'The privacy notice should disclose CRM fields and the operator-versus-administrator access boundary.');
+$assert(str_contains($privacy, 'Operators and administrators may maintain business email, Cameroon phone number, address, city') && str_contains($privacy, 'profile creation, name changes, and manual reward controls remain limited to administrators'), 'The privacy notice should disclose CRM fields and the operator-versus-administrator access boundary.');
 $assert(str_contains($privacy, '10 points per kilogram shipped') && str_contains($privacy, 'required reason, UTC time, and pseudonymous administrator identifier'), 'The privacy notice should disclose weight-based reward points and adjustment-ledger fields.');
 $assert(str_contains($privacy, 'passphrase-encrypted backups') && str_contains($privacy, 'environment secrets and plaintext passwords are excluded'), 'The privacy notice should disclose disaster-recovery processing and its secret boundary.');
 $assert(str_contains($privacy, 'authenticator secrets are encrypted at rest') && str_contains($privacy, 'recovery codes are stored only as keyed hashes'), 'The privacy notice should disclose local 2FA storage protections.');
@@ -2451,8 +2486,14 @@ $assert(is_string($securityEventRepository) && str_contains($securityEventReposi
 $customerMigration = file_get_contents(dirname(__DIR__) . '/database/migrations/012_create_pickup_customers.sql');
 $assert(is_string($customerMigration) && str_contains($customerMigration, 'CREATE TABLE IF NOT EXISTS pickup_customers'), 'MySQL should create CRM customer profiles idempotently.');
 $assert(is_string($customerMigration) && str_contains($customerMigration, 'next_follow_up_on DATE') && str_contains($customerMigration, 'updated_by CHAR(24)'), 'CRM storage should support follow-up scheduling and pseudonymous administrator attribution.');
+$customerAssignmentMigration = file_get_contents(dirname(__DIR__) . '/database/migrations/016_assign_pickup_customers.sql');
+$assert(is_string($customerAssignmentMigration) && str_contains($customerAssignmentMigration, 'assigned_role VARCHAR(20)') && str_contains($customerAssignmentMigration, "SET country_code = 'CM', assigned_role = 'admin'") && str_contains($customerAssignmentMigration, "DEFAULT 'CM'"), 'CRM migration 016 should assign every customer to administrators and enforce Cameroon as the default country.');
 $customerRepositorySource = file_get_contents(dirname(__DIR__) . '/src/Modules/CRM/Infrastructure/MysqlCustomerRepository.php');
 $assert(is_string($customerRepositorySource) && str_contains($customerRepositorySource, 'SHA2(LOWER(TRIM(ps.consignor)), 256)'), 'CRM should connect normalized shipment consignors to customer profiles.');
+$assert(is_string($customerRepositorySource) && str_contains($customerRepositorySource, 'UPDATE pickup_shipments') && str_contains($customerRepositorySource, 'SET consignor = :display_name') && str_contains($customerRepositorySource, 'beginTransaction()'), 'MySQL CRM name changes should update existing shipment consignors inside a transaction.');
+$assert(is_string($customerRepositorySource) && str_contains($customerRepositorySource, 'metrics.customer_name = LOWER(TRIM(c.display_name))') && str_contains($customerRepositorySource, 'existing_customer.display_name'), 'CRM metrics and synchronization should continue resolving a stable customer profile after its name changes.');
+$assert(is_string($customerRepositorySource) && str_contains($customerRepositorySource, "SET country_code = 'CM'") && str_contains($customerRepositorySource, "'CM', 'active', 'shipment'"), 'Existing and shipment-synchronized CRM profiles should be assigned to Cameroon automatically.');
+$assert(is_string($customerRepositorySource) && str_contains($customerRepositorySource, "assigned_role = 'admin'") && str_contains($customerRepositorySource, "DEFAULT 'admin' AFTER source"), 'Existing and new CRM profiles should be assigned persistently to the administrator role.');
 $assert(is_string($customerRepositorySource) && str_contains($customerRepositorySource, 'COALESCE(SUM(ps.amount_xaf), 0)'), 'CRM should calculate customer shipment value from operational data.');
 $assert(is_string($customerRepositorySource) && str_contains($customerRepositorySource, 'FLOOR(COALESCE(SUM(ps.weight_kg), 0) * 10)'), 'CRM should award 10 whole reward points per aggregate kilogram of active cargo.');
 $assert(is_string($customerRepositorySource) && str_contains($customerRepositorySource, 'points_delta < 0'), 'CRM redemption logs should query only negative point adjustments.');

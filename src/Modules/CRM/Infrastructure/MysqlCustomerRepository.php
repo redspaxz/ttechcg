@@ -8,6 +8,7 @@ use App\Modules\CRM\Domain\CustomerProfile;
 use App\Modules\CRM\Domain\CustomerRepository;
 use InvalidArgumentException;
 use PDO;
+use PDOException;
 use RuntimeException;
 use Throwable;
 
@@ -28,11 +29,15 @@ final class MysqlCustomerRepository implements CustomerRepository
         $this->ensureSchema();
         $this->connection->exec(
             "INSERT INTO pickup_customers
-                (customer_key, display_name, status, source, created_at, updated_at)
-             SELECT SHA2(LOWER(TRIM(ps.consignor)), 256), MIN(TRIM(ps.consignor)), 'active', 'shipment', UTC_TIMESTAMP(), UTC_TIMESTAMP()
+                (customer_key, display_name, country_code, status, source, assigned_role, created_at, updated_at)
+             SELECT SHA2(LOWER(TRIM(ps.consignor)), 256), MIN(TRIM(ps.consignor)), 'CM', 'active', 'shipment', 'admin', UTC_TIMESTAMP(), UTC_TIMESTAMP()
              FROM pickup_shipments ps
              INNER JOIN pickup_sheets p ON p.id = ps.pickup_sheet_id
-             WHERE p.deleted_at IS NULL AND TRIM(ps.consignor) <> ''
+             LEFT JOIN pickup_customers existing_customer
+               ON LOWER(TRIM(existing_customer.display_name)) = LOWER(TRIM(ps.consignor))
+             WHERE p.deleted_at IS NULL
+               AND TRIM(ps.consignor) <> ''
+               AND existing_customer.id IS NULL
              GROUP BY SHA2(LOWER(TRIM(ps.consignor)), 256)
              ON DUPLICATE KEY UPDATE customer_key = VALUES(customer_key)",
         );
@@ -106,8 +111,9 @@ final class MysqlCustomerRepository implements CustomerRepository
                     ps.amount_xaf, COALESCE(p.status, 'open') AS sheet_status
              FROM pickup_shipments ps
              INNER JOIN pickup_sheets p ON p.id = ps.pickup_sheet_id
+             INNER JOIN pickup_customers c ON c.customer_key = :customer_key
              WHERE p.deleted_at IS NULL
-               AND SHA2(LOWER(TRIM(ps.consignor)), 256) = :customer_key
+               AND LOWER(TRIM(ps.consignor)) = LOWER(TRIM(c.display_name))
              ORDER BY p.collection_date DESC, p.id DESC, ps.line_number DESC
              LIMIT :limit OFFSET :offset",
         );
@@ -132,8 +138,9 @@ final class MysqlCustomerRepository implements CustomerRepository
             'SELECT COUNT(*)
              FROM pickup_shipments ps
              INNER JOIN pickup_sheets p ON p.id = ps.pickup_sheet_id
+             INNER JOIN pickup_customers c ON c.customer_key = :customer_key
              WHERE p.deleted_at IS NULL
-               AND SHA2(LOWER(TRIM(ps.consignor)), 256) = :customer_key',
+               AND LOWER(TRIM(ps.consignor)) = LOWER(TRIM(c.display_name))',
         );
         $statement->execute(['customer_key' => $customerKey]);
         return (int) $statement->fetchColumn();
@@ -142,35 +149,78 @@ final class MysqlCustomerRepository implements CustomerRepository
     public function save(CustomerProfile $customer, string $actorId): CustomerProfile
     {
         $this->ensureSchema();
-        $statement = $this->connection->prepare(
-            'INSERT INTO pickup_customers
-                (customer_key, display_name, contact_name, email, phone, address, city, country_code,
-                 status, notes, next_follow_up_on, source, created_by, updated_by, created_at, updated_at)
-             VALUES
-                (:customer_key, :display_name, :contact_name, :email, :phone, :address, :city, :country_code,
-                 :status, :notes, :next_follow_up_on, :source, :created_by, :updated_by, UTC_TIMESTAMP(), UTC_TIMESTAMP())
-             ON DUPLICATE KEY UPDATE
-                display_name = VALUES(display_name), contact_name = VALUES(contact_name), email = VALUES(email),
-                phone = VALUES(phone), address = VALUES(address), city = VALUES(city), country_code = VALUES(country_code),
-                status = VALUES(status), notes = VALUES(notes), next_follow_up_on = VALUES(next_follow_up_on),
-                source = VALUES(source), updated_by = VALUES(updated_by), updated_at = UTC_TIMESTAMP()',
-        );
-        $statement->execute([
-            'customer_key' => $customer->customerKey,
-            'display_name' => $customer->displayName,
-            'contact_name' => $this->nullable($customer->contactName),
-            'email' => $this->nullable($customer->email),
-            'phone' => $this->nullable($customer->phone),
-            'address' => $this->nullable($customer->address),
-            'city' => $this->nullable($customer->city),
-            'country_code' => $this->nullable($customer->countryCode),
-            'status' => $customer->status,
-            'notes' => $this->nullable($customer->notes),
-            'next_follow_up_on' => $customer->nextFollowUpOn,
-            'source' => $customer->source,
-            'created_by' => $actorId,
-            'updated_by' => $actorId,
-        ]);
+        $this->connection->beginTransaction();
+        try {
+            $existingStatement = $this->connection->prepare(
+                'SELECT display_name FROM pickup_customers WHERE customer_key = :customer_key LIMIT 1 FOR UPDATE',
+            );
+            $existingStatement->execute(['customer_key' => $customer->customerKey]);
+            $previousDisplayName = $existingStatement->fetchColumn();
+
+            $collisionStatement = $this->connection->prepare(
+                'SELECT customer_key
+                 FROM pickup_customers
+                 WHERE LOWER(TRIM(display_name)) = LOWER(TRIM(:display_name))
+                   AND customer_key <> :customer_key
+                 LIMIT 1 FOR UPDATE',
+            );
+            $collisionStatement->execute([
+                'display_name' => $customer->displayName,
+                'customer_key' => $customer->customerKey,
+            ]);
+            if ($collisionStatement->fetchColumn() !== false) {
+                throw new InvalidArgumentException('A customer profile already uses this organization name.');
+            }
+
+            if (is_string($previousDisplayName) && trim($previousDisplayName) !== trim($customer->displayName)) {
+                $renameStatement = $this->connection->prepare(
+                    'UPDATE pickup_shipments
+                     SET consignor = :display_name
+                     WHERE LOWER(TRIM(consignor)) = LOWER(TRIM(:previous_display_name))',
+                );
+                $renameStatement->execute([
+                    'display_name' => $customer->displayName,
+                    'previous_display_name' => $previousDisplayName,
+                ]);
+            }
+
+            $statement = $this->connection->prepare(
+                'INSERT INTO pickup_customers
+                    (customer_key, display_name, contact_name, email, phone, address, city, country_code,
+                     status, notes, next_follow_up_on, source, assigned_role, created_by, updated_by, created_at, updated_at)
+                 VALUES
+                    (:customer_key, :display_name, :contact_name, :email, :phone, :address, :city, :country_code,
+                     :status, :notes, :next_follow_up_on, :source, :assigned_role, :created_by, :updated_by, UTC_TIMESTAMP(), UTC_TIMESTAMP())
+                 ON DUPLICATE KEY UPDATE
+                    display_name = VALUES(display_name), contact_name = VALUES(contact_name), email = VALUES(email),
+                    phone = VALUES(phone), address = VALUES(address), city = VALUES(city), country_code = VALUES(country_code),
+                    status = VALUES(status), notes = VALUES(notes), next_follow_up_on = VALUES(next_follow_up_on),
+                    source = VALUES(source), assigned_role = VALUES(assigned_role), updated_by = VALUES(updated_by), updated_at = UTC_TIMESTAMP()',
+            );
+            $statement->execute([
+                'customer_key' => $customer->customerKey,
+                'display_name' => $customer->displayName,
+                'contact_name' => $this->nullable($customer->contactName),
+                'email' => $this->nullable($customer->email),
+                'phone' => $this->nullable($customer->phone),
+                'address' => $this->nullable($customer->address),
+                'city' => $this->nullable($customer->city),
+                'country_code' => $this->nullable($customer->countryCode),
+                'status' => $customer->status,
+                'notes' => $this->nullable($customer->notes),
+                'next_follow_up_on' => $customer->nextFollowUpOn,
+                'source' => $customer->source,
+                'assigned_role' => 'admin',
+                'created_by' => $actorId,
+                'updated_by' => $actorId,
+            ]);
+            $this->connection->commit();
+        } catch (Throwable $exception) {
+            if ($this->connection->inTransaction()) {
+                $this->connection->rollBack();
+            }
+            throw $exception;
+        }
 
         return $this->find($customer->customerKey) ?? $customer;
     }
@@ -243,10 +293,11 @@ final class MysqlCustomerRepository implements CustomerRepository
         $this->connection->beginTransaction();
         try {
             $customerStatement = $this->connection->prepare(
-                'SELECT id FROM pickup_customers WHERE customer_key = :customer_key LIMIT 1 FOR UPDATE',
+                'SELECT display_name FROM pickup_customers WHERE customer_key = :customer_key LIMIT 1 FOR UPDATE',
             );
             $customerStatement->execute(['customer_key' => $customerKey]);
-            if ($customerStatement->fetchColumn() === false) {
+            $customerDisplayName = $customerStatement->fetchColumn();
+            if (!is_string($customerDisplayName)) {
                 throw new RuntimeException('Customer profile not found for reward adjustment.');
             }
 
@@ -256,14 +307,14 @@ final class MysqlCustomerRepository implements CustomerRepository
                      FROM pickup_shipments ps
                      INNER JOIN pickup_sheets p ON p.id = ps.pickup_sheet_id
                      WHERE p.deleted_at IS NULL
-                       AND SHA2(LOWER(TRIM(ps.consignor)), 256) = :shipment_customer_key)
+                       AND LOWER(TRIM(ps.consignor)) = LOWER(TRIM(:shipment_customer_name)))
                     +
                     (SELECT COALESCE(SUM(points_delta), 0)
                      FROM pickup_customer_reward_adjustments
                      WHERE customer_key = :reward_customer_key) AS reward_balance',
             );
             $balanceStatement->execute([
-                'shipment_customer_key' => $customerKey,
+                'shipment_customer_name' => $customerDisplayName,
                 'reward_customer_key' => $customerKey,
             ]);
             $balance = (int) $balanceStatement->fetchColumn();
@@ -330,7 +381,7 @@ final class MysqlCustomerRepository implements CustomerRepository
                        COALESCE(rewards.earned_adjustment_points, 0) AS reward_earned_adjustment_points
                 FROM pickup_customers c
                 LEFT JOIN (
-                    SELECT SHA2(LOWER(TRIM(ps.consignor)), 256) AS customer_key,
+                    SELECT LOWER(TRIM(ps.consignor)) AS customer_name,
                            COUNT(*) AS shipment_count,
                            COALESCE(SUM(ps.amount_xaf), 0) AS total_cash_xaf,
                            FLOOR(COALESCE(SUM(ps.weight_kg), 0) * 10) AS cargo_reward_points,
@@ -339,8 +390,8 @@ final class MysqlCustomerRepository implements CustomerRepository
                     FROM pickup_shipments ps
                     INNER JOIN pickup_sheets p ON p.id = ps.pickup_sheet_id
                     WHERE p.deleted_at IS NULL
-                    GROUP BY SHA2(LOWER(TRIM(ps.consignor)), 256)
-                ) metrics ON metrics.customer_key = c.customer_key
+                    GROUP BY LOWER(TRIM(ps.consignor))
+                ) metrics ON metrics.customer_name = LOWER(TRIM(c.display_name))
                 LEFT JOIN (
                     SELECT customer_key,
                            COALESCE(SUM(points_delta), 0) AS adjustment_points,
@@ -393,11 +444,12 @@ final class MysqlCustomerRepository implements CustomerRepository
                 phone VARCHAR(32) NULL,
                 address VARCHAR(255) NULL,
                 city VARCHAR(100) NULL,
-                country_code CHAR(2) NULL,
+                country_code CHAR(2) NOT NULL DEFAULT 'CM',
                 status VARCHAR(20) NOT NULL DEFAULT 'active',
                 notes TEXT NULL,
                 next_follow_up_on DATE NULL,
                 source VARCHAR(20) NOT NULL DEFAULT 'manual',
+                assigned_role VARCHAR(20) NOT NULL DEFAULT 'admin',
                 created_by CHAR(24) NULL,
                 updated_by CHAR(24) NULL,
                 created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
@@ -422,6 +474,19 @@ final class MysqlCustomerRepository implements CustomerRepository
                     FOREIGN KEY (customer_key) REFERENCES pickup_customers(customer_key) ON DELETE CASCADE
             ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci',
         );
+        try {
+            $this->connection->query('SELECT assigned_role FROM pickup_customers LIMIT 1');
+        } catch (PDOException $exception) {
+            if ((int) ($exception->errorInfo[1] ?? 0) !== 1054) {
+                throw $exception;
+            }
+            $this->connection->exec(
+                "ALTER TABLE pickup_customers
+                 ADD COLUMN assigned_role VARCHAR(20) NOT NULL DEFAULT 'admin' AFTER source",
+            );
+        }
+        $this->connection->exec("UPDATE pickup_customers SET country_code = 'CM' WHERE country_code IS NULL OR country_code <> 'CM'");
+        $this->connection->exec("UPDATE pickup_customers SET assigned_role = 'admin' WHERE assigned_role <> 'admin'");
         $this->schemaReady = true;
     }
 

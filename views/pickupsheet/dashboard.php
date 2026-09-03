@@ -120,6 +120,9 @@ $auditDetails = static function (array $log): string {
     if (($context['customer_status'] ?? '') !== '') {
         $details[] = 'Customer status: ' . str_replace('_', ' ', (string) $context['customer_status']);
     }
+    if (($context['organization_name_changed'] ?? false) === true) {
+        $details[] = 'Existing pickup-sheet consignor names updated';
+    }
     if (($context['source'] ?? '') !== '') {
         $details[] = 'Source: ' . str_replace('_', ' ', (string) $context['source']);
     }
