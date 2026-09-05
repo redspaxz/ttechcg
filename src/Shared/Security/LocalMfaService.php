@@ -42,7 +42,17 @@ final class LocalMfaService
 
     public function isConfigured(): bool
     {
-        return $this->enabled && $this->encryptionKey !== null && extension_loaded('openssl');
+        return $this->enabled && $this->hasValidEncryptionKey() && $this->hasOpenSsl();
+    }
+
+    public function hasValidEncryptionKey(): bool
+    {
+        return $this->encryptionKey !== null;
+    }
+
+    public function hasOpenSsl(): bool
+    {
+        return extension_loaded('openssl');
     }
 
     public function isEnrolled(string $subjectId): bool

@@ -31,7 +31,7 @@ final class LoginMethodSettingsService
             throw new InvalidArgumentException('The settings actor is invalid.');
         }
         if ($localLoginEnabled && !$this->localLoginConfigured) {
-            throw new InvalidArgumentException('Local login cannot be enabled until PICKUPSHEET_LOCAL_LOGIN_ENABLED is enabled in .env.');
+            throw new InvalidArgumentException('Local login requires its .env switch, mandatory 2FA encryption key, and PHP OpenSSL support to be ready.');
         }
         if ($jumpCloudLoginEnabled && !$this->jumpCloudLoginConfigured) {
             throw new InvalidArgumentException('JumpCloud cannot be enabled until its OIDC and RBAC configuration validates.');

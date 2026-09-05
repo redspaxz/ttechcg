@@ -212,7 +212,11 @@ $config['cloudflare_access_configured'] = $cloudflareAccess->isConfigured();
 $localMfa = LocalMfaService::fromEnvironment($localMfaRepository);
 $config['local_mfa_enabled'] = $localMfa->isEnabled();
 $config['local_mfa_configured'] = $localMfa->isConfigured();
-$localLoginSecurityReady = (bool) ($config['local_login_enabled'] ?? true)
+$config['local_mfa_encryption_key_configured'] = $localMfa->hasValidEncryptionKey();
+$config['local_mfa_openssl_available'] = $localMfa->hasOpenSsl();
+$localLoginRequested = (bool) ($config['local_login_enabled'] ?? true);
+$config['local_login_requested'] = $localLoginRequested;
+$localLoginSecurityReady = $localLoginRequested
     && (!$isProduction || ($localMfa->isEnabled() && $localMfa->isConfigured()));
 $config['local_login_enabled'] = $localLoginSecurityReady;
 $config['local_login_security_ready'] = $localLoginSecurityReady;

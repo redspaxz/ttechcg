@@ -610,8 +610,11 @@ final class PickupsheetController
             'recordsIdentityProvider' => $authorization->identityProvider,
             'loginMethods' => $loginMethods,
             'mfaStatuses' => $mfaStatuses,
+            'localLoginRequested' => (bool) ($this->config['local_login_requested'] ?? $this->config['local_login_enabled'] ?? true),
             'localMfaEnabled' => $this->localMfa?->isEnabled() === true,
             'localMfaConfigured' => $this->localMfa?->isConfigured() === true,
+            'localMfaEncryptionKeyConfigured' => $this->localMfa?->hasValidEncryptionKey() === true,
+            'localMfaOpenSslAvailable' => $this->localMfa?->hasOpenSsl() === true,
         ]);
 
         return Response::html($body, 200, $this->privateHeaders());

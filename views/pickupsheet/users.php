@@ -17,8 +17,19 @@ $jumpCloudDirectEnabled = (bool) ($loginMethods->jumpCloudLoginEnabled ?? $jumpC
 $cloudflareAccessConfigured = (bool) ($loginMethods->cloudflareAccessConfigured ?? $config['cloudflare_access_configured'] ?? false);
 $loginMethodsUpdatedAt = is_string($loginMethods->updatedAt ?? null) ? $loginMethods->updatedAt : null;
 $mfaStatuses = is_array($mfaStatuses ?? null) ? $mfaStatuses : [];
+$localLoginRequested = ($localLoginRequested ?? $config['local_login_requested'] ?? $config['local_login_enabled'] ?? true) === true;
 $localMfaEnabled = ($localMfaEnabled ?? false) === true;
 $localMfaConfigured = ($localMfaConfigured ?? false) === true;
+$localMfaEncryptionKeyConfigured = ($localMfaEncryptionKeyConfigured ?? $config['local_mfa_encryption_key_configured'] ?? false) === true;
+$localMfaOpenSslAvailable = ($localMfaOpenSslAvailable ?? $config['local_mfa_openssl_available'] ?? false) === true;
+$localLoginBlocker = match (true) {
+    !$localLoginRequested => 'Enable PICKUPSHEET_LOCAL_LOGIN_ENABLED in the production .env file.',
+    !$localMfaEnabled => 'Enable mandatory local-account 2FA in the production .env file.',
+    !$localMfaEncryptionKeyConfigured => 'Set a valid Base64 key that decodes to exactly 32 bytes.',
+    !$localMfaOpenSslAvailable => 'Enable the PHP OpenSSL extension for this domain.',
+    !$localLoginConfigured => 'Local-login security prerequisites are incomplete.',
+    default => '',
+};
 $jumpCloudEnabled = $jumpCloudDirectEnabled || $jumpCloudIdentity;
 $jumpCloudGroups = is_array($config['jumpcloud_role_groups'] ?? null) ? $config['jumpcloud_role_groups'] : [];
 ?>
@@ -59,12 +70,16 @@ $jumpCloudGroups = is_array($config['jumpcloud_role_groups'] ?? null) ? $config[
             </div>
             <div class="records-login-method-notice" role="status" data-login-method-notice hidden></div>
             <div class="records-login-method-grid">
-                <article data-login-method-card="local" data-enabled="<?= $localLoginEnabled ? 'true' : 'false' ?>" data-configured="<?= $localLoginConfigured ? 'true' : 'false' ?>">
+                <article data-login-method-card="local" data-enabled="<?= $localLoginEnabled ? 'true' : 'false' ?>" data-configured="<?= $localLoginConfigured ? 'true' : 'false' ?>" data-requested="<?= $localLoginRequested ? 'true' : 'false' ?>">
                     <div><strong>Local login</strong><span data-login-method-status="local"><?= !$localLoginConfigured ? 'Unavailable' : ($localLoginEnabled ? 'Enabled' : 'Disabled') ?></span></div>
                     <p>Username or email and password authentication for locally managed accounts.</p>
                     <label class="records-method-switch"><input type="hidden" name="local_login_enabled" value="0"><input type="checkbox" name="local_login_enabled" value="1" data-login-method-toggle="local" <?= $localLoginEnabled ? 'checked' : '' ?> <?= !$localLoginConfigured ? 'disabled' : '' ?>><span aria-hidden="true"></span><b><?= $localLoginConfigured ? 'Allow local sign-in' : 'Blocked by server configuration' ?></b></label>
-                    <small class="records-local-mfa-state" data-enabled="<?= $localMfaConfigured ? 'true' : 'false' ?>">Authenticator 2FA: <?= !$localMfaEnabled ? 'disabled in .env' : ($localMfaConfigured ? 'required' : 'encryption key unavailable') ?></small>
-                    <code>PICKUPSHEET_LOCAL_LOGIN_ENABLED=<?= $localLoginConfigured ? 'true' : 'false' ?></code>
+                    <small class="records-local-mfa-state" data-enabled="<?= $localMfaConfigured ? 'true' : 'false' ?>"><?= $localMfaConfigured ? 'Security prerequisites ready; authenticator 2FA required.' : $e($localLoginBlocker) ?></small>
+                    <div class="records-login-method-diagnostics" aria-label="Local login readiness">
+                        <code>PICKUPSHEET_LOCAL_LOGIN_ENABLED=<?= $localLoginRequested ? 'true' : 'false' ?></code>
+                        <code>PICKUPSHEET_LOCAL_MFA_ENABLED=<?= $localMfaEnabled ? 'true' : 'false' ?></code>
+                        <code>Encryption key: <?= $localMfaEncryptionKeyConfigured ? 'valid' : 'invalid' ?> &middot; PHP OpenSSL: <?= $localMfaOpenSslAvailable ? 'available' : 'unavailable' ?></code>
+                    </div>
                 </article>
                 <article data-login-method-card="jumpcloud" data-enabled="<?= $jumpCloudDirectEnabled ? 'true' : 'false' ?>" data-configured="<?= $jumpCloudLoginConfigured ? 'true' : 'false' ?>">
                     <div><strong>JumpCloud login</strong><span data-login-method-status="jumpcloud"><?= !$jumpCloudLoginConfigured ? 'Unavailable' : ($jumpCloudDirectEnabled ? 'Enabled' : 'Disabled') ?></span></div>

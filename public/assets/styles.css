@@ -1330,6 +1330,8 @@ button, a, input, select, textarea { -webkit-tap-highlight-color: transparent; }
 .records-login-method-grid article[data-configured="false"] { opacity: 0.72; }
 .records-login-method-grid p { margin: 12px 0 16px; color: #565656; font-size: 0.76rem; line-height: 1.55; }
 .records-login-method-grid code { display: block; margin-top: 13px; overflow-wrap: anywhere; color: #5b5b5b; font-size: 0.66rem; }
+.records-login-method-diagnostics { display: grid !important; justify-content: stretch !important; gap: 4px !important; margin-top: 12px; padding-top: 10px; border-top: 1px solid #d2d2d2; }
+.records-login-method-diagnostics code { margin-top: 0; }
 .records-method-switch { display: flex; align-items: center; gap: 10px; width: fit-content; cursor: pointer; }
 .records-method-switch input[type="hidden"] { display: none; }
 .records-method-switch input[type="checkbox"] { position: absolute; width: 1px; height: 1px; opacity: 0; }

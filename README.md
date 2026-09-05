@@ -6,11 +6,13 @@ The corporate website for `ttechcg.com`, built as a dependency-light PHP 8.2 mod
 
 ```text
 src/
-├── Modules/
-│   ├── Site/         # Corporate home, services, about, and health routes
-│   ├── Contact/      # Inquiry domain, application service, adapters, and controller
-│   └── Pickupsheet/  # Cash-shipment entry and protected records
-└── Shared/           # HTTP kernel, views, security, environment, and database
+|-- Modules/
+|   |-- Site/         # Corporate pages and health route
+|   |-- Contact/      # Inquiry capture and notification
+|   |-- Pickupsheet/  # Cash-shipment entry and protected records
+|   |-- CRM/          # Customer profiles, shipment history, and rewards
+|   `-- Backup/       # Encrypted operational backup and restore
+`-- Shared/           # HTTP, views, security, identity, persistence, and exports
 ```
 
 The site uses MySQL through `pdo_mysql`. Valid database settings enable persistent contact inquiries and pickup sheets. When MySQL is unavailable, the public site remains reviewable with session-backed development adapters, while production data-entry forms fail closed. Local development runs idempotent migrations on application boot. Production does not run schema-changing migrations unless `RUN_MIGRATIONS=true` is explicitly set, allowing the runtime database user to be restricted to the data operations the application needs.
@@ -51,7 +53,7 @@ PICKUPSHEET_LOCAL_LOGIN_ENABLED=true
 JUMPCLOUD_OIDC_ENABLED=true
 ```
 
-The `.env` values are hard security limits: a method disabled or incompletely configured there cannot be enabled from the application. Within those limits, an administrator can use the **Sign-in methods** toggles on the user-management page; those operational preferences are stored in MySQL and take effect on new authentication requests immediately. The application prevents both direct methods from being disabled unless a valid Cloudflare Access handoff is configured. Existing authenticated sessions retain their normal idle and absolute expiry; disable or delete an individual local account when immediate account revocation is required. Local login defaults to enabled for backward compatibility; JumpCloud remains unavailable until its full OIDC and RBAC configuration validates. If no method is available, the login route fails closed with HTTP `503`.
+The `.env` values are hard security limits: a method disabled or incompletely configured there cannot be enabled from the application. Within those limits, an administrator can use the **Sign-in methods** toggles on the user-management page; those operational preferences are stored in MySQL and take effect on new authentication requests immediately. The application prevents both direct methods from being disabled unless a valid Cloudflare Access handoff is configured. Existing authenticated sessions retain their normal idle and absolute expiry; disable or delete an individual local account when immediate account revocation is required. Local login defaults to enabled for backward compatibility, but production exposes it only when mandatory local 2FA is fully ready. JumpCloud remains unavailable until its full OIDC and RBAC configuration validates. If no method is available, the login route fails closed with HTTP `503`.
 
 ### Local account two-factor authentication
 
@@ -63,11 +65,32 @@ Generate a dedicated key on a trusted local computer, then put it only in the se
 openssl rand -base64 32
 ```
 
+Windows PowerShell can generate the same cryptographically secure key without the OpenSSL command-line utility:
+
+```powershell
+$keyBytes = New-Object byte[] 32
+$keyGenerator = [Security.Cryptography.RandomNumberGenerator]::Create()
+$keyGenerator.GetBytes($keyBytes)
+[Convert]::ToBase64String($keyBytes)
+$keyGenerator.Dispose()
+```
+
 ```dotenv
 PICKUPSHEET_LOCAL_MFA_ENABLED=true
 PICKUPSHEET_MFA_ENCRYPTION_KEY=PASTE_THE_GENERATED_VALUE_HERE
 PICKUPSHEET_MFA_ISSUER=T&Tech Pickupsheet
 ```
+
+#### Local sign-in readiness
+
+In production, **Allow local sign-in** remains unavailable until all of these checks pass:
+
+1. `PICKUPSHEET_LOCAL_LOGIN_ENABLED=true`.
+2. `PICKUPSHEET_LOCAL_MFA_ENABLED=true`.
+3. `PICKUPSHEET_MFA_ENCRYPTION_KEY` is valid Base64 that decodes to exactly 32 bytes.
+4. The PHP version assigned to `ttechcg.com` has the `openssl` extension enabled.
+
+The administrator **Sign-in methods** card reports each non-secret readiness result independently; it never displays the encryption key. If OpenSSL is unavailable, enable it for the domain's active PHP version in cPanel **Select PHP Version**. The deployed `.env` is intentionally excluded from Git deployment, so update `/home/ttecwymc/public_html/.env` directly and retain its `600` permissions. Once the card reports all prerequisites ready, enable **Allow local sign-in** and save the sign-in methods.
 
 Do not reuse a database password or JumpCloud secret as the encryption key. Preserve this key separately from database backups: changing or losing it makes existing authenticator enrollments unreadable, requiring an administrator reset and re-enrollment. JumpCloud and Cloudflare accounts continue to use provider-managed MFA. An administrator can reset a managed local account's 2FA from **Local operators and viewers**; the account must enroll again after its next successful password check. Any signed-in user can open `/dhl/pickupsheet/settings` to review their identity and 2FA status. Local users can replace their own authenticator only after re-entering the current password and a valid existing authenticator or recovery code. The old enrollment remains active until a new TOTP code is confirmed and new recovery codes are issued, so abandoning replacement does not remove account protection.
 
@@ -96,6 +119,24 @@ Pickupsheet does not apply country or regional access restrictions. Access remai
 
 Google Analytics measurement ID `G-WVFXFB5H3M` is included exactly once immediately after `<head>` through both shared page layouts. Consent Mode starts with analytics and advertising storage denied; analytics storage is granted only after a visitor accepts, advertising consent remains denied, and visitors can reopen their choice from the footer. Before acceptance, Google may receive cookieless consent-state pings but cannot set Analytics cookies through this configuration. Pickup-sheet operational pages suppress Analytics page views and sanitize page location so record-reference query values are not sent to Google. The Content Security Policy permits only the Google Tag Manager script origin and Google Analytics collection origins required by the tag. Because Google's tag is dynamically updated and cannot use a stable Subresource Integrity hash, its narrowly scoped CSP exception is an explicit third-party resource decision.
 
+## Acceptance checks
+
+Run the same dependency-light acceptance gate used by CI:
+
+```shell
+php bin/security-check.php
+php tests/run.php
+node --check public/assets/app.js
+node --check public/assets/analytics.js
+node --check public/assets/google-tag.js
+node --check public/assets/print.js
+node tests/analytics-consent.test.js
+node tests/pickup-pagination.test.js
+node tests/consignor-autocomplete.test.js
+```
+
+Before production sign-off, also verify `/health` returns `200`, submit a disposable contact inquiry, exercise one account per RBAC role, create and rename a test customer, confirm existing pickup sheets and autocomplete use the new name, print and export a sheet, test a local 2FA sign-in and recovery code, and create then validate an encrypted backup. Repeat the primary screens at desktop and mobile widths. Do not treat demo-storage results as production database acceptance; confirm the MySQL-backed workflow and migration state separately.
+
 ## Local development
 
 1. Copy `.env.example` to `.env` and adjust the values.
@@ -104,7 +145,7 @@ Google Analytics measurement ID `G-WVFXFB5H3M` is included exactly once immediat
 4. Run `php -S 127.0.0.1:8080 router.php`.
 5. Open `http://127.0.0.1:8080`.
 
-Run the dependency-free checks with:
+Run the core dependency-free test suite with:
 
 ```shell
 php tests/run.php

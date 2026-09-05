@@ -111,6 +111,9 @@ if (defined('PASSWORD_ARGON2ID')) {
 }
 $mfaRepository = new DemoLocalMfaRepository();
 $mfaService = new LocalMfaService($mfaRepository, true, $mfaEncryptionKey, 'T&Tech Test');
+$invalidMfaConfiguration = new LocalMfaService(new DemoLocalMfaRepository(), true, 'not-a-valid-encryption-key', 'T&Tech Test');
+$assert($mfaService->hasValidEncryptionKey() && $mfaService->hasOpenSsl() && $mfaService->isConfigured(), 'Local MFA readiness should expose a valid key and PHP OpenSSL independently.');
+$assert(!$invalidMfaConfiguration->hasValidEncryptionKey() && !$invalidMfaConfiguration->isConfigured(), 'An invalid local MFA key should fail the readiness check without weakening local-login requirements.');
 $mfaSetup = $mfaService->beginEnrollment('local.test@example.com');
 $mfaRecoveryCodes = $mfaService->confirmEnrollment(
     'local:test-account',
@@ -1803,7 +1806,37 @@ $assert(str_contains($adminUsers->body(), 'Reset my admin password'), 'The admin
 $assert(str_contains($adminUsers->body(), 'Email or username') && str_contains($adminUsers->body(), 'Account status'), 'Account management should expose flexible login IDs and explicit account status.');
 $assert(str_contains($adminUsers->body(), 'name="first_name"') && str_contains($adminUsers->body(), 'name="last_name"'), 'Account management should require first and last names.');
 $assert(str_contains($adminUsers->body(), 'data-login-method-toggle="local"') && str_contains($adminUsers->body(), 'data-login-method-card="jumpcloud" data-enabled="false" data-configured="false"') && str_contains($adminUsers->body(), 'OIDC configuration is incomplete'), 'Administrators should receive operational toggles only for methods allowed by server configuration.');
+$assert(str_contains($adminUsers->body(), 'data-requested="true"') && str_contains($adminUsers->body(), 'PICKUPSHEET_LOCAL_LOGIN_ENABLED=true') && str_contains($adminUsers->body(), 'PICKUPSHEET_LOCAL_MFA_ENABLED=true'), 'Local-login diagnostics should distinguish requested environment settings from composite security readiness.');
+$assert(str_contains($adminUsers->body(), 'Encryption key: valid') && str_contains($adminUsers->body(), 'PHP OpenSSL: available') && str_contains($adminUsers->body(), 'Security prerequisites ready; authenticator 2FA required.'), 'Administrators should see non-secret local-login readiness diagnostics.');
 $assert(str_contains($adminUsers->body(), 'data-account-source="server"') && str_contains($adminUsers->body(), $recordsUsername) && str_contains($adminUsers->body(), 'Server-defined administrator') && str_contains($adminUsers->body(), 'Protected account'), 'The local account table should show the records administrator as a protected user.');
+
+$unreadyMfa = new LocalMfaService(new DemoLocalMfaRepository(), true, 'invalid-key', 'T&Tech Test');
+$unreadyLoginMethods = new LoginMethodSettingsService(
+    new DemoLoginMethodSettingsRepository(),
+    false,
+    false,
+    false,
+);
+$unreadyPickupController = new PickupsheetController(
+    new PickupSheetService(new DemoPickupSheetRepository()),
+    $view,
+    $pickupCsrf,
+    $pickupCaptcha,
+    array_merge($config, ['local_login_enabled' => false, 'local_login_requested' => true]),
+    'Demo workspace',
+    true,
+    $recordsAccess,
+    $recordsSession,
+    $recordsUserService,
+    $disabledRateLimiter,
+    $testSecurityLogger,
+    $unreadyLoginMethods,
+    $unreadyMfa,
+);
+$unreadyUsers = $unreadyPickupController->users(new Request('GET', '/dhl/pickupsheet/submissions/users', [], [], '', $recordsServer));
+$assert($unreadyUsers->status() === 200 && str_contains($unreadyUsers->body(), 'data-configured="false" data-requested="true"'), 'The admin page should preserve the requested local-login state when a security prerequisite blocks activation.');
+$assert(str_contains($unreadyUsers->body(), 'Set a valid Base64 key that decodes to exactly 32 bytes.') && str_contains($unreadyUsers->body(), 'Encryption key: invalid') && str_contains($unreadyUsers->body(), 'PHP OpenSSL: available'), 'The unavailable local-login card should identify an invalid key separately from PHP OpenSSL support.');
+$assert(preg_match('/<input[^>]+data-login-method-toggle="local"[^>]+disabled(?:\s|>)/', $unreadyUsers->body()) === 1, 'An unready local-login method must remain unavailable rather than bypassing mandatory 2FA.');
 
 $saveLoginMethods = $pickupController->updateLoginMethods(new Request('POST', '/dhl/pickupsheet/submissions/users/login-methods', [], [
     '_token' => $pickupCsrf->token(),
@@ -2523,7 +2556,7 @@ $localMfaMigration = file_get_contents(dirname(__DIR__) . '/database/migrations/
 $assert(is_string($localMfaMigration) && str_contains($localMfaMigration, 'CREATE TABLE IF NOT EXISTS pickup_local_mfa'), 'MySQL should persist local authenticator enrollment idempotently.');
 $assert(is_string($localMfaMigration) && str_contains($localMfaMigration, 'secret_envelope TEXT NOT NULL') && str_contains($localMfaMigration, 'recovery_code_hashes LONGTEXT NOT NULL') && str_contains($localMfaMigration, 'last_used_step BIGINT NULL'), 'Local 2FA storage should retain only encrypted secrets, recovery hashes, and TOTP replay state.');
 $loginMethodServiceSource = file_get_contents(dirname(__DIR__) . '/src/Shared/Security/LoginMethodSettingsService.php');
-$assert(is_string($loginMethodServiceSource) && str_contains($loginMethodServiceSource, 'avoid locking every administrator out') && str_contains($loginMethodServiceSource, 'PICKUPSHEET_LOCAL_LOGIN_ENABLED'), 'Sign-in preference enforcement should preserve environment hard limits and prevent lockout.');
+$assert(is_string($loginMethodServiceSource) && str_contains($loginMethodServiceSource, 'avoid locking every administrator out') && str_contains($loginMethodServiceSource, 'mandatory 2FA encryption key') && str_contains($loginMethodServiceSource, 'PHP OpenSSL support'), 'Sign-in preference enforcement should preserve explicit environment and MFA hard limits while preventing lockout.');
 $recordsUserMysqlRepository = file_get_contents(dirname(__DIR__) . '/src/Shared/Infrastructure/MysqlRecordsUserRepository.php');
 $assert(is_string($recordsUserMysqlRepository) && str_contains($recordsUserMysqlRepository, 'BINARY username = :username AND active = 1'), 'Managed account authentication should require an exact username and active status.');
 $assert(is_string($recordsUserMysqlRepository) && str_contains($recordsUserMysqlRepository, 'password_hash = :password_hash'), 'Administrators should be able to rotate managed account passwords.');
