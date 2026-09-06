@@ -19,6 +19,7 @@ final class PickupSheet
         public readonly string $createdAt,
         public readonly string $status = 'open',
         public readonly ?string $paidAt = null,
+        public readonly ?string $paymentReceiptNumber = null,
     ) {
     }
 

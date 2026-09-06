@@ -227,6 +227,7 @@ $loginMethodSettings = new LoginMethodSettingsService(
     $cloudflareAccess->isConfigured(),
 );
 $recordsUserService = new RecordsUserService($recordsUserRepository, $recordsAccess->environmentUsernames());
+$customerService = new CustomerService($customerRepository);
 $contactCaptcha = new Captcha('contact');
 $pickupCaptcha = new Captcha('pickupsheet');
 $siteController = new SiteController($view, $config, $storageMode, $contactOperational);
@@ -269,9 +270,10 @@ $pickupsheetController = new PickupsheetController(
     $securityLogger,
     $loginMethodSettings,
     $localMfa,
+    $customerService,
 );
 $customerController = new CustomerController(
-    new CustomerService($customerRepository),
+    $customerService,
     $view,
     $csrf,
     $recordsAccess,

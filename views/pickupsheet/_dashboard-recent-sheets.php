@@ -13,7 +13,7 @@ $currentLogPage = max(1, (int) ($currentLogPage ?? $auditLogs['page'] ?? 1));
     <table><thead><tr><th>Reference</th><th>Status</th><th>Date</th><th>Agent</th><th>Shipments</th><th>Total</th><th>View</th></tr></thead><tbody>
     <?php if ($items === []): ?><tr><td colspan="7">No pickup sheets have been generated.</td></tr><?php endif; ?>
     <?php foreach ($items as $sheet): ?>
-        <tr><td><?= $e($sheet->referenceNumber) ?></td><td><?= $sheet->isPaid() ? 'Paid' : 'Open' ?></td><td><?= $e($sheet->collectionDate) ?></td><td><?= $e($sheet->agentName) ?></td><td><?= $e($sheet->shipmentCount()) ?></td><td><?= $e(number_format($sheet->totalCashReceivedXaf)) ?> XAF</td><td><a href="<?= $e($basePath) ?>/dhl/pickupsheet/submissions?reference=<?= $e(rawurlencode($sheet->referenceNumber)) ?>">Records</a></td></tr>
+        <tr><td><?= $e($sheet->referenceNumber) ?></td><td><?= $sheet->isPaid() ? 'Paid' : 'Open' ?><?php if ($sheet->isPaid() && $sheet->paymentReceiptNumber !== null): ?><small>Receipt <?= $e($sheet->paymentReceiptNumber) ?></small><?php endif; ?></td><td><?= $e($sheet->collectionDate) ?></td><td><?= $e($sheet->agentName) ?></td><td><?= $e($sheet->shipmentCount()) ?></td><td><?= $e(number_format($sheet->totalCashReceivedXaf)) ?> XAF</td><td><a href="<?= $e($basePath) ?>/dhl/pickupsheet/submissions?reference=<?= $e(rawurlencode($sheet->referenceNumber)) ?>">Records</a></td></tr>
     <?php endforeach; ?>
     </tbody></table>
 </div>

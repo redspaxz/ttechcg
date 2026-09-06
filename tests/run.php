@@ -1038,6 +1038,31 @@ $assert(($renameCustomerService->recentShipments($renameCustomerKey)[0]['referen
 $assert($renamePickupService->consignorSuggestions('Ren', 10) === ['Renamed Customer Company'], 'Consignor autocomplete should immediately use a customer name changed in CRM.');
 
 $_SESSION = [];
+$leaderboardPickupRepository = new DemoPickupSheetRepository();
+$leaderboardPickupService = new PickupSheetService($leaderboardPickupRepository);
+$leaderboardRows = [];
+foreach (range(1, 6) as $rankFixture) {
+    $leaderboardRows[] = [
+        'consignor' => 'Points Customer ' . chr(64 + $rankFixture),
+        'awb_number' => '123456789' . $rankFixture,
+        'destination' => 'DLA',
+        'amount' => (string) (1000 * $rankFixture),
+        'pieces' => '1',
+        'weight_kg' => (string) $rankFixture,
+        'checked_by' => 'Leaderboard Checker',
+    ];
+}
+$leaderboardPickupService->submit([
+    'agent_name' => 'Leaderboard Agent',
+    'collection_date' => '2026-09-05',
+    'privacy_consent' => '1',
+    'shipments' => $leaderboardRows,
+]);
+$leaderboardCustomerService = new CustomerService(new DemoCustomerRepository($leaderboardPickupRepository));
+$leaderboard = $leaderboardCustomerService->topByPoints(5);
+$assert(count($leaderboard) === 5 && $leaderboard[0]->displayName === 'Points Customer F' && $leaderboard[0]->rewardBalance() === 60 && $leaderboard[4]->displayName === 'Points Customer B', 'The loyalty leaderboard should return only the five highest balances in descending point order.');
+
+$_SESSION = [];
 $pickupCsrf = new Csrf();
 $pickupCaptcha = new Captcha('pickupsheet-test');
 $loginMethodSettings = new LoginMethodSettingsService(
@@ -1046,8 +1071,10 @@ $loginMethodSettings = new LoginMethodSettingsService(
     false,
     false,
 );
+$pickupRepository = new DemoPickupSheetRepository();
+$customerService = new CustomerService(new DemoCustomerRepository($pickupRepository));
 $pickupController = new PickupsheetController(
-    new PickupSheetService(new DemoPickupSheetRepository()),
+    new PickupSheetService($pickupRepository),
     $view,
     $pickupCsrf,
     $pickupCaptcha,
@@ -1061,9 +1088,10 @@ $pickupController = new PickupsheetController(
     $testSecurityLogger,
     $loginMethodSettings,
     $mfaService,
+    $customerService,
 );
 $customerController = new CustomerController(
-    new CustomerService(new DemoCustomerRepository(new DemoPickupSheetRepository())),
+    $customerService,
     $view,
     $pickupCsrf,
     $recordsAccess,
@@ -1481,7 +1509,7 @@ $assert(str_contains($openSubmissions->body(), 'Print / PDF'), 'Each submitted s
 $assert(str_contains($openSubmissions->body(), 'Export Excel'), 'Each submitted sheet should provide an Excel export action.');
 $assert(str_contains($openSubmissions->body(), 'Manage access'), 'An administrator should receive the account-management action.');
 $assert(str_contains($openSubmissions->body(), 'Edit record'), 'An administrator should receive the audited edit action.');
-$assert(str_contains($openSubmissions->body(), 'Mark paid'), 'An administrator should be able to change an open sheet to paid.');
+$assert(str_contains($openSubmissions->body(), 'Mark paid') && str_contains($openSubmissions->body(), 'name="receipt_number"') && str_contains($openSubmissions->body(), 'required'), 'An administrator should have to enter a receipt number before changing an open sheet to paid.');
 $assert(str_contains($openSubmissions->body(), 'data-pickup-delete'), 'An administrator should receive the audited delete action.');
 $assert(str_contains($openSubmissions->body(), 'Records are displayed 10 sheets per page.'), 'The records view should disclose its ten-record page size.');
 $assert(str_contains($openSubmissions->body(), 'data-pickup-records-spinner'), 'The records view should provide an AJAX loading spinner.');
@@ -1624,15 +1652,26 @@ $assert($adminUpdate->status() === 303, 'An administrator should save an audited
 $adminUpdatedSheet = (new PickupSheetService(new DemoPickupSheetRepository()))->findByReference($savedReference);
 $assert($adminUpdatedSheet?->totalCashReceivedXaf === 14000 && !$adminUpdatedSheet->isPaid(), 'An administrator edit should persist while retaining open status.');
 $assert(($adminUpdatedSheet->shipments[0]->checkedBy ?? '') === 'Records Administrator', 'An administrator edit should stamp Check By with the administrator account name.');
-$markPaidByAdmin = $pickupController->markPickupSheetPaid(new Request('POST', '/dhl/pickupsheet/submissions/paid', [], [
+$missingReceiptPayment = $pickupController->markPickupSheetPaid(new Request('POST', '/dhl/pickupsheet/submissions/paid', [], [
     '_token' => $pickupCsrf->token(),
     'reference' => $savedReference,
 ]));
+$missingReceiptSheet = (new PickupSheetService(new DemoPickupSheetRepository()))->findByReference($savedReference);
+$missingReceiptSubmissions = $pickupController->submissions(new Request('GET', '/dhl/pickupsheet/submissions', [], [], '', $recordsServer));
+$assert($missingReceiptPayment->status() === 303 && $missingReceiptSheet?->status === 'open', 'A missing receipt number must leave the pickup sheet open.');
+$assert(str_contains($missingReceiptSubmissions->body(), 'A receipt number is required as proof of payment.') && str_contains($missingReceiptSubmissions->body(), 'notice-error'), 'The submitted-sheet page should explain the rejected payment proof requirement as an error.');
+$markPaidByAdmin = $pickupController->markPickupSheetPaid(new Request('POST', '/dhl/pickupsheet/submissions/paid', [], [
+    '_token' => $pickupCsrf->token(),
+    'reference' => $savedReference,
+    'receipt_number' => 'rcp-2026/0001',
+]));
 $assert($markPaidByAdmin->status() === 303, 'An administrator should change an open pickup sheet to paid.');
 $paidControllerSheet = (new PickupSheetService(new DemoPickupSheetRepository()))->findByReference($savedReference);
-$assert($paidControllerSheet?->status === 'paid' && $paidControllerSheet->isPaid() && $paidControllerSheet->paidAt !== null, 'The administrator-paid status and timestamp should persist on the pickup sheet.');
+$assert($paidControllerSheet?->status === 'paid' && $paidControllerSheet->isPaid() && $paidControllerSheet->paidAt !== null && $paidControllerSheet->paymentReceiptNumber === 'RCP-2026/0001', 'The administrator-paid status, timestamp, and normalized receipt number should persist on the pickup sheet.');
 $paidSubmissions = $pickupController->submissions(new Request('GET', '/dhl/pickupsheet/submissions', [], [], '', $recordsServer));
-$assert(str_contains($paidSubmissions->body(), 'data-status="paid">Paid</small>') && !str_contains($paidSubmissions->body(), 'pickup-view-summary'), 'A paid pickup sheet should show its status without restoring submitted-sheet metric cards.');
+$assert(str_contains($paidSubmissions->body(), 'data-status="paid">Paid</small>') && str_contains($paidSubmissions->body(), 'Receipt RCP-2026/0001') && !str_contains($paidSubmissions->body(), 'pickup-view-summary'), 'A paid pickup sheet should show its status and payment proof without restoring submitted-sheet metric cards.');
+$receiptSearch = $pickupController->submissions(new Request('GET', '/dhl/pickupsheet/submissions', ['q' => 'rcp-2026/0001'], [], '', $recordsServer));
+$assert(str_contains($receiptSearch->body(), $savedReference), 'Submitted-sheet search should locate a paid record by receipt number.');
 $adminDashboard = $pickupController->dashboard(new Request('GET', '/dhl/pickupsheet/dashboard'));
 $assert($adminDashboard->status() === 200, 'An administrator should open the KPI dashboard.');
 $assert(str_contains($adminDashboard->body(), '14,000'), 'The KPI dashboard should reflect the administrator-corrected cash activity.');
@@ -1644,6 +1683,7 @@ $assert(str_contains($adminDashboard->body(), 'stroke-dasharray="0.00 100.00"'),
 $assert(str_contains($adminDashboard->body(), 'fill="none" stroke="#168a45" stroke-width="58"') && str_contains($adminDashboard->body(), 'fill="none" stroke="#d40511" stroke-width="58"') && str_contains($adminDashboard->body(), '<dt>Paid cash</dt><dd>14,000 XAF</dd>'), 'The cash pie should retain explicit green paid and red unpaid SVG segments before its stylesheet loads.');
 $assert(str_contains($adminDashboard->body(), 'pickup-sender-chart') && str_contains($adminDashboard->body(), 'Top 10 senders'), 'The administrator dashboard should render the rolling sender performance chart.');
 $assert(str_contains($adminDashboard->body(), 'Controller Client') && str_contains($adminDashboard->body(), '1 shipment'), 'The sender chart should display shipment frequency for the ranked consignor.');
+$assert(str_contains($adminDashboard->body(), 'pickup-loyalty-chart') && str_contains($adminDashboard->body(), 'Top 5 customers by points') && str_contains($adminDashboard->body(), '12 points · Bronze'), 'The administrator dashboard should rank the five highest customer reward balances from highest to lowest.');
 $assert(str_contains($adminDashboard->body(), 'User login frequency') && str_contains($adminDashboard->body(), 'Last 30 days'), 'The administrator dashboard should show per-user login frequency for the documented window.');
 $assert(str_contains($adminDashboard->body(), 'Records Administrator') && str_contains($adminDashboard->body(), 'Active now'), 'The administrator dashboard should identify active user sessions by account name.');
 $assert(str_contains($adminDashboard->body(), 'Total session') && str_contains($adminDashboard->body(), 'Average'), 'The administrator dashboard should show total and average session time.');
@@ -2529,6 +2569,7 @@ $assert(is_string($customerRepositorySource) && str_contains($customerRepository
 $assert(is_string($customerRepositorySource) && str_contains($customerRepositorySource, "assigned_role = 'admin'") && str_contains($customerRepositorySource, "DEFAULT 'admin' AFTER source"), 'Existing and new CRM profiles should be assigned persistently to the administrator role.');
 $assert(is_string($customerRepositorySource) && str_contains($customerRepositorySource, 'COALESCE(SUM(ps.amount_xaf), 0)'), 'CRM should calculate customer shipment value from operational data.');
 $assert(is_string($customerRepositorySource) && str_contains($customerRepositorySource, 'FLOOR(COALESCE(SUM(ps.weight_kg), 0) * 10)'), 'CRM should award 10 whole reward points per aggregate kilogram of active cargo.');
+$assert(is_string($customerRepositorySource) && str_contains($customerRepositorySource, 'GREATEST(0, COALESCE(metrics.cargo_reward_points, 0) + COALESCE(rewards.adjustment_points, 0)) DESC'), 'The MySQL loyalty leaderboard should rank customers by redeemable point balance from highest to lowest.');
 $assert(is_string($customerRepositorySource) && str_contains($customerRepositorySource, 'points_delta < 0'), 'CRM redemption logs should query only negative point adjustments.');
 $assert(is_string($customerRepositorySource) && substr_count($customerRepositorySource, 'LIMIT :limit OFFSET :offset') >= 3, 'Customer directory, shipment history, and redemption history should paginate at query time.');
 $customerRewardsMigration = file_get_contents(dirname(__DIR__) . '/database/migrations/013_create_pickup_customer_rewards.sql');
@@ -2543,6 +2584,8 @@ $pickupLifecycleMigration = file_get_contents(dirname(__DIR__) . '/database/migr
 $assert(is_string($pickupLifecycleMigration) && str_contains($pickupLifecycleMigration, "status VARCHAR(20) NOT NULL DEFAULT 'open'"), 'Every persisted pickup sheet should default to open status.');
 $assert(is_string($pickupLifecycleMigration) && str_contains($pickupLifecycleMigration, 'paid_at DATETIME NULL'), 'MySQL should retain when a pickup sheet was marked paid.');
 $assert(is_string($pickupLifecycleMigration) && str_contains($pickupLifecycleMigration, 'deleted_at DATETIME NULL'), 'MySQL should retain audited soft deletion state.');
+$pickupReceiptMigration = file_get_contents(dirname(__DIR__) . '/database/migrations/017_add_pickup_payment_receipts.sql');
+$assert(is_string($pickupReceiptMigration) && str_contains($pickupReceiptMigration, 'payment_receipt_number VARCHAR(64) NULL'), 'Pickup-sheet payment migration should persist required receipt proof without invalidating legacy paid records.');
 $recordsUserMigration = file_get_contents(dirname(__DIR__) . '/database/migrations/005_create_pickup_records_users.sql');
 $assert(is_string($recordsUserMigration) && str_contains($recordsUserMigration, 'CREATE TABLE IF NOT EXISTS pickup_records_users'), 'MySQL should persist managed records-user accounts.');
 $assert(is_string($recordsUserMigration) && str_contains($recordsUserMigration, 'UNIQUE INDEX pickup_records_users_username_idx'), 'Managed records usernames should be unique.');

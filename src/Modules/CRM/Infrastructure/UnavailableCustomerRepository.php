@@ -25,6 +25,11 @@ final class UnavailableCustomerRepository implements CustomerRepository
         throw new RuntimeException('Customer storage is unavailable.');
     }
 
+    public function topByRewardPoints(int $limit): array
+    {
+        throw new RuntimeException('Customer storage is unavailable.');
+    }
+
     public function find(string $customerKey): ?CustomerProfile
     {
         throw new RuntimeException('Customer storage is unavailable.');

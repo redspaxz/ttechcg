@@ -46,7 +46,7 @@ final class DemoPickupSheetRepository implements PickupSheetRepository
         throw new \RuntimeException('Pickup sheet not found for update.');
     }
 
-    public function markPaid(string $referenceNumber, string $actorId): PickupSheet
+    public function markPaid(string $referenceNumber, string $receiptNumber, string $actorId): PickupSheet
     {
         $sheets = $_SESSION[self::SESSION_KEY] ?? [];
         foreach (is_array($sheets) ? $sheets : [] as $index => $stored) {
@@ -66,6 +66,7 @@ final class DemoPickupSheetRepository implements PickupSheetRepository
                 $stored->createdAt,
                 'paid',
                 gmdate(DATE_ATOM),
+                $receiptNumber,
             );
             $sheets[$index] = $paid;
             $_SESSION[self::SESSION_KEY] = $sheets;
@@ -135,6 +136,7 @@ final class DemoPickupSheetRepository implements PickupSheetRepository
             $sheet->agentName,
             $sheet->collectionDate,
             $sheet->status,
+            $sheet->paymentReceiptNumber ?? '',
         ];
 
         foreach ($sheet->shipments as $shipment) {

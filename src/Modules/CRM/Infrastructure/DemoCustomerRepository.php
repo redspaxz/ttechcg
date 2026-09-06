@@ -107,6 +107,25 @@ final class DemoCustomerRepository implements CustomerRepository
         ];
     }
 
+    public function topByRewardPoints(int $limit): array
+    {
+        $metrics = $this->metrics();
+        $profiles = array_map(
+            fn (array $profile): CustomerProfile => $this->profile(
+                $profile,
+                $metrics[$this->key((string) ($profile['displayName'] ?? ''))] ?? [],
+            ),
+            array_values($this->profiles()),
+        );
+        usort($profiles, static function (CustomerProfile $left, CustomerProfile $right): int {
+            return ($right->rewardBalance() <=> $left->rewardBalance())
+                ?: ($right->lifetimeEarnedPoints() <=> $left->lifetimeEarnedPoints())
+                ?: (strcasecmp($left->displayName, $right->displayName) ?: strcmp($left->displayName, $right->displayName));
+        });
+
+        return array_slice($profiles, 0, max(1, min($limit, 10)));
+    }
+
     public function find(string $customerKey): ?CustomerProfile
     {
         $profile = $this->profiles()[$customerKey] ?? null;
@@ -230,6 +249,7 @@ final class DemoCustomerRepository implements CustomerRepository
                 $sheet->createdAt,
                 $sheet->status,
                 $sheet->paidAt,
+                $sheet->paymentReceiptNumber,
             ), $actorId);
         }
     }

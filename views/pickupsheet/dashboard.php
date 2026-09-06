@@ -7,6 +7,7 @@ $summary = is_array($summary ?? null) ? $summary : [];
 $activity = is_array($activity ?? null) ? $activity : [];
 $destinations = is_array($destinations ?? null) ? $destinations : [];
 $senders = is_array($senders ?? null) ? $senders : [];
+$topCustomers = is_array($topCustomers ?? null) ? $topCustomers : [];
 $userActivity = is_array($userActivity ?? null) ? $userActivity : [];
 $auditLogs = is_array($auditLogs ?? null) ? $auditLogs : [];
 $recentSheets = is_array($recentSheets ?? null) ? $recentSheets : [];
@@ -48,6 +49,7 @@ $unpaidChartValue = number_format($unpaidPercentage, 2, '.', '');
 $settledChartValue = number_format(100 - $unpaidPercentage, 2, '.', '');
 $unpaidPercentageLabel = rtrim(rtrim(number_format($unpaidPercentage, 1, '.', ''), '0'), '.') . '%';
 $maximumSenderShipments = max([1, ...array_map(static fn (array $row): int => (int) ($row['shipmentCount'] ?? 0), $senders)]);
+$maximumCustomerPoints = max([1, ...array_map(static fn ($customer): int => $customer->rewardBalance(), $topCustomers)]);
 $activeSessions = max(0, (int) ($userActivity['activeRecords'] ?? 0));
 $formatDuration = static function (int $seconds): string {
     if ($seconds < 60) {
@@ -255,6 +257,28 @@ $auditDetails = static function (array $log): string {
                             <span class="pickup-sender-name" title="<?= $e($sender['sender'] ?? '') ?>"><?= $e($sender['sender'] ?? '') ?></span>
                             <progress max="<?= $e($maximumSenderShipments) ?>" value="<?= $e($shipmentCount) ?>" aria-label="<?= $e($sender['sender'] ?? '') ?>: <?= $e($shipmentCount) ?> shipments"><?= $e($shipmentCount) ?></progress>
                             <strong><?= $e(number_format($shipmentCount)) ?> <?= $shipmentCount === 1 ? 'shipment' : 'shipments' ?></strong>
+                        </li>
+                    <?php endforeach; ?>
+                </ol>
+            <?php endif; ?>
+        </section>
+
+        <section class="pickup-sender-performance pickup-loyalty-performance" aria-labelledby="loyalty-performance-title">
+            <div class="pickup-card-heading">
+                <div><span>Customer loyalty</span><h2 id="loyalty-performance-title">Top 5 customers by points</h2></div>
+                <small>Highest to lowest balance</small>
+            </div>
+            <?php if ($topCustomers === []): ?>
+                <p class="pickup-sender-empty">No customer reward points have been recorded.</p>
+            <?php else: ?>
+                <ol class="pickup-sender-chart pickup-loyalty-chart" aria-label="Customers ranked by total points balance">
+                    <?php foreach ($topCustomers as $index => $customer): ?>
+                        <?php $points = $customer->rewardBalance(); ?>
+                        <li>
+                            <span class="pickup-sender-rank" aria-label="Rank <?= $e($index + 1) ?>"><?= $e($index + 1) ?></span>
+                            <a class="pickup-sender-name" href="<?= $e($basePath) ?>/dhl/pickupsheet/customers/edit?customer=<?= $e(rawurlencode($customer->customerKey)) ?>" title="<?= $e($customer->displayName) ?>"><?= $e($customer->displayName) ?></a>
+                            <progress max="<?= $e($maximumCustomerPoints) ?>" value="<?= $e($points) ?>" aria-label="<?= $e($customer->displayName) ?>: <?= $e($points) ?> points"><?= $e($points) ?></progress>
+                            <strong><?= $e(number_format($points)) ?> <?= $points === 1 ? 'point' : 'points' ?> · <?= $e($customer->loyaltyTier()) ?></strong>
                         </li>
                     <?php endforeach; ?>
                 </ol>

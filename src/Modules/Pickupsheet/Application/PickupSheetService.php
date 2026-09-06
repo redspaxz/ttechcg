@@ -118,7 +118,7 @@ final class PickupSheetService
         return $this->repository->update($this->pickupSheetFromInput($input, $existing), $actorId);
     }
 
-    public function markPaid(string $referenceNumber, string $actorId): PickupSheet
+    public function markPaid(string $referenceNumber, mixed $receiptNumber, string $actorId): PickupSheet
     {
         $existing = $this->findByReference($referenceNumber);
         if ($existing === null) {
@@ -127,8 +127,15 @@ final class PickupSheetService
         if ($existing->isPaid()) {
             throw new InvalidArgumentException('This pickup sheet is already marked paid.');
         }
+        $receiptNumber = strtoupper($this->stringValue($receiptNumber));
+        if ($receiptNumber === '') {
+            throw new InvalidArgumentException('A receipt number is required as proof of payment.');
+        }
+        if (preg_match('/^[A-Z0-9][A-Z0-9._\/-]{2,63}$/', $receiptNumber) !== 1) {
+            throw new InvalidArgumentException('Receipt number must be 3 to 64 characters using letters, numbers, dots, slashes, underscores, or hyphens.');
+        }
         $this->validateActor($actorId);
-        return $this->repository->markPaid($referenceNumber, $actorId);
+        return $this->repository->markPaid($referenceNumber, $receiptNumber, $actorId);
     }
 
     public function delete(string $referenceNumber, string $actorId): void
@@ -242,6 +249,7 @@ final class PickupSheetService
             $existing?->createdAt ?? $submittedAt,
             $existing?->status ?? 'open',
             $existing?->paidAt,
+            $existing?->paymentReceiptNumber,
         );
     }
 

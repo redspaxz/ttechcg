@@ -50,6 +50,13 @@ final class CustomerService
         return $this->repository->summary();
     }
 
+    /** @return list<CustomerProfile> */
+    public function topByPoints(int $limit = 5): array
+    {
+        $this->repository->synchronizeFromShipments();
+        return $this->repository->topByRewardPoints(max(1, min($limit, 10)));
+    }
+
     public function find(string $customerKey): ?CustomerProfile
     {
         if (preg_match('/^[a-f0-9]{64}$/', $customerKey) !== 1) {

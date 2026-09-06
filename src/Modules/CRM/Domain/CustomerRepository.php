@@ -14,6 +14,9 @@ interface CustomerRepository
     /** @return array{customerCount: int, activeCount: int, attentionCount: int, followUpsDue: int} */
     public function summary(): array;
 
+    /** @return list<CustomerProfile> */
+    public function topByRewardPoints(int $limit): array;
+
     public function find(string $customerKey): ?CustomerProfile;
 
     /**

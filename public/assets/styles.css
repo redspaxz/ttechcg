@@ -1150,7 +1150,8 @@ button, a, input, select, textarea { -webkit-tap-highlight-color: transparent; }
 .pickup-sender-chart { display: grid; gap: 18px; margin: 30px 0 0; padding: 0; list-style: none; }
 .pickup-sender-chart li { display: grid; grid-template-columns: 36px minmax(160px, 0.8fr) minmax(220px, 1.4fr) minmax(110px, auto); gap: 18px; align-items: center; }
 .pickup-sender-rank { display: grid; width: 30px; height: 30px; place-items: center; border: 1px solid #444; color: #aaa; font-size: 0.72rem; font-weight: 850; }
-.pickup-sender-name { overflow: hidden; color: #fff; font-weight: 800; text-overflow: ellipsis; white-space: nowrap; }
+.pickup-sender-name { overflow: hidden; color: #fff; font-weight: 800; text-decoration: none; text-overflow: ellipsis; white-space: nowrap; }
+.pickup-loyalty-chart .pickup-sender-name:hover { color: var(--copper); text-decoration: underline; text-underline-offset: 4px; }
 .pickup-sender-chart progress { width: 100%; height: 12px; border: 0; background: #333; accent-color: var(--copper); }
 .pickup-sender-chart progress::-webkit-progress-bar { background: #333; }
 .pickup-sender-chart progress::-webkit-progress-value { background: var(--copper); }
@@ -1200,6 +1201,7 @@ button, a, input, select, textarea { -webkit-tap-highlight-color: transparent; }
 .pickup-dashboard-table-wrap th { color: #888; font-size: 0.62rem; letter-spacing: 0.08em; text-transform: uppercase; }
 .pickup-dashboard-table-wrap tr:last-child td { border-bottom: 0; }
 .pickup-dashboard-table-wrap a { color: #fff; font-weight: 800; }
+.pickup-dashboard-table-wrap td > small { display: block; margin-top: 4px; color: #888; font-size: 0.64rem; overflow-wrap: anywhere; }
 
 /* Compact activity dashboard rhythm */
 .pickup-dashboard-shell { padding-top: 48px; }
@@ -2274,6 +2276,7 @@ button, a, input, select, textarea { -webkit-tap-highlight-color: transparent; }
 .pickup-record-reference { display: grid; gap: 7px; color: var(--dhl-red); font-size: 0.82rem; font-weight: 850; overflow-wrap: anywhere; }
 .pickup-record-status { width: fit-content; padding: 4px 7px; border: 1px solid rgba(69, 50, 0, 0.3); color: #655000; font-size: 0.57rem; letter-spacing: 0.08em; text-transform: uppercase; }
 .pickup-record-status[data-status="paid"] { border-color: #16794b; background: #e6f7ed; color: #0b633a; }
+.pickup-record-receipt { color: #655000; font-size: 0.62rem; font-weight: 750; letter-spacing: 0; text-transform: none; overflow-wrap: anywhere; }
 .pickup-record-overview > strong { justify-self: end; font-size: 0.94rem; white-space: nowrap; }
 .pickup-record-details { border-top: 1px solid rgba(69, 50, 0, 0.2); }
 .pickup-record-details > summary {
@@ -2307,6 +2310,11 @@ button, a, input, select, textarea { -webkit-tap-highlight-color: transparent; }
 .pickup-record-actions > a,
 .pickup-record-actions > form { min-width: 0; }
 .pickup-record-actions form { margin: 0; }
+.pickup-record-actions .pickup-record-payment { display: grid; grid-column: span 2; grid-template-columns: minmax(150px, 1fr) minmax(116px, 0.65fr); gap: 8px; }
+.pickup-record-payment label { position: relative; min-width: 0; }
+.pickup-record-payment label > span { position: absolute; top: 5px; left: 11px; color: #655000; font-size: 0.52rem; font-weight: 850; letter-spacing: 0.06em; line-height: 1; text-transform: uppercase; }
+.pickup-record-payment input { width: 100%; min-height: 42px; padding: 16px 10px 4px; border: 1px solid #8b7626; background: #fffdf5; color: #241b00; font: inherit; font-size: 0.72rem; text-transform: uppercase; }
+.pickup-record-payment input:focus { border-color: var(--dhl-red); outline: 3px solid rgba(212, 5, 17, 0.14); outline-offset: 1px; }
 .pickup-record-actions a,
 .pickup-record-actions button {
     display: inline-flex;
@@ -2437,6 +2445,7 @@ button, a, input, select, textarea { -webkit-tap-highlight-color: transparent; }
     .pickup-record-overview { grid-template-columns: 1fr; }
     .pickup-record-overview > strong { grid-column: 1; grid-row: auto; justify-self: start; }
     .pickup-record-overview .pickup-record-actions { grid-column: 1; grid-row: auto; width: 100%; grid-template-columns: 1fr; }
+    .pickup-record-actions .pickup-record-payment { grid-column: 1; grid-template-columns: 1fr; }
 }
 
 @media (max-width: 430px) {

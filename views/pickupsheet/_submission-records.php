@@ -36,7 +36,7 @@ $trackingUrl = static fn (mixed $awbNumber): string => \App\Modules\Pickupsheet\
 <div class="pickup-record-list">
     <?php if ($pickupSheets === []): ?>
         <?php if ($search !== ''): ?>
-            <div class="pickup-empty-state"><h2>No matching sheets.</h2><p>Try another reference, agent, consignor, AWB, destination, or checker.</p></div>
+            <div class="pickup-empty-state"><h2>No matching sheets.</h2><p>Try another reference, receipt, agent, consignor, AWB, destination, or checker.</p></div>
         <?php else: ?>
             <div class="pickup-empty-state"><h2>No submitted sheets yet.</h2><p>Saved pickup sheets will appear here.</p></div>
         <?php endif; ?>
@@ -46,7 +46,7 @@ $trackingUrl = static fn (mixed $awbNumber): string => \App\Modules\Pickupsheet\
         <?php $referenceQuery = rawurlencode($pickupSheet->referenceNumber); $isPaid = $pickupSheet->isPaid(); ?>
         <article class="pickup-record">
             <div class="pickup-record-overview">
-                <span class="pickup-record-reference"><?= $e($pickupSheet->referenceNumber) ?><small class="pickup-record-status" data-status="<?= $isPaid ? 'paid' : 'open' ?>"><?= $isPaid ? 'Paid' : 'Open' ?></small></span>
+                <span class="pickup-record-reference"><?= $e($pickupSheet->referenceNumber) ?><small class="pickup-record-status" data-status="<?= $isPaid ? 'paid' : 'open' ?>"><?= $isPaid ? 'Paid' : 'Open' ?></small><?php if ($isPaid && $pickupSheet->paymentReceiptNumber !== null): ?><small class="pickup-record-receipt">Receipt <?= $e($pickupSheet->paymentReceiptNumber) ?></small><?php endif; ?></span>
                 <span><small>Date</small><?= $e($pickupSheet->collectionDate) ?></span>
                 <span><small>Agent</small><?= $e($pickupSheet->agentName) ?></span>
                 <span><small>Shipments</small><?= $e($pickupSheet->shipmentCount()) ?></span>
@@ -63,7 +63,7 @@ $trackingUrl = static fn (mixed $awbNumber): string => \App\Modules\Pickupsheet\
                             <a href="<?= $e($basePath) ?>/dhl/pickupsheet/submissions/export?reference=<?= $e($referenceQuery) ?>">Export Excel</a>
                         <?php endif; ?>
                         <?php if ($canMarkPaid && !$isPaid): ?>
-                            <form method="post" action="<?= $e($basePath) ?>/dhl/pickupsheet/submissions/paid"><input type="hidden" name="_token" value="<?= $e($csrfToken) ?>"><input type="hidden" name="reference" value="<?= $e($pickupSheet->referenceNumber) ?>"><button class="pickup-record-paid" type="submit">Mark paid</button></form>
+                            <form class="pickup-record-payment" method="post" action="<?= $e($basePath) ?>/dhl/pickupsheet/submissions/paid"><input type="hidden" name="_token" value="<?= $e($csrfToken) ?>"><input type="hidden" name="reference" value="<?= $e($pickupSheet->referenceNumber) ?>"><label><span>Receipt number</span><input type="text" name="receipt_number" minlength="3" maxlength="64" pattern="[A-Za-z0-9][A-Za-z0-9._/-]{2,63}" placeholder="e.g. RCP-12345" autocomplete="off" required></label><button class="pickup-record-paid" type="submit">Mark paid</button></form>
                         <?php endif; ?>
                         <?php if ($canDelete): ?>
                             <form method="post" action="<?= $e($basePath) ?>/dhl/pickupsheet/submissions/delete" data-pickup-delete><input type="hidden" name="_token" value="<?= $e($csrfToken) ?>"><input type="hidden" name="reference" value="<?= $e($pickupSheet->referenceNumber) ?>"><button class="pickup-record-delete" type="submit">Delete</button></form>

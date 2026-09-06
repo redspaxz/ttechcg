@@ -81,6 +81,7 @@ final class MysqlPickupSheetRepository implements PickupSheetRepository
                 $pickupSheet->createdAt,
                 $pickupSheet->status,
                 $pickupSheet->paidAt,
+                $pickupSheet->paymentReceiptNumber,
             );
         } catch (Throwable $exception) {
             if ($this->connection->inTransaction()) {
@@ -179,6 +180,7 @@ final class MysqlPickupSheetRepository implements PickupSheetRepository
                 $pickupSheet->createdAt,
                 $pickupSheet->status,
                 $pickupSheet->paidAt,
+                $pickupSheet->paymentReceiptNumber,
             );
         } catch (Throwable $exception) {
             if ($this->connection->inTransaction()) {
@@ -188,7 +190,7 @@ final class MysqlPickupSheetRepository implements PickupSheetRepository
         }
     }
 
-    public function markPaid(string $referenceNumber, string $actorId): PickupSheet
+    public function markPaid(string $referenceNumber, string $receiptNumber, string $actorId): PickupSheet
     {
         $this->ensureLifecycleSchema();
         $this->connection->beginTransaction();
@@ -212,10 +214,15 @@ final class MysqlPickupSheetRepository implements PickupSheetRepository
 
             $statement = $this->connection->prepare(
                 "UPDATE pickup_sheets
-                 SET status = 'paid', paid_at = UTC_TIMESTAMP(), paid_by = :actor_id
+                 SET status = 'paid', paid_at = UTC_TIMESTAMP(), paid_by = :actor_id,
+                     payment_receipt_number = :receipt_number
                  WHERE id = :id AND status <> 'paid'",
             );
-            $statement->execute(['id' => (int) $pickupSheetId, 'actor_id' => $actorId]);
+            $statement->execute([
+                'id' => (int) $pickupSheetId,
+                'actor_id' => $actorId,
+                'receipt_number' => $receiptNumber,
+            ]);
             if ($statement->rowCount() !== 1) {
                 throw new \RuntimeException('Pickup sheet is already marked paid.');
             }
@@ -232,6 +239,7 @@ final class MysqlPickupSheetRepository implements PickupSheetRepository
                 $original->createdAt,
                 'paid',
                 gmdate(DATE_ATOM),
+                $receiptNumber,
             );
             $this->writeLifecycleAudit((int) $pickupSheetId, $referenceNumber, $actorId, 'paid', $this->snapshot($original), $this->snapshot($paid));
             $this->connection->commit();
@@ -292,7 +300,8 @@ final class MysqlPickupSheetRepository implements PickupSheetRepository
         [$searchSql, $searchParameters] = $this->searchCondition($search);
         $sheetStatement = $this->connection->prepare(
             'SELECT id, reference_number, agent_name, collection_date, total_cash_received_xaf,
-                    privacy_consent_at, privacy_notice_version, created_at, status, paid_at
+                    privacy_consent_at, privacy_notice_version, created_at, status, paid_at,
+                    payment_receipt_number
              FROM pickup_sheets p
              WHERE p.deleted_at IS NULL' . $searchSql . '
              ORDER BY collection_date DESC, id DESC
@@ -352,6 +361,7 @@ final class MysqlPickupSheetRepository implements PickupSheetRepository
                 (string) $row['created_at'],
                 (string) ($row['status'] ?? 'open'),
                 isset($row['paid_at']) ? (string) $row['paid_at'] : null,
+                isset($row['payment_receipt_number']) ? (string) $row['payment_receipt_number'] : null,
             );
         }
 
@@ -397,6 +407,7 @@ final class MysqlPickupSheetRepository implements PickupSheetRepository
                 OR INSTR(LOWER(p.agent_name), :search_agent) > 0
                 OR INSTR(LOWER(CAST(p.collection_date AS CHAR)), :search_date) > 0
                 OR INSTR(LOWER(p.status), :search_status) > 0
+                OR INSTR(LOWER(COALESCE(p.payment_receipt_number, \'\')), :search_receipt) > 0
                 OR EXISTS (
                     SELECT 1
                     FROM pickup_shipments searched_shipment
@@ -414,6 +425,7 @@ final class MysqlPickupSheetRepository implements PickupSheetRepository
                 'search_agent' => $value,
                 'search_date' => $value,
                 'search_status' => $value,
+                'search_receipt' => $value,
                 'search_consignor' => $value,
                 'search_awb' => $value,
                 'search_destination' => $value,
@@ -570,7 +582,8 @@ final class MysqlPickupSheetRepository implements PickupSheetRepository
         $this->ensureLifecycleSchema();
         $sheetStatement = $this->connection->prepare(
             'SELECT id, reference_number, agent_name, collection_date, total_cash_received_xaf,
-                    privacy_consent_at, privacy_notice_version, created_at, status, paid_at
+                    privacy_consent_at, privacy_notice_version, created_at, status, paid_at,
+                    payment_receipt_number
              FROM pickup_sheets
              WHERE reference_number = :reference_number AND deleted_at IS NULL
              LIMIT 1',
@@ -619,6 +632,7 @@ final class MysqlPickupSheetRepository implements PickupSheetRepository
             (string) $row['created_at'],
             (string) ($row['status'] ?? 'open'),
             isset($row['paid_at']) ? (string) $row['paid_at'] : null,
+            isset($row['payment_receipt_number']) ? (string) $row['payment_receipt_number'] : null,
         );
     }
 
@@ -675,6 +689,15 @@ final class MysqlPickupSheetRepository implements PickupSheetRepository
             );
         }
 
+        try {
+            $this->connection->query('SELECT payment_receipt_number FROM pickup_sheets LIMIT 1');
+        } catch (\PDOException) {
+            $this->connection->exec(
+                'ALTER TABLE pickup_sheets
+                 ADD COLUMN payment_receipt_number VARCHAR(64) NULL AFTER paid_by',
+            );
+        }
+
         $this->connection->exec(
             "CREATE TABLE IF NOT EXISTS pickup_sheet_lifecycle_audit (
                 id BIGINT UNSIGNED AUTO_INCREMENT PRIMARY KEY,
@@ -727,6 +750,7 @@ final class MysqlPickupSheetRepository implements PickupSheetRepository
             'total_cash_received_xaf' => $pickupSheet->totalCashReceivedXaf,
             'status' => $pickupSheet->status,
             'paid_at' => $pickupSheet->paidAt,
+            'payment_receipt_number' => $pickupSheet->paymentReceiptNumber,
             'shipments' => array_map(static fn (PickupShipment $shipment): array => [
                 'line_number' => $shipment->lineNumber,
                 'consignor' => $shipment->consignor,

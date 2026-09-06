@@ -95,6 +95,24 @@ final class MysqlCustomerRepository implements CustomerRepository
         ];
     }
 
+    public function topByRewardPoints(int $limit): array
+    {
+        $this->ensureSchema();
+        $statement = $this->connection->prepare(
+            $this->customerSelect()
+            . ' ORDER BY
+                    GREATEST(0, COALESCE(metrics.cargo_reward_points, 0) + COALESCE(rewards.adjustment_points, 0)) DESC,
+                    COALESCE(metrics.cargo_reward_points, 0) + COALESCE(rewards.earned_adjustment_points, 0) DESC,
+                    LOWER(c.display_name) ASC,
+                    c.display_name ASC
+                LIMIT :limit',
+        );
+        $statement->bindValue(':limit', max(1, min($limit, 10)), PDO::PARAM_INT);
+        $statement->execute();
+
+        return array_map(fn (array $row): CustomerProfile => $this->profile($row), $statement->fetchAll());
+    }
+
     public function find(string $customerKey): ?CustomerProfile
     {
         $this->ensureSchema();

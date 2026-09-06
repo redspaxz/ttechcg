@@ -6,6 +6,7 @@ namespace App\Modules\Pickupsheet\UI;
 
 use App\Modules\Pickupsheet\Application\PickupSheetService;
 use App\Modules\Pickupsheet\Domain\PickupSheet;
+use App\Modules\CRM\Application\CustomerService;
 use App\Shared\Http\Request;
 use App\Shared\Http\Response;
 use App\Shared\Security\Captcha;
@@ -43,6 +44,7 @@ final class PickupsheetController
         private readonly SecurityLogger $securityLogger,
         private readonly ?LoginMethodSettingsService $loginMethodSettings = null,
         private readonly ?LocalMfaService $localMfa = null,
+        private readonly ?CustomerService $customerService = null,
     ) {
     }
 
@@ -206,6 +208,7 @@ final class PickupsheetController
         $activity = [];
         $destinations = [];
         $senders = [];
+        $topCustomers = [];
         $userActivity = $this->emptyPagination() + ['activeRecords' => 0];
         $auditLogs = $this->emptyPagination();
         $recentSheets = $this->emptyPagination();
@@ -221,6 +224,15 @@ final class PickupsheetController
         } catch (RuntimeException $exception) {
             error_log($exception->__toString());
             $errors = ['Dashboard activity could not be loaded. Check the MySQL connection and account schema.'];
+        }
+
+        if ($this->customerService !== null) {
+            try {
+                $topCustomers = $this->customerService->topByPoints(5);
+            } catch (RuntimeException $exception) {
+                error_log($exception->__toString());
+                $errors[] = 'Customer loyalty rankings could not be loaded. Check the CRM and rewards schema.';
+            }
         }
 
         try {
@@ -270,6 +282,7 @@ final class PickupsheetController
             'activity' => $activity,
             'destinations' => $destinations,
             'senders' => $senders,
+            'topCustomers' => $topCustomers,
             'userActivity' => $userActivity,
             'auditLogs' => $auditLogs,
             'recentSheets' => $recentSheets,
@@ -372,7 +385,11 @@ final class PickupsheetController
 
         $records = $this->submissionRecords($request, $authorization);
         $flash = $_SESSION['_pickup_records_flash'] ?? null;
-        unset($_SESSION['_pickup_records_flash']);
+        $actionErrors = $_SESSION['_pickup_records_errors'] ?? [];
+        unset($_SESSION['_pickup_records_flash'], $_SESSION['_pickup_records_errors']);
+        if (is_array($actionErrors) && $actionErrors !== []) {
+            $records['errors'] = array_merge($records['errors'] ?? [], $actionErrors);
+        }
 
         $body = $this->view->render('pickupsheet/submissions', array_merge($records, [
             'pageTitle' => 'Submitted pickup sheets',
@@ -506,18 +523,23 @@ final class PickupsheetController
 
         $reference = $request->input('reference');
         try {
-            $paid = $this->service->markPaid($reference, $this->actorId($authorization));
-            $_SESSION['_pickup_records_flash'] = 'Pickup sheet ' . $paid->referenceNumber . ' marked paid.';
+            $paid = $this->service->markPaid(
+                $reference,
+                $request->input('receipt_number'),
+                $this->actorId($authorization),
+            );
+            $_SESSION['_pickup_records_flash'] = 'Pickup sheet ' . $paid->referenceNumber . ' marked paid with receipt ' . $paid->paymentReceiptNumber . '.';
             $this->securityLogger->event('pickupsheet.record_paid', $request, 'accepted', [
                 'actor_id' => $this->actorId($authorization),
                 'resource_id' => substr(hash('sha256', $paid->referenceNumber), 0, 24),
+                'receipt_id' => substr(hash('sha256', (string) $paid->paymentReceiptNumber), 0, 24),
             ]);
         } catch (InvalidArgumentException $exception) {
-            $_SESSION['_pickup_records_flash'] = $exception->getMessage();
+            $_SESSION['_pickup_records_errors'] = [$exception->getMessage()];
             $this->securityLogger->event('pickupsheet.record_paid', $request, 'denied');
         } catch (RuntimeException $exception) {
             error_log($exception->__toString());
-            $_SESSION['_pickup_records_flash'] = 'The pickup sheet could not be marked paid. Check MySQL and try again.';
+            $_SESSION['_pickup_records_errors'] = ['The pickup sheet could not be marked paid. Check MySQL and try again.'];
             $this->securityLogger->event('pickupsheet.record_paid', $request, 'failed');
         }
 
