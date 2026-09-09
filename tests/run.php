@@ -2196,7 +2196,7 @@ $assert(is_string($dhlAsset) && !str_contains($dhlAsset, '<text'), 'The disquali
 $partnerSources = file_get_contents(dirname(__DIR__) . '/public/assets/partners/README.md');
 $assert(is_string($partnerSources) && str_contains($partnerSources, 'www.dhl.com/content/dam/dhl/global/core/images/logos/dhl-logo.svg'), 'The official DHL artwork source should be documented.');
 $assert(!str_contains($home, 'href="/dhl/pickupsheet"'), 'Pickupsheet should not be discoverable from the public site chrome or homepage.');
-$assert(str_contains($home, 'styles.css?v=20260909-audit-log-accordion'), 'Responsive audit-log accordions and prior Pickupsheet refinements should use a cache-safe stylesheet version.');
+$assert(str_contains($home, 'styles.css?v=20260909-dashboard-card-padding'), 'Consistently padded dashboard cards and prior Pickupsheet refinements should use a cache-safe stylesheet version.');
 $assert(str_contains($home, 'app.js?v=20260909-audit-log-accordion'), 'AJAX audit-log accordions and prior OWASP-aligned interactions should use a cache-safe script version.');
 $assert(str_contains($home, 'analytics.js?v=20260825-security-hardening'), 'The current consent-aware Google Analytics loader should render on every page.');
 $assert(str_contains($home, 'data-analytics-accept'), 'The site should offer an explicit analytics acceptance control.');
@@ -2421,6 +2421,8 @@ $assert(is_string($styles) && str_contains($styles, '@keyframes pickup-records-s
 $assert(is_string($styles) && str_contains($styles, '.pickup-pagination'), 'Qualified tables should provide responsive pagination controls.');
 $assert(is_string($styles) && str_contains($styles, '.pickup-audit-log-table { width: 100%; overflow: visible; }') && str_contains($styles, '.pickup-audit-log-table table { width: 100%; min-width: 0;'), 'Detailed user logs should fit their card without horizontal or vertical scrollbars.');
 $assert(is_string($styles) && str_contains($styles, '.pickup-audit-log-entry > summary') && str_contains($styles, '.pickup-audit-log-detail dl') && str_contains($styles, '@keyframes pickup-audit-detail-enter'), 'Overflowing audit metadata should use responsive animated accordions.');
+$assert(is_string($styles) && str_contains($styles, '--dashboard-card-padding-block: 20px;') && str_contains($styles, '--dashboard-card-padding-inline: 22px;'), 'Dashboard cards should share a consistent restrained content inset.');
+$assert(is_string($styles) && str_contains($styles, '.pickup-user-activity > [data-ajax-pager-content] > .pickup-card-heading') && str_contains($styles, '.pickup-audit-log > [data-ajax-pager-content] > .pickup-card-heading') && str_contains($styles, '.pickup-dashboard-recent > [data-ajax-pager-content] > .pickup-card-heading'), 'AJAX dashboard card titles should retain padding after their fragments are loaded.');
 $assert(is_string($styles) && str_contains($styles, '.records-users-layout'), 'Administrator account management should have a dedicated responsive layout.');
 $assert(is_string($styles) && str_contains($styles, '.records-user-table') && str_contains($styles, '.records-user-summary-row:nth-child(4n + 3)'), 'Managed accounts should render in a detailed table with alternating row colors.');
 $assert(is_string($styles) && str_contains($styles, '.records-login-method-grid') && str_contains($styles, '.records-method-switch'), 'The administrator workspace should style authentication-method toggles.');
