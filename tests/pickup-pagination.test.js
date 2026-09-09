@@ -26,6 +26,7 @@ let clickHandler;
 let filterHandler;
 let clearHandler;
 let popstateHandler;
+let accordionToggleHandler;
 let pushedUrl;
 let fetchRequest;
 let resolveFetch;
@@ -86,7 +87,9 @@ const document = {
             setAttribute() {},
         };
     },
-    addEventListener() {},
+    addEventListener(event, handler) {
+        if (event === 'toggle') accordionToggleHandler = handler;
+    },
 };
 const window = {
     location: {
@@ -130,6 +133,18 @@ vm.runInNewContext(script, context);
     assert.equal(typeof filterHandler, 'function', 'AJAX filter handler should be registered');
     assert.equal(typeof clearHandler, 'function', 'AJAX clear handler should be registered');
     assert.equal(typeof popstateHandler, 'function', 'pagination history handler should be registered');
+    assert.equal(typeof accordionToggleHandler, 'function', 'delegated audit accordion behavior should be registered');
+
+    const siblingEntry = { open: true };
+    const openedEntry = {
+        open: true,
+        matches(selector) { return selector === '[data-audit-log-entry]'; },
+        closest() {
+            return { querySelectorAll() { return [openedEntry, siblingEntry]; } };
+        },
+    };
+    accordionToggleHandler({ target: openedEntry });
+    assert.equal(siblingEntry.open, false, 'opening an AJAX-loaded audit entry should close its open sibling');
 
     let prevented = false;
     clickHandler({

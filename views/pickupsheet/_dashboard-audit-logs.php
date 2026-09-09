@@ -67,20 +67,31 @@ $auditDetails = static function (array $log): string {
     <div><span>Security and operations</span><h2 id="audit-log-title">Detailed user logs</h2></div>
     <small>UTC &middot; 10 per page</small>
 </div>
-<div class="pickup-audit-log-table">
+<div class="pickup-audit-log-table" data-audit-log-accordion>
     <table>
-        <thead><tr><th>Time</th><th>User</th><th>Event</th><th>Result</th><th>Details</th><th>Request</th></tr></thead>
+        <thead><tr><th>Time</th><th>User</th><th>Event</th><th>Result</th><th><span class="sr-only">Expand log</span></th></tr></thead>
         <tbody>
-        <?php if ($items === []): ?><tr><td colspan="6">No detailed user events have been recorded yet.</td></tr><?php endif; ?>
+        <?php if ($items === []): ?><tr class="pickup-audit-log-empty"><td colspan="5">No detailed user events have been recorded yet.</td></tr><?php endif; ?>
         <?php foreach ($items as $log): ?>
             <?php $outcome = (string) ($log['outcome'] ?? 'unknown'); $provider = (string) ($log['identityProvider'] ?? ''); ?>
-            <tr>
-                <td><time datetime="<?= $e($log['occurredAt'] ?? '') ?>"><?= $e($log['occurredAt'] ?? '') ?></time></td>
-                <td><strong><?= $e($log['actorName'] ?? 'Unauthenticated') ?></strong><?php if (($log['actorUsername'] ?? '') !== ''): ?><small><?= $e($log['actorUsername']) ?></small><?php endif; ?><small><?= $e(ucfirst((string) ($log['role'] ?? ''))) ?><?= $provider !== '' ? ' &middot; ' . $e($identityProviderLabel($provider)) : '' ?></small></td>
-                <td><strong><?= $e($auditEventLabel((string) ($log['eventName'] ?? ''))) ?></strong><small><?= $e($log['eventName'] ?? '') ?></small></td>
-                <td><span class="pickup-audit-outcome <?= $e($auditOutcomeClass($outcome)) ?>"><?= $e(str_replace('_', ' ', ucfirst($outcome))) ?></span></td>
-                <td><?= $e($auditDetails($log)) ?></td>
-                <td><strong><?= $e($log['method'] ?? '') ?> <?= $e($log['path'] ?? '') ?></strong><small>Request <?= $e(substr((string) ($log['requestId'] ?? ''), 0, 16)) ?></small><small>Client <?= $e(substr((string) ($log['clientId'] ?? ''), 0, 12)) ?></small></td>
+            <tr class="pickup-audit-log-row">
+                <td colspan="5">
+                    <details class="pickup-audit-log-entry" data-audit-log-entry>
+                        <summary>
+                            <span class="pickup-audit-log-time" data-label="Time"><time datetime="<?= $e($log['occurredAt'] ?? '') ?>"><?= $e($log['occurredAt'] ?? '') ?></time></span>
+                            <span data-label="User"><strong><?= $e($log['actorName'] ?? 'Unauthenticated') ?></strong><?php if (($log['actorUsername'] ?? '') !== ''): ?><small><?= $e($log['actorUsername']) ?></small><?php endif; ?><small><?= $e(ucfirst((string) ($log['role'] ?? ''))) ?><?= $provider !== '' ? ' &middot; ' . $e($identityProviderLabel($provider)) : '' ?></small></span>
+                            <span data-label="Event"><strong><?= $e($auditEventLabel((string) ($log['eventName'] ?? ''))) ?></strong><small><?= $e($log['eventName'] ?? '') ?></small></span>
+                            <span data-label="Result"><span class="pickup-audit-outcome <?= $e($auditOutcomeClass($outcome)) ?>"><?= $e(str_replace('_', ' ', ucfirst($outcome))) ?></span></span>
+                            <i aria-hidden="true">+</i>
+                        </summary>
+                        <div class="pickup-audit-log-detail">
+                            <dl>
+                                <div><dt>Details</dt><dd><?= $e($auditDetails($log)) ?></dd></div>
+                                <div><dt>Request</dt><dd><strong><?= $e($log['method'] ?? '') ?> <?= $e($log['path'] ?? '') ?></strong><small>Request <?= $e(substr((string) ($log['requestId'] ?? ''), 0, 16)) ?></small><small>Client <?= $e(substr((string) ($log['clientId'] ?? ''), 0, 12)) ?></small></dd></div>
+                            </dl>
+                        </div>
+                    </details>
+                </td>
             </tr>
         <?php endforeach; ?>
         </tbody>

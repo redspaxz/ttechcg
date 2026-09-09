@@ -1695,6 +1695,7 @@ $assert(str_contains($adminDashboard->body(), 'Total session') && str_contains($
 $assert(str_contains($adminDashboard->body(), 'Detailed user logs') && str_contains($adminDashboard->body(), '10 per page'), 'The administrator dashboard should provide a paginated detailed user audit trail.');
 $assert(str_contains($adminDashboard->body(), 'pickupsheet.records_access') && str_contains($adminDashboard->body(), 'Records Administrator'), 'Detailed logs should resolve a protected request to the known administrator account.');
 $assert(str_contains($adminDashboard->body(), 'Request') && str_contains($adminDashboard->body(), 'Client'), 'Detailed logs should expose pseudonymous request and client correlation identifiers.');
+$assert(str_contains($adminDashboard->body(), 'data-audit-log-accordion') && str_contains($adminDashboard->body(), 'data-audit-log-entry'), 'Detailed logs should use expandable entries when complete metadata does not fit the summary table.');
 $assert(str_contains($adminDashboard->body(), 'Manage customer relationships') && str_contains($adminDashboard->body(), '/dhl/pickupsheet/customers'), 'The administrator dashboard should link to the customer CRM.');
 $assert(substr_count($adminDashboard->body(), 'data-ajax-pager') >= 3 && str_contains($adminDashboard->body(), 'data-page-param="login_page"') && str_contains($adminDashboard->body(), 'data-page-param="log_page"') && str_contains($adminDashboard->body(), 'data-page-param="recent_page"'), 'Every qualified dashboard table should expose an independent AJAX pagination region.');
 $adminDashboardActivity = $pickupController->dashboardUserActivityPage(new Request('GET', '/dhl/pickupsheet/dashboard/user-activity/page', ['login_page' => '1']));
@@ -1702,6 +1703,7 @@ $adminDashboardLogs = $pickupController->dashboardAuditLogPage(new Request('GET'
 $adminDashboardSheets = $pickupController->dashboardRecentSheetsPage(new Request('GET', '/dhl/pickupsheet/dashboard/recent-sheets/page', ['recent_page' => '1']));
 $assert($adminDashboardActivity->status() === 200 && str_contains($adminDashboardActivity->body(), 'User login frequency') && str_contains($adminDashboardActivity->body(), 'data-ajax-current-page="1"'), 'The dashboard user-activity endpoint should return its paginated table fragment.');
 $assert($adminDashboardLogs->status() === 200 && str_contains($adminDashboardLogs->body(), 'Detailed user logs') && str_contains($adminDashboardLogs->body(), 'data-ajax-current-page="1"'), 'The dashboard audit endpoint should return its paginated table fragment.');
+$assert(str_contains($adminDashboardLogs->body(), '<details class="pickup-audit-log-entry"') && str_contains($adminDashboardLogs->body(), '<dt>Details</dt>') && str_contains($adminDashboardLogs->body(), '<dt>Request</dt>'), 'AJAX log pages should retain expandable detail and request metadata.');
 $assert($adminDashboardSheets->status() === 200 && str_contains($adminDashboardSheets->body(), 'Latest pickup sheets') && str_contains($adminDashboardSheets->body(), 'data-ajax-current-page="1"'), 'The recent-sheet endpoint should return its paginated table fragment.');
 
 $customerDirectory = $customerController->index(new Request('GET', '/dhl/pickupsheet/customers'));
@@ -2194,8 +2196,8 @@ $assert(is_string($dhlAsset) && !str_contains($dhlAsset, '<text'), 'The disquali
 $partnerSources = file_get_contents(dirname(__DIR__) . '/public/assets/partners/README.md');
 $assert(is_string($partnerSources) && str_contains($partnerSources, 'www.dhl.com/content/dam/dhl/global/core/images/logos/dhl-logo.svg'), 'The official DHL artwork source should be documented.');
 $assert(!str_contains($home, 'href="/dhl/pickupsheet"'), 'Pickupsheet should not be discoverable from the public site chrome or homepage.');
-$assert(str_contains($home, 'styles.css?v=20260909-submissions-ui'), 'The compact submitted-sheet layout and prior Pickupsheet refinements should use a cache-safe stylesheet version.');
-$assert(str_contains($home, 'app.js?v=20260909-submissions-ui'), 'Submitted-sheet history, payment confirmation, and prior OWASP-aligned interactions should use a cache-safe script version.');
+$assert(str_contains($home, 'styles.css?v=20260909-audit-log-accordion'), 'Responsive audit-log accordions and prior Pickupsheet refinements should use a cache-safe stylesheet version.');
+$assert(str_contains($home, 'app.js?v=20260909-audit-log-accordion'), 'AJAX audit-log accordions and prior OWASP-aligned interactions should use a cache-safe script version.');
 $assert(str_contains($home, 'analytics.js?v=20260825-security-hardening'), 'The current consent-aware Google Analytics loader should render on every page.');
 $assert(str_contains($home, 'data-analytics-accept'), 'The site should offer an explicit analytics acceptance control.');
 $assert(str_contains($home, 'data-analytics-decline'), 'The site should offer an explicit analytics decline control.');
@@ -2417,6 +2419,8 @@ $assert(is_string($styles) && str_contains($styles, '.pickup-record-table tbody 
 $assert(is_string($styles) && str_contains($styles, '.ajax-pager-loading'), 'Application-wide AJAX pagination should have a visible loading overlay.');
 $assert(is_string($styles) && str_contains($styles, '@keyframes pickup-records-spin'), 'The loading overlay should provide spinner animation.');
 $assert(is_string($styles) && str_contains($styles, '.pickup-pagination'), 'Qualified tables should provide responsive pagination controls.');
+$assert(is_string($styles) && str_contains($styles, '.pickup-audit-log-table { width: 100%; overflow: visible; }') && str_contains($styles, '.pickup-audit-log-table table { width: 100%; min-width: 0;'), 'Detailed user logs should fit their card without horizontal or vertical scrollbars.');
+$assert(is_string($styles) && str_contains($styles, '.pickup-audit-log-entry > summary') && str_contains($styles, '.pickup-audit-log-detail dl') && str_contains($styles, '@keyframes pickup-audit-detail-enter'), 'Overflowing audit metadata should use responsive animated accordions.');
 $assert(is_string($styles) && str_contains($styles, '.records-users-layout'), 'Administrator account management should have a dedicated responsive layout.');
 $assert(is_string($styles) && str_contains($styles, '.records-user-table') && str_contains($styles, '.records-user-summary-row:nth-child(4n + 3)'), 'Managed accounts should render in a detailed table with alternating row colors.');
 $assert(is_string($styles) && str_contains($styles, '.records-login-method-grid') && str_contains($styles, '.records-method-switch'), 'The administrator workspace should style authentication-method toggles.');
@@ -2455,6 +2459,7 @@ $assert(is_string($script) && str_contains($script, 'await fetch(pageEndpoint'),
 $assert(is_string($script) && str_contains($script, "spinner.hidden = !loading"), 'AJAX pagination should toggle its loading spinner.');
 $assert(is_string($script) && str_contains($script, "window.history.pushState"), 'AJAX pagination should preserve browser history.');
 $assert(is_string($script) && str_contains($script, 'needsLoad: (url) => stateSignature(url) !== currentState'), 'AJAX history should reload when a tracked filter changes without a page-number change.');
+$assert(is_string($script) && str_contains($script, "event.target.matches?.('[data-audit-log-entry]')") && str_contains($script, "querySelectorAll('[data-audit-log-entry][open]')"), 'Dynamically loaded audit-log accordions should keep one expanded entry at a time.');
 $assert(is_string($script) && str_contains($script, "event.target.matches('[data-pickup-payment]')") && str_contains($script, 'This status cannot be reversed.'), 'Marking a pickup sheet paid should require explicit browser confirmation.');
 $assert(is_string($script) && str_contains($script, "document.querySelectorAll('[data-user-edit-toggle]')") && str_contains($script, 'preventScroll: true'), 'Local account editors should open on demand without moving the viewport.');
 $assert(is_string($script) && str_contains($script, "event.target.matches('[data-user-delete-form]')") && str_contains($script, 'Permanently delete'), 'Local account deletion should require an explicit browser confirmation.');

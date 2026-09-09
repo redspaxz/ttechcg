@@ -1174,20 +1174,38 @@ button, a, input, select, textarea { -webkit-tap-highlight-color: transparent; }
 .pickup-session-state.is-active i { background: #55c878; box-shadow: 0 0 0 4px rgba(85, 200, 120, 0.12); }
 .pickup-audit-log { margin-top: 28px; }
 .pickup-audit-log > .pickup-card-heading { padding: 24px 26px; border-bottom: 1px solid #333; }
-.pickup-audit-log-table { max-height: 620px; overflow: auto; }
-.pickup-audit-log-table table { width: 100%; min-width: 1180px; border-collapse: collapse; }
-.pickup-audit-log-table th,
-.pickup-audit-log-table td { padding: 16px 18px; border-bottom: 1px solid #2b2b2e; color: #ccc; text-align: left; vertical-align: top; }
-.pickup-audit-log-table th { position: sticky; z-index: 1; top: 0; background: #131315; color: #888; font-size: 0.62rem; letter-spacing: 0.08em; text-transform: uppercase; }
-.pickup-audit-log-table tr:last-child td { border-bottom: 0; }
-.pickup-audit-log-table td:nth-child(1) { width: 150px; color: #999; white-space: nowrap; }
-.pickup-audit-log-table td:nth-child(2) { width: 190px; }
-.pickup-audit-log-table td:nth-child(3) { width: 180px; }
-.pickup-audit-log-table td:nth-child(4) { width: 105px; }
-.pickup-audit-log-table td:nth-child(5) { min-width: 250px; }
-.pickup-audit-log-table td:nth-child(6) { width: 235px; }
-.pickup-audit-log-table td strong { display: block; color: #fff; }
-.pickup-audit-log-table td small { display: block; max-width: 230px; margin-top: 4px; overflow: hidden; color: #777; text-overflow: ellipsis; white-space: nowrap; }
+.pickup-audit-log-table { width: 100%; overflow: visible; }
+.pickup-audit-log-table table { width: 100%; min-width: 0; border-collapse: collapse; table-layout: fixed; }
+.pickup-audit-log-table thead tr,
+.pickup-audit-log-entry > summary {
+    display: grid;
+    grid-template-columns: minmax(130px, 0.72fr) minmax(150px, 1fr) minmax(170px, 1.12fr) minmax(105px, 0.58fr) 28px;
+    gap: 14px;
+    align-items: center;
+}
+.pickup-audit-log-table th { padding: 12px 14px; color: #888; font-size: 0.62rem; letter-spacing: 0.08em; text-align: left; text-transform: uppercase; }
+.pickup-audit-log-table tbody > tr > td { padding: 0; border-bottom: 1px solid #2b2b2e; color: #ccc; vertical-align: top; }
+.pickup-audit-log-table tbody > tr:last-child > td { border-bottom: 0; }
+.pickup-audit-log-entry > summary { padding: 12px 14px; cursor: pointer; list-style: none; }
+.pickup-audit-log-entry > summary::-webkit-details-marker { display: none; }
+.pickup-audit-log-entry > summary::marker { content: ''; }
+.pickup-audit-log-entry > summary:hover { background: #19191c; }
+.pickup-audit-log-entry > summary:focus-visible { outline: 2px solid var(--copper); outline-offset: -2px; }
+.pickup-audit-log-entry > summary > span { min-width: 0; overflow-wrap: anywhere; }
+.pickup-audit-log-entry strong { display: block; color: #fff; }
+.pickup-audit-log-entry small { display: block; margin-top: 4px; color: #888; overflow-wrap: anywhere; }
+.pickup-audit-log-time { color: #999; font-variant-numeric: tabular-nums; }
+.pickup-audit-log-entry > summary > i { display: grid; width: 26px; height: 26px; place-items: center; color: var(--copper); font-size: 1.15rem; font-style: normal; transition: transform 160ms ease; }
+.pickup-audit-log-entry[open] > summary { background: #19191c; }
+.pickup-audit-log-entry[open] > summary > i { transform: rotate(45deg); }
+.pickup-audit-log-detail { padding: 0 14px 14px; background: #19191c; animation: pickup-audit-detail-enter 160ms ease-out; }
+.pickup-audit-log-detail dl { display: grid; grid-template-columns: minmax(0, 1.3fr) minmax(240px, 0.7fr); gap: 1px; margin: 0; background: #333; }
+.pickup-audit-log-detail dl > div { min-width: 0; padding: 14px; background: #101012; }
+.pickup-audit-log-detail dt { color: #888; font-size: 0.6rem; font-weight: 850; letter-spacing: 0.08em; text-transform: uppercase; }
+.pickup-audit-log-detail dd { margin: 7px 0 0; color: #ccc; line-height: 1.55; overflow-wrap: anywhere; }
+.pickup-audit-log-detail dd small { font-size: 0.65rem; }
+.pickup-audit-log-empty td { padding: 24px !important; color: #888 !important; text-align: center; }
+@keyframes pickup-audit-detail-enter { from { opacity: 0; transform: translateY(-4px); } }
 .pickup-audit-outcome { display: inline-flex; padding: 6px 9px; border: 1px solid #555; color: #bbb; font-size: 0.64rem; font-weight: 850; letter-spacing: 0.04em; text-transform: uppercase; }
 .pickup-audit-outcome.is-success { border-color: rgba(85, 200, 120, 0.5); color: #78dc95; }
 .pickup-audit-outcome.is-denied { border-color: rgba(239, 181, 64, 0.52); color: #efb540; }
@@ -1225,8 +1243,6 @@ button, a, input, select, textarea { -webkit-tap-highlight-color: transparent; }
 .pickup-dashboard-shell .pickup-dashboard-recent > .pickup-card-heading { padding: 20px 22px; }
 .pickup-dashboard-shell .pickup-user-activity-table th,
 .pickup-dashboard-shell .pickup-user-activity-table td,
-.pickup-dashboard-shell .pickup-audit-log-table th,
-.pickup-dashboard-shell .pickup-audit-log-table td,
 .pickup-dashboard-shell .pickup-dashboard-table-wrap th,
 .pickup-dashboard-shell .pickup-dashboard-table-wrap td { padding: 12px 14px; }
 
@@ -1242,6 +1258,10 @@ button, a, input, select, textarea { -webkit-tap-highlight-color: transparent; }
     .pickup-admin-actions a:last-child { grid-column: 1 / -1; border-right: 0; border-bottom: 0; }
     .pickup-kpi-grid article:nth-child(-n + 2) { border-bottom: 1px solid #333; }
     .pickup-dashboard-grid { grid-template-columns: 1fr; }
+    .pickup-audit-log-table thead { display: none; }
+    .pickup-audit-log-entry > summary { grid-template-columns: repeat(2, minmax(0, 1fr)) 28px; gap: 14px 18px; align-items: start; }
+    .pickup-audit-log-entry > summary > span::before { display: block; margin-bottom: 5px; color: #777; content: attr(data-label); font-size: 0.58rem; font-weight: 850; letter-spacing: 0.08em; text-transform: uppercase; }
+    .pickup-audit-log-entry > summary > i { grid-column: 3; grid-row: 1 / span 2; }
 }
 
 /* Pickupsheet encrypted backup and restore */
@@ -1302,6 +1322,11 @@ button, a, input, select, textarea { -webkit-tap-highlight-color: transparent; }
     .pickup-cash-status-values dd { padding-left: 19px; text-align: left; }
     .pickup-sender-chart li { grid-template-columns: 36px minmax(0, 1fr) auto; gap: 10px 14px; }
     .pickup-sender-chart progress { grid-column: 2 / -1; }
+    .pickup-audit-log-entry > summary { grid-template-columns: minmax(0, 1fr) 28px; gap: 13px; padding: 14px; }
+    .pickup-audit-log-entry > summary > span { grid-column: 1; }
+    .pickup-audit-log-entry > summary > i { grid-column: 2; grid-row: 1; }
+    .pickup-audit-log-detail { padding: 0 14px 14px; }
+    .pickup-audit-log-detail dl { grid-template-columns: 1fr; }
 }
 
 /* Pickup records user management */

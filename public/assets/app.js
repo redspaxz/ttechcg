@@ -595,6 +595,15 @@ if (ajaxPagerControllers.size > 0) {
     });
 }
 
+document.addEventListener('toggle', (event) => {
+    if (!event.target.matches?.('[data-audit-log-entry]') || !event.target.open) return;
+    event.target.closest('[data-audit-log-accordion]')
+        ?.querySelectorAll('[data-audit-log-entry][open]')
+        .forEach((entry) => {
+            if (entry !== event.target) entry.open = false;
+        });
+}, true);
+
 const accountEditors = Array.from(document.querySelectorAll('[data-user-editor]'));
 const closeAccountEditor = (editor) => {
     if (!editor) return;
