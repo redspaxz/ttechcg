@@ -34,6 +34,7 @@ const pager = {
         ajaxPagerId: 'submitted-sheets',
         pageEndpoint: '/dhl/pickupsheet/submissions/page',
         pageParam: 'page',
+        filterParams: 'q',
         currentPage: '1',
         errorMessage: 'Pickup records could not be loaded. Please try again.',
     },
@@ -46,16 +47,21 @@ const pager = {
         if (event === 'click') clickHandler = handler;
     },
 };
+const searchInput = { name: 'q', value: '' };
 const filterForm = {
     action: 'https://ttechcg.com/dhl/pickupsheet/submissions',
     dataset: { ajaxPagerForm: 'submitted-sheets' },
     addEventListener(event, handler) {
         if (event === 'submit') filterHandler = handler;
     },
+    querySelectorAll(selector) {
+        return selector === '[name]' ? [searchInput] : [];
+    },
 };
 const clearLink = {
     href: 'https://ttechcg.com/dhl/pickupsheet/submissions',
     dataset: { ajaxPagerClear: 'submitted-sheets' },
+    hidden: true,
     addEventListener(event, handler) {
         if (event === 'click') clearHandler = handler;
     },
@@ -68,6 +74,8 @@ const document = {
         if (selector === '[data-ajax-pager]') return [pager];
         if (selector === '[data-ajax-pager-form]') return [filterForm];
         if (selector === '[data-ajax-pager-clear]') return [clearLink];
+        if (selector === '[data-ajax-pager-form="submitted-sheets"]') return [filterForm];
+        if (selector === '[data-ajax-pager-clear="submitted-sheets"]') return [clearLink];
         return [];
     },
     createElement() {
@@ -160,6 +168,8 @@ vm.runInNewContext(script, context);
     assert.match(fetchRequest.url, /submissions\/page\?q=controller&page=1$/);
     resolveFetch({ ok: true, redirected: false, status: 200, text: async () => '<p>Filtered</p>' });
     await new Promise((resolve) => setTimeout(resolve, 0));
+    assert.equal(searchInput.value, 'controller', 'AJAX search should synchronize the visible search field');
+    assert.equal(clearLink.hidden, false, 'AJAX search should reveal the clear action');
 
     let clearPrevented = false;
     clearHandler({ preventDefault() { clearPrevented = true; } });
@@ -168,6 +178,17 @@ vm.runInNewContext(script, context);
     assert.match(fetchRequest.url, /submissions\/page\?page=1$/);
     resolveFetch({ ok: true, redirected: false, status: 200, text: async () => '<p>Cleared</p>' });
     await new Promise((resolve) => setTimeout(resolve, 0));
+    assert.equal(searchInput.value, '', 'clearing AJAX search should clear the visible search field');
+    assert.equal(clearLink.hidden, true, 'clearing AJAX search should hide the clear action');
+
+    window.location.href = 'https://ttechcg.com/dhl/pickupsheet/submissions?q=history&page=1';
+    popstateHandler();
+    await Promise.resolve();
+    assert.match(fetchRequest.url, /submissions\/page\?q=history&page=1$/, 'history should reload a changed search on the same page number');
+    resolveFetch({ ok: true, redirected: false, status: 200, text: async () => '<p>History search</p>' });
+    await new Promise((resolve) => setTimeout(resolve, 0));
+    assert.equal(content.innerHTML, '<p>History search</p>', 'history navigation should restore the matching table fragment');
+    assert.equal(searchInput.value, 'history', 'history navigation should restore the visible search value');
 
     console.log('Application pagination tests passed.');
 })().catch((error) => {

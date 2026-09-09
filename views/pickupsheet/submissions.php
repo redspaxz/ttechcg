@@ -36,7 +36,7 @@ $e = static fn (mixed $value): string => htmlspecialchars((string) $value, ENT_Q
                 <input type="search" name="q" value="<?= $e($search ?? '') ?>" maxlength="160" placeholder="Reference, receipt, agent, consignor, AWB, destination, or checker" autocomplete="off">
             </label>
             <button class="button" type="submit">Search</button>
-            <?php if (($search ?? '') !== ''): ?><a href="<?= $e($basePath) ?>/dhl/pickupsheet/submissions" data-ajax-pager-clear="submitted-sheets">Clear</a><?php endif; ?>
+            <a href="<?= $e($basePath) ?>/dhl/pickupsheet/submissions" data-ajax-pager-clear="submitted-sheets" <?= ($search ?? '') === '' ? 'hidden' : '' ?>>Clear</a>
         </form>
 
         <div
@@ -46,6 +46,7 @@ $e = static fn (mixed $value): string => htmlspecialchars((string) $value, ENT_Q
             data-ajax-pager-id="submitted-sheets"
             data-page-endpoint="<?= $e($basePath) ?>/dhl/pickupsheet/submissions/page"
             data-page-param="page"
+            data-filter-params="q"
             data-current-page="<?= $e($pagination['page'] ?? 1) ?>"
             data-error-message="Pickup records could not be loaded. Please try again."
         >

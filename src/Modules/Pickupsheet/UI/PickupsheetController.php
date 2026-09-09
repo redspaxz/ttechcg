@@ -543,7 +543,7 @@ final class PickupsheetController
             $this->securityLogger->event('pickupsheet.record_paid', $request, 'failed');
         }
 
-        return Response::redirect($request->basePath . '/dhl/pickupsheet/submissions');
+        return Response::redirect($this->submissionReturnPath($request));
     }
 
     public function deletePickupSheet(Request $request): Response
@@ -567,15 +567,15 @@ final class PickupsheetController
                 'resource_id' => substr(hash('sha256', $reference), 0, 24),
             ]);
         } catch (InvalidArgumentException $exception) {
-            $_SESSION['_pickup_records_flash'] = $exception->getMessage();
+            $_SESSION['_pickup_records_errors'] = [$exception->getMessage()];
             $this->securityLogger->event('pickupsheet.record_delete', $request, 'denied');
         } catch (RuntimeException $exception) {
             error_log($exception->__toString());
-            $_SESSION['_pickup_records_flash'] = 'The pickup sheet could not be deleted. Check MySQL and try again.';
+            $_SESSION['_pickup_records_errors'] = ['The pickup sheet could not be deleted. Check MySQL and try again.'];
             $this->securityLogger->event('pickupsheet.record_delete', $request, 'failed');
         }
 
-        return Response::redirect($request->basePath . '/dhl/pickupsheet/submissions');
+        return Response::redirect($this->submissionReturnPath($request));
     }
 
     public function users(Request $request): Response
@@ -1354,6 +1354,25 @@ final class PickupsheetController
             return Response::html('Invalid or expired form token.', 419, $this->privateHeaders());
         }
         return null;
+    }
+
+    private function submissionReturnPath(Request $request): string
+    {
+        $parameters = [];
+        $search = trim($request->input('return_search'));
+        if ($search !== '') {
+            $parameters['q'] = substr($search, 0, 160);
+        }
+
+        $page = $request->input('return_page');
+        if (preg_match('/^[1-9][0-9]{0,5}$/', $page) === 1) {
+            $parameters['page'] = (int) $page;
+        }
+
+        $path = $request->basePath . '/dhl/pickupsheet/submissions';
+        return $parameters === []
+            ? $path
+            : $path . '?' . http_build_query($parameters, '', '&', PHP_QUERY_RFC3986);
     }
 
     private function actorId(RecordsPrincipal $principal): string

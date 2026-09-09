@@ -453,7 +453,16 @@ document.querySelectorAll('[data-ajax-pager]').forEach((pager) => {
     const endpoint = pager.dataset.pageEndpoint;
     const pageParameter = pager.dataset.pageParam || 'page';
     const pagerId = pager.dataset.ajaxPagerId || pageParameter;
+    const filterParameters = (pager.dataset.filterParams || '')
+        .split(',')
+        .map((parameter) => parameter.trim())
+        .filter(Boolean);
     let activeRequest = null;
+
+    const stateSignature = (url) => [pageParameter, ...filterParameters]
+        .map((parameter) => `${parameter}=${url.searchParams.get(parameter) || ''}`)
+        .join('&');
+    let currentState = stateSignature(new URL(window.location.href));
 
     const setLoading = (loading) => {
         if (content) content.setAttribute('aria-busy', loading ? 'true' : 'false');
@@ -474,6 +483,20 @@ document.querySelectorAll('[data-ajax-pager]').forEach((pager) => {
     const pageFromUrl = (url) => {
         const page = Number.parseInt(url.searchParams.get(pageParameter) || '1', 10);
         return Number.isInteger(page) && page > 0 ? page : 1;
+    };
+
+    const syncFilterControls = (browserUrl) => {
+        document.querySelectorAll(`[data-ajax-pager-form="${pagerId}"]`).forEach((form) => {
+            if (typeof form.querySelectorAll !== 'function') return;
+            form.querySelectorAll('[name]').forEach((control) => {
+                if (!filterParameters.includes(control.name) || !('value' in control)) return;
+                control.value = browserUrl.searchParams.get(control.name) || '';
+            });
+        });
+        const hasActiveFilter = filterParameters.some((parameter) => (browserUrl.searchParams.get(parameter) || '') !== '');
+        document.querySelectorAll(`[data-ajax-pager-clear="${pagerId}"]`).forEach((link) => {
+            link.hidden = !hasActiveFilter;
+        });
     };
 
     const loadUrl = async (browserUrl, updateHistory = true) => {
@@ -505,6 +528,8 @@ document.querySelectorAll('[data-ajax-pager]').forEach((pager) => {
             const actualPage = Number.parseInt(pageState?.dataset.ajaxCurrentPage || String(requestedPage), 10);
             pager.dataset.currentPage = String(Number.isInteger(actualPage) && actualPage > 0 ? actualPage : requestedPage);
             browserUrl.searchParams.set(pageParameter, pager.dataset.currentPage);
+            currentState = stateSignature(browserUrl);
+            syncFilterControls(browserUrl);
             if (updateHistory) {
                 window.history.pushState({ ajaxPager: pagerId }, '', browserUrl);
             }
@@ -532,6 +557,8 @@ document.querySelectorAll('[data-ajax-pager]').forEach((pager) => {
     ajaxPagerControllers.set(pagerId, {
         currentPage: () => Number.parseInt(pager.dataset.currentPage || '1', 10),
         loadUrl,
+        needsLoad: (url) => stateSignature(url) !== currentState,
+        pageParameter,
         pageFromUrl,
     });
 });
@@ -545,7 +572,7 @@ document.querySelectorAll('[data-ajax-pager-form]').forEach((form) => {
         new FormData(form).forEach((value, key) => {
             if (typeof value === 'string' && value !== '') browserUrl.searchParams.set(key, value);
         });
-        browserUrl.searchParams.set('page', '1');
+        browserUrl.searchParams.set(controller.pageParameter, '1');
         controller.loadUrl(browserUrl);
     });
 });
@@ -563,8 +590,7 @@ if (ajaxPagerControllers.size > 0) {
     window.addEventListener('popstate', () => {
         const browserUrl = new URL(window.location.href);
         ajaxPagerControllers.forEach((controller) => {
-            const page = controller.pageFromUrl(browserUrl);
-            if (page !== controller.currentPage()) controller.loadUrl(new URL(browserUrl), false);
+            if (controller.needsLoad(browserUrl)) controller.loadUrl(new URL(browserUrl), false);
         });
     });
 }
@@ -687,6 +713,14 @@ document.querySelector('[data-copy-recovery-codes]')?.addEventListener('click', 
 document.querySelector('[data-print-recovery-codes]')?.addEventListener('click', () => window.print());
 
 document.addEventListener('submit', (event) => {
+    if (event.target.matches('[data-pickup-payment]')) {
+        const reference = event.target.querySelector('[name="reference"]')?.value || 'this pickup sheet';
+        const receipt = event.target.querySelector('[name="receipt_number"]')?.value.trim().toUpperCase() || '';
+        if (!window.confirm(`Mark ${reference} as paid using receipt ${receipt}? This status cannot be reversed.`)) {
+            event.preventDefault();
+            return;
+        }
+    }
     if (event.target.matches('[data-pickup-delete]')
         && !window.confirm('Delete this pickup sheet from active records? Its audit history will be retained.')) {
         event.preventDefault();

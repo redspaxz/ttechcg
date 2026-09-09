@@ -63,10 +63,10 @@ $trackingUrl = static fn (mixed $awbNumber): string => \App\Modules\Pickupsheet\
                             <a href="<?= $e($basePath) ?>/dhl/pickupsheet/submissions/export?reference=<?= $e($referenceQuery) ?>">Export Excel</a>
                         <?php endif; ?>
                         <?php if ($canMarkPaid && !$isPaid): ?>
-                            <form class="pickup-record-payment" method="post" action="<?= $e($basePath) ?>/dhl/pickupsheet/submissions/paid"><input type="hidden" name="_token" value="<?= $e($csrfToken) ?>"><input type="hidden" name="reference" value="<?= $e($pickupSheet->referenceNumber) ?>"><label><span>Receipt number</span><input type="text" name="receipt_number" minlength="3" maxlength="64" pattern="[A-Za-z0-9][A-Za-z0-9._/-]{2,63}" placeholder="e.g. RCP-12345" autocomplete="off" required></label><button class="pickup-record-paid" type="submit">Mark paid</button></form>
+                            <details class="pickup-record-payment"><summary>Mark paid</summary><form method="post" action="<?= $e($basePath) ?>/dhl/pickupsheet/submissions/paid" data-pickup-payment><input type="hidden" name="_token" value="<?= $e($csrfToken) ?>"><input type="hidden" name="reference" value="<?= $e($pickupSheet->referenceNumber) ?>"><input type="hidden" name="return_page" value="<?= $e($page) ?>"><input type="hidden" name="return_search" value="<?= $e($search) ?>"><label><span>Receipt number</span><input type="text" name="receipt_number" minlength="3" maxlength="64" pattern="[A-Za-z0-9][A-Za-z0-9._/-]{2,63}" placeholder="e.g. RCP-12345" autocomplete="off" required></label><button class="pickup-record-paid" type="submit">Confirm paid</button></form></details>
                         <?php endif; ?>
                         <?php if ($canDelete): ?>
-                            <form method="post" action="<?= $e($basePath) ?>/dhl/pickupsheet/submissions/delete" data-pickup-delete><input type="hidden" name="_token" value="<?= $e($csrfToken) ?>"><input type="hidden" name="reference" value="<?= $e($pickupSheet->referenceNumber) ?>"><button class="pickup-record-delete" type="submit">Delete</button></form>
+                            <form method="post" action="<?= $e($basePath) ?>/dhl/pickupsheet/submissions/delete" data-pickup-delete><input type="hidden" name="_token" value="<?= $e($csrfToken) ?>"><input type="hidden" name="reference" value="<?= $e($pickupSheet->referenceNumber) ?>"><input type="hidden" name="return_page" value="<?= $e($page) ?>"><input type="hidden" name="return_search" value="<?= $e($search) ?>"><button class="pickup-record-delete" type="submit">Delete</button></form>
                         <?php endif; ?>
                     </div>
                 <?php endif; ?>
@@ -80,15 +80,15 @@ $trackingUrl = static fn (mixed $awbNumber): string => \App\Modules\Pickupsheet\
                             <tbody>
                             <?php foreach ($pickupSheet->shipments as $shipment): ?>
                                 <tr>
-                                    <td><?= $e($shipment->lineNumber) ?></td>
-                                    <td><?= $e($shipment->consignor) ?></td>
-                                    <td><a class="pickup-awb-link" href="<?= $e($trackingUrl($shipment->awbNumber)) ?>" target="_blank" rel="noopener noreferrer" aria-label="Track AWB <?= $e($shipment->awbNumber) ?> with DHL"><?= $e($shipment->awbNumber) ?></a></td>
-                                    <td><?= $e($shipment->destination) ?></td>
-                                    <td><?= $e(number_format($shipment->amountXaf)) ?></td>
-                                    <td><?= $e($shipment->pieces) ?></td>
-                                    <td><?= $e(rtrim(rtrim($shipment->weightKg, '0'), '.')) ?> kg</td>
-                                    <td><?= $e($shipment->collectionTime) ?></td>
-                                    <td><?= $e($shipment->checkedBy) ?></td>
+                                    <td data-label="Number"><?= $e($shipment->lineNumber) ?></td>
+                                    <td data-label="Consignor"><?= $e($shipment->consignor) ?></td>
+                                    <td data-label="AWB number"><a class="pickup-awb-link" href="<?= $e($trackingUrl($shipment->awbNumber)) ?>" target="_blank" rel="noopener noreferrer" aria-label="Track AWB <?= $e($shipment->awbNumber) ?> with DHL"><?= $e($shipment->awbNumber) ?></a></td>
+                                    <td data-label="Destination"><?= $e($shipment->destination) ?></td>
+                                    <td data-label="Amount"><?= $e(number_format($shipment->amountXaf)) ?></td>
+                                    <td data-label="Pieces"><?= $e($shipment->pieces) ?></td>
+                                    <td data-label="Weight"><?= $e(rtrim(rtrim($shipment->weightKg, '0'), '.')) ?> kg</td>
+                                    <td data-label="Time collected"><?= $e($shipment->collectionTime) ?></td>
+                                    <td data-label="Checked by"><?= $e($shipment->checkedBy) ?></td>
                                 </tr>
                             <?php endforeach; ?>
                             </tbody>

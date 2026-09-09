@@ -1509,8 +1509,10 @@ $assert(str_contains($openSubmissions->body(), 'Print / PDF'), 'Each submitted s
 $assert(str_contains($openSubmissions->body(), 'Export Excel'), 'Each submitted sheet should provide an Excel export action.');
 $assert(str_contains($openSubmissions->body(), 'Manage access'), 'An administrator should receive the account-management action.');
 $assert(str_contains($openSubmissions->body(), 'Edit record'), 'An administrator should receive the audited edit action.');
-$assert(str_contains($openSubmissions->body(), 'Mark paid') && str_contains($openSubmissions->body(), 'name="receipt_number"') && str_contains($openSubmissions->body(), 'required'), 'An administrator should have to enter a receipt number before changing an open sheet to paid.');
+$assert(str_contains($openSubmissions->body(), '<details class="pickup-record-payment"><summary>Mark paid</summary>') && str_contains($openSubmissions->body(), 'data-pickup-payment') && str_contains($openSubmissions->body(), 'name="receipt_number"') && str_contains($openSubmissions->body(), 'required'), 'An administrator should open a compact payment action and enter a receipt number before changing an open sheet to paid.');
 $assert(str_contains($openSubmissions->body(), 'data-pickup-delete'), 'An administrator should receive the audited delete action.');
+$assert(str_contains($openSubmissions->body(), 'name="return_page"') && str_contains($openSubmissions->body(), 'name="return_search"'), 'Submitted-sheet actions should retain the current page and search context.');
+$assert(str_contains($openSubmissions->body(), 'data-label="Consignor"') && str_contains($openSubmissions->body(), 'data-label="AWB number"'), 'Shipment cells should expose labels for the responsive mobile record layout.');
 $assert(str_contains($openSubmissions->body(), 'Records are displayed 10 sheets per page.'), 'The records view should disclose its ten-record page size.');
 $assert(str_contains($openSubmissions->body(), 'data-pickup-records-spinner'), 'The records view should provide an AJAX loading spinner.');
 $assert(str_contains($openSubmissions->body(), 'data-page-endpoint="/dhl/pickupsheet/submissions/page"'), 'The records view should identify its protected pagination endpoint.');
@@ -1664,8 +1666,11 @@ $markPaidByAdmin = $pickupController->markPickupSheetPaid(new Request('POST', '/
     '_token' => $pickupCsrf->token(),
     'reference' => $savedReference,
     'receipt_number' => 'rcp-2026/0001',
+    'return_page' => '2',
+    'return_search' => 'controller client',
 ]));
 $assert($markPaidByAdmin->status() === 303, 'An administrator should change an open pickup sheet to paid.');
+$assert(($markPaidByAdmin->headers()['Location'] ?? '') === '/dhl/pickupsheet/submissions?q=controller%20client&page=2', 'A paid-status change should return the administrator to the same submitted-sheet search and page.');
 $paidControllerSheet = (new PickupSheetService(new DemoPickupSheetRepository()))->findByReference($savedReference);
 $assert($paidControllerSheet?->status === 'paid' && $paidControllerSheet->isPaid() && $paidControllerSheet->paidAt !== null && $paidControllerSheet->paymentReceiptNumber === 'RCP-2026/0001', 'The administrator-paid status, timestamp, and normalized receipt number should persist on the pickup sheet.');
 $paidSubmissions = $pickupController->submissions(new Request('GET', '/dhl/pickupsheet/submissions', [], [], '', $recordsServer));
@@ -2189,8 +2194,8 @@ $assert(is_string($dhlAsset) && !str_contains($dhlAsset, '<text'), 'The disquali
 $partnerSources = file_get_contents(dirname(__DIR__) . '/public/assets/partners/README.md');
 $assert(is_string($partnerSources) && str_contains($partnerSources, 'www.dhl.com/content/dam/dhl/global/core/images/logos/dhl-logo.svg'), 'The official DHL artwork source should be documented.');
 $assert(!str_contains($home, 'href="/dhl/pickupsheet"'), 'Pickupsheet should not be discoverable from the public site chrome or homepage.');
-$assert(str_contains($home, 'styles.css?v=20260902-customer-name-compact'), 'The compact customer-profile heading and prior Pickupsheet refinements should use a cache-safe stylesheet version.');
-$assert(str_contains($home, 'app.js?v=20260903-consignor-relevance'), 'Prefix-ranked autocomplete and prior OWASP-aligned interactions should use a cache-safe script version.');
+$assert(str_contains($home, 'styles.css?v=20260909-submissions-ui'), 'The compact submitted-sheet layout and prior Pickupsheet refinements should use a cache-safe stylesheet version.');
+$assert(str_contains($home, 'app.js?v=20260909-submissions-ui'), 'Submitted-sheet history, payment confirmation, and prior OWASP-aligned interactions should use a cache-safe script version.');
 $assert(str_contains($home, 'analytics.js?v=20260825-security-hardening'), 'The current consent-aware Google Analytics loader should render on every page.');
 $assert(str_contains($home, 'data-analytics-accept'), 'The site should offer an explicit analytics acceptance control.');
 $assert(str_contains($home, 'data-analytics-decline'), 'The site should offer an explicit analytics decline control.');
@@ -2377,7 +2382,7 @@ $assert(is_string($styles) && str_contains($styles, '--copper: #d40511;'), 'T&Te
 $assert(is_string($styles) && str_contains($styles, '--paper: #ffffff;'), 'T&Tech white should be the corporate canvas.');
 $assert(is_string($styles) && str_contains($styles, '--dhl-yellow: #ffcc00;'), 'Pickupsheet should retain the DHL-yellow treatment.');
 $assert(is_string($styles) && str_contains($styles, 'width: min(1120px, calc(100% - 64px));'), 'Submitted sheets should use an explicitly centered desktop content frame.');
-$assert(is_string($styles) && str_contains($styles, 'margin: 20px auto 0;'), 'The Submitted sheets introduction should remain centered within its frame.');
+$assert(is_string($styles) && str_contains($styles, 'margin: 14px auto 0;'), 'The compact Submitted sheets introduction should remain centered within its frame.');
 $assert(is_string($styles) && str_contains($styles, '--container: 1180px;'), 'The minimal layout should use the restrained content width.');
 $assert(is_string($styles) && str_contains($styles, '.signal-orbit { display: none; }'), 'Decorative hero orbits should remain removed.');
 $assert(is_string($styles) && str_contains($styles, '--paper: #0b0b0c;'), 'The corporate canvas should use the inverted black background.');
@@ -2408,6 +2413,7 @@ $assert(is_string($styles) && str_contains($styles, 'grid-template-columns: repe
 $assert(is_string($styles) && str_contains($styles, 'grid-column: 1 / -1;'), 'Submitted-sheet actions should occupy their own full-width card row.');
 $assert(is_string($styles) && str_contains($styles, 'grid-template-columns: repeat(2, minmax(0, 1fr));'), 'Submitted-sheet actions should retain proportional two-column sizing on mobile screens.');
 $assert(is_string($styles) && str_contains($styles, 'height: 42px;'), 'Submitted-sheet actions should share one consistent height.');
+$assert(is_string($styles) && str_contains($styles, '.pickup-record-table tbody td::before { content: attr(data-label);') && str_contains($styles, '.pickup-record-table thead { display: none; }'), 'Submitted shipment tables should become labeled, non-scrolling record cards on mobile screens.');
 $assert(is_string($styles) && str_contains($styles, '.ajax-pager-loading'), 'Application-wide AJAX pagination should have a visible loading overlay.');
 $assert(is_string($styles) && str_contains($styles, '@keyframes pickup-records-spin'), 'The loading overlay should provide spinner animation.');
 $assert(is_string($styles) && str_contains($styles, '.pickup-pagination'), 'Qualified tables should provide responsive pagination controls.');
@@ -2448,6 +2454,8 @@ $assert(is_string($script) && str_contains($script, "document.querySelectorAll('
 $assert(is_string($script) && str_contains($script, 'await fetch(pageEndpoint'), 'Pagination should load table fragments asynchronously.');
 $assert(is_string($script) && str_contains($script, "spinner.hidden = !loading"), 'AJAX pagination should toggle its loading spinner.');
 $assert(is_string($script) && str_contains($script, "window.history.pushState"), 'AJAX pagination should preserve browser history.');
+$assert(is_string($script) && str_contains($script, 'needsLoad: (url) => stateSignature(url) !== currentState'), 'AJAX history should reload when a tracked filter changes without a page-number change.');
+$assert(is_string($script) && str_contains($script, "event.target.matches('[data-pickup-payment]')") && str_contains($script, 'This status cannot be reversed.'), 'Marking a pickup sheet paid should require explicit browser confirmation.');
 $assert(is_string($script) && str_contains($script, "document.querySelectorAll('[data-user-edit-toggle]')") && str_contains($script, 'preventScroll: true'), 'Local account editors should open on demand without moving the viewport.');
 $assert(is_string($script) && str_contains($script, "event.target.matches('[data-user-delete-form]')") && str_contains($script, 'Permanently delete'), 'Local account deletion should require an explicit browser confirmation.');
 $assert(is_string($script) && str_contains($script, "event.target.matches('[data-user-status-form]')") && str_contains($script, 'Their current session and future local sign-ins will be blocked') && str_contains($script, "confirmation.value = '1'"), 'Direct managed-account disabling should require explicit browser confirmation.');
