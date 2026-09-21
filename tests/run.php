@@ -1680,7 +1680,7 @@ $assert(str_contains($receiptSearch->body(), $savedReference), 'Submitted-sheet 
 $adminDashboard = $pickupController->dashboard(new Request('GET', '/dhl/pickupsheet/dashboard'));
 $assert($adminDashboard->status() === 200, 'An administrator should open the KPI dashboard.');
 $assert(str_contains($adminDashboard->body(), '14,000'), 'The KPI dashboard should reflect the administrator-corrected cash activity.');
-$assert(str_contains($adminDashboard->body(), '<span>Unpaid balance</span><strong>0</strong><small>XAF across open sheets</small>'), 'The dashboard KPI should show unpaid balance instead of duplicating total recorded cash.');
+$assert(str_contains($adminDashboard->body(), '<span>Unpaid balance</span><strong>0</strong><small>XAF open in the last 3 months</small>'), 'The dashboard KPI should show unpaid balance for the last three months instead of duplicating total recorded cash.');
 $assert(str_contains($adminDashboard->body(), 'pickup-activity-chart'), 'The dashboard should render its activity graph without client-side chart dependencies.');
 $assert(substr_count($adminDashboard->body(), 'class="pickup-activity-axis-label"') === 5 && str_contains($adminDashboard->body(), '>0</text>'), 'The daily cash graph should render a readable five-level numeric vertical scale.');
 $assert(str_contains($adminDashboard->body(), 'pickup-cash-pie-chart') && str_contains($adminDashboard->body(), '<dt>Total cash recorded</dt><dd>14,000 XAF</dd>') && str_contains($adminDashboard->body(), '<dt>Unpaid balance <small>0% of total</small></dt><dd>0 XAF</dd>'), 'The administrator dashboard should chart total recorded cash and the current unpaid balance.');

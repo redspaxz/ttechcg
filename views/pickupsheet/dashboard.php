@@ -177,8 +177,7 @@ $auditDetails = static function (array $log): string {
             <article><span>Unpaid sheets</span><strong><?= $e(number_format((int) ($summary['unpaidSheetCount'] ?? 0))) ?></strong><small>Open payment records</small></article>
             <article><span>Shipments</span><strong><?= $e(number_format((int) ($summary['shipmentCount'] ?? 0))) ?></strong><small>Cash shipment lines</small></article>
             <article><span>Active accounts</span><strong><?= $e($activeAccounts) ?></strong><small><?= $e($operatorAccounts) ?> operators · <?= $e($viewerAccounts) ?> viewers</small></article>
-            <article class="pickup-kpi-financial"><span>Total cash</span><strong><?= $e(number_format((int) ($summary['totalCashXaf'] ?? 0))) ?></strong><small>XAF recorded across all sheets</small></article>
-            <article class="pickup-kpi-financial"><span>Unpaid balance</span><strong><?= $e(number_format((int) ($summary['unpaidBalanceXaf'] ?? 0))) ?></strong><small>XAF across open sheets</small></article>
+            <article class="pickup-kpi-financial"><span>Unpaid balance</span><strong><?= $e(number_format((int) ($summary['unpaidBalanceXaf'] ?? 0))) ?></strong><small>XAF open in the last 3 months</small></article>
         </section>
 
         <div class="pickup-dashboard-grid">

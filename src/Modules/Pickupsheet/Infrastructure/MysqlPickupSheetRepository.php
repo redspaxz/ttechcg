@@ -441,8 +441,8 @@ final class MysqlPickupSheetRepository implements PickupSheetRepository
             'SELECT COUNT(*) AS sheet_count,
                     COALESCE(SUM(CASE WHEN status = \'open\' THEN 1 ELSE 0 END), 0) AS unpaid_sheet_count,
                     COALESCE(SUM(shipment_count), 0) AS shipment_count,
-                    COALESCE(SUM(total_cash_received_xaf), 0) AS total_cash_xaf,
-                    COALESCE(SUM(CASE WHEN status = \'open\' THEN total_cash_received_xaf ELSE 0 END), 0) AS unpaid_balance_xaf,
+                    COALESCE(SUM(CASE WHEN created_at >= UTC_DATE() - INTERVAL 3 MONTH THEN total_cash_received_xaf ELSE 0 END), 0) AS total_cash_xaf,
+                    COALESCE(SUM(CASE WHEN status = \'open\' AND created_at >= UTC_DATE() - INTERVAL 3 MONTH THEN total_cash_received_xaf ELSE 0 END), 0) AS unpaid_balance_xaf,
                     MAX(created_at) AS latest_created_at
              FROM pickup_sheets
              WHERE deleted_at IS NULL',

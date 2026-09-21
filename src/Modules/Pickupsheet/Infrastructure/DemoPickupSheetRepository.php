@@ -152,14 +152,16 @@ final class DemoPickupSheetRepository implements PickupSheetRepository
     public function summary(): array
     {
         $sheets = $this->recent(PHP_INT_MAX);
+        $minimumDate = (new \DateTimeImmutable('now', new \DateTimeZone('UTC')))->modify('-3 months')->format('Y-m-d H:i:s');
+        $recentSheets = array_filter($sheets, static fn (PickupSheet $sheet): bool => $sheet->createdAt >= $minimumDate);
         return [
             'sheetCount' => count($sheets),
             'unpaidSheetCount' => count(array_filter($sheets, static fn (PickupSheet $sheet): bool => !$sheet->isPaid())),
             'shipmentCount' => array_sum(array_map(static fn (PickupSheet $sheet): int => $sheet->shipmentCount(), $sheets)),
-            'totalCashXaf' => array_sum(array_map(static fn (PickupSheet $sheet): int => $sheet->totalCashReceivedXaf, $sheets)),
+            'totalCashXaf' => array_sum(array_map(static fn (PickupSheet $sheet): int => $sheet->totalCashReceivedXaf, $recentSheets)),
             'unpaidBalanceXaf' => array_sum(array_map(
                 static fn (PickupSheet $sheet): int => $sheet->isPaid() ? 0 : $sheet->totalCashReceivedXaf,
-                $sheets,
+                $recentSheets,
             )),
             'latestCreatedAt' => $sheets[0]->createdAt ?? null,
         ];
