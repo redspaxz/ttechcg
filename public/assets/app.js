@@ -452,6 +452,7 @@ document.querySelectorAll('[data-ajax-pager]').forEach((pager) => {
     const spinner = pager.querySelector('[data-ajax-pager-spinner]');
     const endpoint = pager.dataset.pageEndpoint;
     const pageParameter = pager.dataset.pageParam || 'page';
+    const pageSizeParameter = pager.dataset.pageSizeParam || 'per_page';
     const pagerId = pager.dataset.ajaxPagerId || pageParameter;
     const filterParameters = (pager.dataset.filterParams || '')
         .split(',')
@@ -459,7 +460,7 @@ document.querySelectorAll('[data-ajax-pager]').forEach((pager) => {
         .filter(Boolean);
     let activeRequest = null;
 
-    const stateSignature = (url) => [pageParameter, ...filterParameters]
+    const stateSignature = (url) => [pageParameter, pageSizeParameter, ...filterParameters]
         .map((parameter) => `${parameter}=${url.searchParams.get(parameter) || ''}`)
         .join('&');
     let currentState = stateSignature(new URL(window.location.href));
@@ -496,6 +497,9 @@ document.querySelectorAll('[data-ajax-pager]').forEach((pager) => {
         const hasActiveFilter = filterParameters.some((parameter) => (browserUrl.searchParams.get(parameter) || '') !== '');
         document.querySelectorAll(`[data-ajax-pager-clear="${pagerId}"]`).forEach((link) => {
             link.hidden = !hasActiveFilter;
+        });
+        pager.querySelectorAll?.('[data-ajax-page-size]').forEach((control) => {
+            control.value = browserUrl.searchParams.get(pageSizeParameter) || pager.dataset.pageSize || '10';
         });
     };
 
@@ -551,6 +555,16 @@ document.querySelectorAll('[data-ajax-pager]').forEach((pager) => {
         event.preventDefault();
         const browserUrl = new URL(link.href || link.getAttribute('href'), window.location.href);
         browserUrl.searchParams.set(pageParameter, String(page));
+        browserUrl.searchParams.set(pageSizeParameter, pager.querySelector('[data-ajax-page-size]')?.value || pager.dataset.pageSize || '10');
+        loadUrl(browserUrl);
+    });
+
+    pager.addEventListener('change', (event) => {
+        const control = event.target.closest?.('[data-ajax-page-size]');
+        if (!control) return;
+        const browserUrl = new URL(window.location.href);
+        browserUrl.searchParams.set(pageParameter, '1');
+        browserUrl.searchParams.set(pageSizeParameter, control.value);
         loadUrl(browserUrl);
     });
 
@@ -559,6 +573,8 @@ document.querySelectorAll('[data-ajax-pager]').forEach((pager) => {
         loadUrl,
         needsLoad: (url) => stateSignature(url) !== currentState,
         pageParameter,
+        pageSizeParameter,
+        currentPageSize: () => pager.querySelector?.('[data-ajax-page-size]')?.value || pager.dataset.pageSize || '10',
         pageFromUrl,
     });
 });
@@ -573,6 +589,7 @@ document.querySelectorAll('[data-ajax-pager-form]').forEach((form) => {
             if (typeof value === 'string' && value !== '') browserUrl.searchParams.set(key, value);
         });
         browserUrl.searchParams.set(controller.pageParameter, '1');
+        browserUrl.searchParams.set(controller.pageSizeParameter, controller.currentPageSize());
         controller.loadUrl(browserUrl);
     });
 });
@@ -582,7 +599,9 @@ document.querySelectorAll('[data-ajax-pager-clear]').forEach((link) => {
         const controller = ajaxPagerControllers.get(link.dataset.ajaxPagerClear);
         if (!controller) return;
         event.preventDefault();
-        controller.loadUrl(new URL(link.href, window.location.href));
+        const browserUrl = new URL(link.href, window.location.href);
+        browserUrl.searchParams.set(controller.pageSizeParameter, controller.currentPageSize());
+        controller.loadUrl(browserUrl);
     });
 });
 

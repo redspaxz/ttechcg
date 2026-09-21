@@ -18,6 +18,7 @@ $trackingUrl = static fn (mixed $awbNumber): string => \App\Modules\Pickupsheet\
 $pagerData = $shipments;
 $pagerRecordLabel = ((int) ($shipments['totalRecords'] ?? 0)) === 1 ? 'shipment' : 'shipments';
 $pagerAriaLabel = 'Customer shipment pages';
+$pagerSizeParam = 'shipment_per_page';
 $pagerUrl = static fn (int $targetPage): string => ($basePath ?? '') . '/dhl/pickupsheet/customers/edit?' . http_build_query([
     'customer' => $customerKey,
     'shipment_page' => $targetPage,

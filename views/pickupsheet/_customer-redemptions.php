@@ -21,6 +21,7 @@ $shipmentPage = max(1, (int) ($currentShipmentPage ?? $shipments['page'] ?? 1));
     $pagerData = $rewardRedemptions;
     $pagerRecordLabel = ((int) ($rewardRedemptions['totalRecords'] ?? 0)) === 1 ? 'redemption' : 'redemptions';
     $pagerAriaLabel = 'Customer redemption pages';
+    $pagerSizeParam = 'redemption_per_page';
     $pagerUrl = static fn (int $targetPage): string => ($basePath ?? '') . '/dhl/pickupsheet/customers/edit?' . http_build_query([
         'customer' => $customerKey,
         'shipment_page' => $shipmentPage,

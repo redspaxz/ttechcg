@@ -29,6 +29,7 @@ $currentLogPage = max(1, (int) ($currentLogPage ?? $auditLogs['page'] ?? 1));
 $pagerData = $recentSheets;
 $pagerRecordLabel = ((int) ($recentSheets['totalRecords'] ?? 0)) === 1 ? 'sheet' : 'sheets';
 $pagerAriaLabel = 'Recent pickup sheet pages';
+$pagerSizeParam = 'recent_per_page';
 $pagerUrl = static fn (int $targetPage): string => ($basePath ?? '') . '/dhl/pickupsheet/dashboard?' . http_build_query([
     'login_page' => $currentLoginPage,
     'log_page' => $currentLogPage,

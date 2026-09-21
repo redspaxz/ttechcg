@@ -46,6 +46,7 @@ $e = static fn (mixed $value): string => htmlspecialchars((string) $value, ENT_Q
             data-ajax-pager-id="submitted-sheets"
             data-page-endpoint="<?= $e($basePath) ?>/dhl/pickupsheet/submissions/page"
             data-page-param="page"
+            data-page-size-param="per_page"
             data-filter-params="q"
             data-current-page="<?= $e($pagination['page'] ?? 1) ?>"
             data-error-message="Pickup records could not be loaded. Please try again."

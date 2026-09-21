@@ -50,6 +50,7 @@ $identityProviderLabel = static fn (string $provider): string => match ($provide
 $pagerData = $userActivity;
 $pagerRecordLabel = ((int) ($userActivity['totalRecords'] ?? 0)) === 1 ? 'user' : 'users';
 $pagerAriaLabel = 'User login activity pages';
+$pagerSizeParam = 'login_per_page';
 $pagerUrl = static fn (int $targetPage): string => ($basePath ?? '') . '/dhl/pickupsheet/dashboard?' . http_build_query([
     'login_page' => $targetPage,
     'log_page' => $currentLogPage,

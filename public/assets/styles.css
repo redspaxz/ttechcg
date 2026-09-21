@@ -2468,6 +2468,9 @@ button, a, input, select, textarea { -webkit-tap-highlight-color: transparent; }
 .pickup-pagination a:hover { border-color: var(--dhl-red); color: var(--dhl-red); }
 .pickup-pagination-disabled { opacity: 0.45; }
 .pickup-pagination-status { color: #655000; font-size: 0.74rem; font-weight: 750; text-align: center; }
+.pickup-pagination-size { display: inline-flex; align-items: center; gap: 7px; color: #655000; font-size: 0.68rem; font-weight: 850; text-transform: uppercase; }
+.pickup-pagination-size select { min-height: 36px; padding: 6px 26px 6px 9px; border: 1px solid #493800; border-radius: 0; background: #fff; color: #352900; font: inherit; }
+.pickup-pagination-size select:focus { border-color: var(--dhl-red); outline: 3px solid rgba(212, 5, 17, 0.12); }
 
 .pickup-dashboard-shell .ajax-pager-loading { background: rgba(11, 11, 12, 0.88); color: #f5f5f3; }
 .pickup-dashboard-shell .pickup-pagination { margin: 0; padding: 18px 22px 20px; border-top: 1px solid #2b2b2e; }
@@ -2475,6 +2478,8 @@ button, a, input, select, textarea { -webkit-tap-highlight-color: transparent; }
 .pickup-dashboard-shell .pickup-pagination-disabled { border-color: #555; color: #f5f5f3; }
 .pickup-dashboard-shell .pickup-pagination a:hover { border-color: var(--copper); color: var(--copper); }
 .pickup-dashboard-shell .pickup-pagination-status { color: #aaa; }
+.pickup-dashboard-shell .pickup-pagination-size { color: #aaa; }
+.pickup-dashboard-shell .pickup-pagination-size select { border-color: #555; background: #101012; color: #f5f5f3; }
 
 @keyframes pickup-records-spin { to { transform: rotate(360deg); } }
 

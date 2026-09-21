@@ -239,7 +239,7 @@ final class PickupsheetController
             $userActivity = $this->recordsSession->paginatedActivitySummary(
                 30,
                 $this->pageNumber($request, 'login_page'),
-                10,
+                $this->pageSize($request, 'login_per_page'),
             );
         } catch (RuntimeException $exception) {
             error_log($exception->__toString());
@@ -249,7 +249,7 @@ final class PickupsheetController
         try {
             $auditLogs = $this->securityLogger->paginatedPickupsheet(
                 $this->pageNumber($request, 'log_page'),
-                10,
+                $this->pageSize($request, 'log_per_page'),
             );
             $auditLogs['items'] = $this->auditLogsWithIdentity(
                 $auditLogs['items'],
@@ -263,7 +263,7 @@ final class PickupsheetController
         }
 
         try {
-            $recentSheets = $this->service->paginated($this->pageNumber($request, 'recent_page'), 10);
+            $recentSheets = $this->service->paginated($this->pageNumber($request, 'recent_page'), $this->pageSize($request, 'recent_per_page'));
         } catch (RuntimeException $exception) {
             error_log($exception->__toString());
             $errors[] = 'Recent pickup sheets could not be loaded.';
@@ -307,7 +307,7 @@ final class PickupsheetController
             return Response::html(
                 $this->view->renderPartial('pickupsheet/_dashboard-user-activity', [
                     'basePath' => $request->basePath,
-                    'userActivity' => $this->recordsSession->paginatedActivitySummary(30, $this->pageNumber($request, 'login_page'), 10),
+                    'userActivity' => $this->recordsSession->paginatedActivitySummary(30, $this->pageNumber($request, 'login_page'), $this->pageSize($request, 'login_per_page')),
                     'currentLogPage' => $this->pageNumber($request, 'log_page'),
                     'currentRecentPage' => $this->pageNumber($request, 'recent_page'),
                 ]),
@@ -329,7 +329,7 @@ final class PickupsheetController
 
         try {
             $accounts = $this->recordsUserService->accounts($authorization);
-            $auditLogs = $this->securityLogger->paginatedPickupsheet($this->pageNumber($request, 'log_page'), 10);
+            $auditLogs = $this->securityLogger->paginatedPickupsheet($this->pageNumber($request, 'log_page'), $this->pageSize($request, 'log_per_page'));
             $auditLogs['items'] = $this->auditLogsWithIdentity(
                 $auditLogs['items'],
                 $authorization,
@@ -363,7 +363,7 @@ final class PickupsheetController
             return Response::html(
                 $this->view->renderPartial('pickupsheet/_dashboard-recent-sheets', [
                     'basePath' => $request->basePath,
-                    'recentSheets' => $this->service->paginated($this->pageNumber($request, 'recent_page'), 10),
+                    'recentSheets' => $this->service->paginated($this->pageNumber($request, 'recent_page'), $this->pageSize($request, 'recent_per_page')),
                     'currentLoginPage' => $this->pageNumber($request, 'login_page'),
                     'currentLogPage' => $this->pageNumber($request, 'log_page'),
                 ]),
@@ -1153,7 +1153,7 @@ final class PickupsheetController
 
         if ($this->pickupOperational) {
             try {
-                $pagination = $this->service->paginated($this->pageNumber($request), 10, $search);
+                $pagination = $this->service->paginated($this->pageNumber($request), $this->pageSize($request), $search);
             } catch (InvalidArgumentException $exception) {
                 $errors = [$exception->getMessage()];
             } catch (RuntimeException $exception) {
@@ -1397,6 +1397,12 @@ final class PickupsheetController
     {
         $page = $request->queryString($parameter, '1');
         return preg_match('/^[1-9][0-9]{0,8}$/', $page) ? (int) $page : 1;
+    }
+
+    private function pageSize(Request $request, string $parameter = 'per_page'): int
+    {
+        $size = $request->queryString($parameter, '10');
+        return in_array($size, ['10', '25', '50'], true) ? (int) $size : 10;
     }
 
     /** @return array{items: array<never>, page: int, perPage: int, totalRecords: int, totalPages: int} */

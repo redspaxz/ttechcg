@@ -39,7 +39,7 @@ $summary = is_array($summary ?? null) ? $summary : [];
             <?php if (($search ?? '') !== '' || ($statusFilter ?? '') !== ''): ?><a href="<?= $e($basePath) ?>/dhl/pickupsheet/customers" data-ajax-pager-clear="customer-directory">Clear</a><?php endif; ?>
         </form>
 
-        <section class="pickup-crm-directory ajax-pager" aria-labelledby="customer-directory-title" data-ajax-pager data-ajax-pager-id="customer-directory" data-page-endpoint="<?= $e($basePath) ?>/dhl/pickupsheet/customers/page" data-page-param="page" data-current-page="<?= $e($customers['page'] ?? 1) ?>" data-error-message="Customer profiles could not be loaded. Please try again.">
+        <section class="pickup-crm-directory ajax-pager" aria-labelledby="customer-directory-title" data-ajax-pager data-ajax-pager-id="customer-directory" data-page-endpoint="<?= $e($basePath) ?>/dhl/pickupsheet/customers/page" data-page-param="page" data-page-size-param="per_page" data-current-page="<?= $e($customers['page'] ?? 1) ?>" data-error-message="Customer profiles could not be loaded. Please try again.">
             <div class="ajax-pager-loading" data-ajax-pager-spinner role="status" hidden><span class="pickup-loading-spinner" aria-hidden="true"></span><span>Loading customers...</span></div>
             <div class="pickup-crm-directory-content" data-ajax-pager-content aria-live="polite" aria-busy="false">
                 <?php require __DIR__ . '/_customer-directory.php'; ?>

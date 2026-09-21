@@ -292,13 +292,13 @@ final class CustomerController
                 $shipments = $this->service->paginatedShipments(
                     $customer->customerKey,
                     $this->pageNumber($request, 'shipment_page'),
-                    10,
+                    $this->pageSize($request, 'shipment_per_page'),
                 );
                 $rewardAdjustments = $this->service->rewardAdjustments($customer->customerKey, 20);
                 $rewardRedemptions = $this->service->paginatedRewardRedemptions(
                     $customer->customerKey,
                     $this->pageNumber($request, 'redemption_page'),
-                    10,
+                    $this->pageSize($request, 'redemption_per_page'),
                 );
             } catch (RuntimeException $exception) {
                 error_log($exception->__toString());
@@ -392,7 +392,7 @@ final class CustomerController
         $search = $request->queryString('q');
         $status = $request->queryString('status');
         return [
-            'customers' => $this->service->paginated($search, $status, $this->pageNumber($request), 10),
+            'customers' => $this->service->paginated($search, $status, $this->pageNumber($request), $this->pageSize($request)),
             'search' => $search,
             'statusFilter' => $status,
         ];
@@ -411,14 +411,14 @@ final class CustomerController
             }
             if ($table === 'shipments') {
                 $data = [
-                    'shipments' => $this->service->paginatedShipments($customerKey, $this->pageNumber($request, 'shipment_page'), 10),
+                    'shipments' => $this->service->paginatedShipments($customerKey, $this->pageNumber($request, 'shipment_page'), $this->pageSize($request, 'shipment_per_page')),
                     'customerKey' => $customerKey,
                     'currentRedemptionPage' => $this->pageNumber($request, 'redemption_page'),
                 ];
                 $template = 'pickupsheet/_customer-shipments';
             } else {
                 $data = [
-                    'rewardRedemptions' => $this->service->paginatedRewardRedemptions($customerKey, $this->pageNumber($request, 'redemption_page'), 10),
+                    'rewardRedemptions' => $this->service->paginatedRewardRedemptions($customerKey, $this->pageNumber($request, 'redemption_page'), $this->pageSize($request, 'redemption_per_page')),
                     'customerKey' => $customerKey,
                     'currentShipmentPage' => $this->pageNumber($request, 'shipment_page'),
                 ];
@@ -439,6 +439,12 @@ final class CustomerController
     {
         $page = $request->queryString($parameter, '1');
         return preg_match('/^[1-9][0-9]{0,8}$/', $page) === 1 ? (int) $page : 1;
+    }
+
+    private function pageSize(Request $request, string $parameter = 'per_page'): int
+    {
+        $size = $request->queryString($parameter, '10');
+        return in_array($size, ['10', '25', '50'], true) ? (int) $size : 10;
     }
 
     /** @return array{items: array<never>, page: int, perPage: int, totalRecords: int, totalPages: int} */

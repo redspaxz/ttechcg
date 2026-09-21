@@ -105,6 +105,7 @@ $trackingUrl = static fn (mixed $awbNumber): string => \App\Modules\Pickupsheet\
 $pagerData = $pagination;
 $pagerRecordLabel = $totalRecords === 1 ? 'record' : 'records';
 $pagerAriaLabel = 'Submitted pickup-sheet pages';
+$pagerSizeParam = 'per_page';
 $pagerUrl = $pageUrl;
 require __DIR__ . '/_pagination.php';
 ?>

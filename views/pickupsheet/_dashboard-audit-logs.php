@@ -101,6 +101,7 @@ $auditDetails = static function (array $log): string {
 $pagerData = $auditLogs;
 $pagerRecordLabel = ((int) ($auditLogs['totalRecords'] ?? 0)) === 1 ? 'event' : 'events';
 $pagerAriaLabel = 'Detailed user log pages';
+$pagerSizeParam = 'log_per_page';
 $pagerUrl = static fn (int $targetPage): string => ($basePath ?? '') . '/dhl/pickupsheet/dashboard?' . http_build_query([
     'login_page' => $currentLoginPage,
     'log_page' => $targetPage,

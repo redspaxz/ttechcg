@@ -285,17 +285,17 @@ $auditDetails = static function (array $log): string {
             <?php endif; ?>
         </section>
 
-        <section class="pickup-user-activity ajax-pager" aria-labelledby="user-activity-title" data-ajax-pager data-ajax-pager-id="dashboard-user-activity" data-page-endpoint="<?= $e($basePath) ?>/dhl/pickupsheet/dashboard/user-activity/page" data-page-param="login_page" data-current-page="<?= $e($userActivity['page'] ?? 1) ?>" data-error-message="User login activity could not be loaded. Please try again.">
+        <section class="pickup-user-activity ajax-pager" aria-labelledby="user-activity-title" data-ajax-pager data-ajax-pager-id="dashboard-user-activity" data-page-endpoint="<?= $e($basePath) ?>/dhl/pickupsheet/dashboard/user-activity/page" data-page-param="login_page" data-page-size-param="login_per_page" data-current-page="<?= $e($userActivity['page'] ?? 1) ?>" data-error-message="User login activity could not be loaded. Please try again.">
             <div class="ajax-pager-loading" data-ajax-pager-spinner role="status" hidden><span class="pickup-loading-spinner" aria-hidden="true"></span><span>Loading user activity...</span></div>
             <div data-ajax-pager-content aria-live="polite" aria-busy="false"><?php require __DIR__ . '/_dashboard-user-activity.php'; ?></div>
         </section>
 
-        <section class="pickup-audit-log ajax-pager" aria-labelledby="audit-log-title" data-ajax-pager data-ajax-pager-id="dashboard-audit-logs" data-page-endpoint="<?= $e($basePath) ?>/dhl/pickupsheet/dashboard/audit-logs/page" data-page-param="log_page" data-current-page="<?= $e($auditLogs['page'] ?? 1) ?>" data-error-message="Detailed user logs could not be loaded. Please try again.">
+        <section class="pickup-audit-log ajax-pager" aria-labelledby="audit-log-title" data-ajax-pager data-ajax-pager-id="dashboard-audit-logs" data-page-endpoint="<?= $e($basePath) ?>/dhl/pickupsheet/dashboard/audit-logs/page" data-page-param="log_page" data-page-size-param="log_per_page" data-current-page="<?= $e($auditLogs['page'] ?? 1) ?>" data-error-message="Detailed user logs could not be loaded. Please try again.">
             <div class="ajax-pager-loading" data-ajax-pager-spinner role="status" hidden><span class="pickup-loading-spinner" aria-hidden="true"></span><span>Loading detailed logs...</span></div>
             <div data-ajax-pager-content aria-live="polite" aria-busy="false"><?php require __DIR__ . '/_dashboard-audit-logs.php'; ?></div>
         </section>
 
-        <section class="pickup-dashboard-recent ajax-pager" aria-labelledby="recent-sheets-title" data-ajax-pager data-ajax-pager-id="dashboard-recent-sheets" data-page-endpoint="<?= $e($basePath) ?>/dhl/pickupsheet/dashboard/recent-sheets/page" data-page-param="recent_page" data-current-page="<?= $e($recentSheets['page'] ?? 1) ?>" data-error-message="Recent pickup sheets could not be loaded. Please try again.">
+        <section class="pickup-dashboard-recent ajax-pager" aria-labelledby="recent-sheets-title" data-ajax-pager data-ajax-pager-id="dashboard-recent-sheets" data-page-endpoint="<?= $e($basePath) ?>/dhl/pickupsheet/dashboard/recent-sheets/page" data-page-param="recent_page" data-page-size-param="recent_per_page" data-current-page="<?= $e($recentSheets['page'] ?? 1) ?>" data-error-message="Recent pickup sheets could not be loaded. Please try again.">
             <div class="ajax-pager-loading" data-ajax-pager-spinner role="status" hidden><span class="pickup-loading-spinner" aria-hidden="true"></span><span>Loading recent sheets...</span></div>
             <div data-ajax-pager-content aria-live="polite" aria-busy="false"><?php require __DIR__ . '/_dashboard-recent-sheets.php'; ?></div>
         </section>

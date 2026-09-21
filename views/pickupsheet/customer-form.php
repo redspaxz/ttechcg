@@ -72,7 +72,7 @@ $phoneValue = preg_replace('/^(?:\+237|00237)[\s.-]*/', '', trim($phoneValue)) ?
                         <?php endif; ?>
                     </div>
                 </div>
-                <div class="pickup-redemption-log ajax-pager" data-ajax-pager data-ajax-pager-id="customer-redemptions" data-page-endpoint="<?= $e($basePath) ?>/dhl/pickupsheet/customers/redemptions/page" data-page-param="redemption_page" data-current-page="<?= $e($rewardRedemptions['page'] ?? 1) ?>" data-error-message="Redemption history could not be loaded. Please try again.">
+                <div class="pickup-redemption-log ajax-pager" data-ajax-pager data-ajax-pager-id="customer-redemptions" data-page-endpoint="<?= $e($basePath) ?>/dhl/pickupsheet/customers/redemptions/page" data-page-param="redemption_page" data-page-size-param="redemption_per_page" data-current-page="<?= $e($rewardRedemptions['page'] ?? 1) ?>" data-error-message="Redemption history could not be loaded. Please try again.">
                     <div class="ajax-pager-loading" data-ajax-pager-spinner role="status" hidden><span class="pickup-loading-spinner" aria-hidden="true"></span><span>Loading redemptions...</span></div>
                     <div class="pickup-redemption-log-content" data-ajax-pager-content aria-live="polite" aria-busy="false">
                         <?php require __DIR__ . '/_customer-redemptions.php'; ?>
@@ -113,7 +113,7 @@ $phoneValue = preg_replace('/^(?:\+237|00237)[\s.-]*/', '', trim($phoneValue)) ?
         </div>
 
         <?php if ($customer !== null): ?>
-            <section class="pickup-customer-history ajax-pager" aria-labelledby="customer-history-title" data-ajax-pager data-ajax-pager-id="customer-shipments" data-page-endpoint="<?= $e($basePath) ?>/dhl/pickupsheet/customers/shipments/page" data-page-param="shipment_page" data-current-page="<?= $e($shipments['page'] ?? 1) ?>" data-error-message="Shipment history could not be loaded. Please try again.">
+            <section class="pickup-customer-history ajax-pager" aria-labelledby="customer-history-title" data-ajax-pager data-ajax-pager-id="customer-shipments" data-page-endpoint="<?= $e($basePath) ?>/dhl/pickupsheet/customers/shipments/page" data-page-param="shipment_page" data-page-size-param="shipment_per_page" data-current-page="<?= $e($shipments['page'] ?? 1) ?>" data-error-message="Shipment history could not be loaded. Please try again.">
                 <div class="ajax-pager-loading" data-ajax-pager-spinner role="status" hidden><span class="pickup-loading-spinner" aria-hidden="true"></span><span>Loading shipments...</span></div>
                 <div class="pickup-customer-history-content" data-ajax-pager-content aria-live="polite" aria-busy="false">
                     <?php require __DIR__ . '/_customer-shipments.php'; ?>

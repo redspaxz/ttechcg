@@ -38,6 +38,7 @@ $queryForPage = static function (int $targetPage) use ($search, $statusFilter): 
 $pagerData = $customers;
 $pagerRecordLabel = ((int) ($customers['totalRecords'] ?? 0)) === 1 ? 'profile' : 'profiles';
 $pagerAriaLabel = 'Customer pages';
+$pagerSizeParam = 'per_page';
 $pagerUrl = static fn (int $targetPage): string => ($basePath ?? '') . '/dhl/pickupsheet/customers?' . $queryForPage($targetPage);
 require __DIR__ . '/_pagination.php';
 ?>
