@@ -154,6 +154,7 @@ final class DemoPickupSheetRepository implements PickupSheetRepository
         $sheets = $this->recent(PHP_INT_MAX);
         return [
             'sheetCount' => count($sheets),
+            'unpaidSheetCount' => count(array_filter($sheets, static fn (PickupSheet $sheet): bool => !$sheet->isPaid())),
             'shipmentCount' => array_sum(array_map(static fn (PickupSheet $sheet): int => $sheet->shipmentCount(), $sheets)),
             'totalCashXaf' => array_sum(array_map(static fn (PickupSheet $sheet): int => $sheet->totalCashReceivedXaf, $sheets)),
             'unpaidBalanceXaf' => array_sum(array_map(

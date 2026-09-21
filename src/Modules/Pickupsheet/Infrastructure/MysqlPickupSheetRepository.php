@@ -439,6 +439,7 @@ final class MysqlPickupSheetRepository implements PickupSheetRepository
         $this->ensureLifecycleSchema();
         $statement = $this->connection->prepare(
             'SELECT COUNT(*) AS sheet_count,
+                    COALESCE(SUM(CASE WHEN status = \'open\' THEN 1 ELSE 0 END), 0) AS unpaid_sheet_count,
                     COALESCE(SUM(shipment_count), 0) AS shipment_count,
                     COALESCE(SUM(total_cash_received_xaf), 0) AS total_cash_xaf,
                     COALESCE(SUM(CASE WHEN status = \'open\' THEN total_cash_received_xaf ELSE 0 END), 0) AS unpaid_balance_xaf,
@@ -451,6 +452,7 @@ final class MysqlPickupSheetRepository implements PickupSheetRepository
 
         return [
             'sheetCount' => (int) ($row['sheet_count'] ?? 0),
+            'unpaidSheetCount' => (int) ($row['unpaid_sheet_count'] ?? 0),
             'shipmentCount' => (int) ($row['shipment_count'] ?? 0),
             'totalCashXaf' => (int) ($row['total_cash_xaf'] ?? 0),
             'unpaidBalanceXaf' => (int) ($row['unpaid_balance_xaf'] ?? 0),

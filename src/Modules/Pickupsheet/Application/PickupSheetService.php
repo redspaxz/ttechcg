@@ -59,7 +59,7 @@ final class PickupSheetService
         return $this->repository->findByReference($referenceNumber);
     }
 
-    /** @return array{sheetCount: int, shipmentCount: int, totalCashXaf: int, unpaidBalanceXaf: int, latestCreatedAt: ?string} */
+    /** @return array{sheetCount: int, unpaidSheetCount: int, shipmentCount: int, totalCashXaf: int, unpaidBalanceXaf: int, latestCreatedAt: ?string} */
     public function summary(): array
     {
         return $this->repository->summary();

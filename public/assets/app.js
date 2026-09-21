@@ -529,6 +529,7 @@ document.querySelectorAll('[data-ajax-pager]').forEach((pager) => {
             if (!response.ok) throw new Error(`Pagination request failed with ${response.status}`);
 
             content.innerHTML = await response.text();
+            bindPageSizeControls();
             const pageState = content.querySelector('[data-ajax-current-page]');
             const actualPage = Number.parseInt(pageState?.dataset.ajaxCurrentPage || String(requestedPage), 10);
             pager.dataset.currentPage = String(Number.isInteger(actualPage) && actualPage > 0 ? actualPage : requestedPage);
@@ -548,7 +549,28 @@ document.querySelectorAll('[data-ajax-pager]').forEach((pager) => {
         }
     };
 
+    const refreshForPageSize = (control) => {
+        const browserUrl = new URL(window.location.href);
+        browserUrl.searchParams.set(pageParameter, '1');
+        browserUrl.searchParams.set(pageSizeParameter, control.value);
+        loadUrl(browserUrl);
+    };
+
+    const bindPageSizeControls = () => {
+        pager.querySelectorAll?.('[data-ajax-page-size]').forEach((control) => {
+            if (control.dataset.ajaxPageSizeReady === 'true') return;
+            control.dataset.ajaxPageSizeReady = 'true';
+            control.addEventListener('change', () => refreshForPageSize(control));
+            control.addEventListener('focus', () => control.closest('.pickup-pagination-size')?.setAttribute('data-active', ''));
+            control.addEventListener('blur', () => control.closest('.pickup-pagination-size')?.removeAttribute('data-active'));
+        });
+    };
+
+    bindPageSizeControls();
+
     pager.addEventListener('click', (event) => {
+        const pageSizeControl = event.target.closest?.('[data-ajax-page-size]');
+        if (pageSizeControl?.dataset && Object.prototype.hasOwnProperty.call(pageSizeControl.dataset, 'ajaxPageSize')) return;
         const link = event.target.closest('[data-ajax-page]');
         if (!link) return;
         const page = Number.parseInt(link.dataset.ajaxPage || '', 10);
@@ -558,25 +580,6 @@ document.querySelectorAll('[data-ajax-pager]').forEach((pager) => {
         browserUrl.searchParams.set(pageParameter, String(page));
         browserUrl.searchParams.set(pageSizeParameter, pager.querySelector('[data-ajax-page-size]')?.value || pager.dataset.pageSize || '10');
         loadUrl(browserUrl);
-    });
-
-    pager.addEventListener('change', (event) => {
-        const control = event.target.closest?.('[data-ajax-page-size]');
-        if (!control) return;
-        const browserUrl = new URL(window.location.href);
-        browserUrl.searchParams.set(pageParameter, '1');
-        browserUrl.searchParams.set(pageSizeParameter, control.value);
-        loadUrl(browserUrl);
-    });
-
-    pager.addEventListener('focusin', (event) => {
-        const control = event.target.closest?.('[data-ajax-page-size]');
-        control?.closest('.pickup-pagination-size')?.setAttribute('data-active', '');
-    });
-
-    pager.addEventListener('focusout', (event) => {
-        const control = event.target.closest?.('[data-ajax-page-size]');
-        control?.closest('.pickup-pagination-size')?.removeAttribute('data-active');
     });
 
     ajaxPagerControllers.set(pagerId, {

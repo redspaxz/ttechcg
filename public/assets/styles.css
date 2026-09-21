@@ -1092,7 +1092,7 @@ button, a, input, select, textarea { -webkit-tap-highlight-color: transparent; }
 .pickup-admin-actions span { grid-column: 1 / -1; color: #888; font-size: 0.65rem; font-weight: 850; letter-spacing: 0.09em; text-transform: uppercase; }
 .pickup-admin-actions strong { align-self: end; font-size: 1.15rem; }
 .pickup-admin-actions i { align-self: end; color: var(--copper); font-style: normal; }
-.pickup-kpi-grid { display: grid; grid-template-columns: repeat(5, minmax(0, 1fr)); margin: 28px 0; border: 1px solid #333; background: #131315; }
+.pickup-kpi-grid { display: grid; grid-template-columns: repeat(6, minmax(0, 1fr)); margin: 28px 0; border: 1px solid #333; background: #131315; }
 .pickup-kpi-grid article { min-height: 176px; padding: 24px; border-right: 1px solid #333; }
 .pickup-kpi-grid article:last-child { border-right: 0; }
 .pickup-kpi-grid span { color: #888; font-size: 0.65rem; font-weight: 850; letter-spacing: 0.09em; text-transform: uppercase; }

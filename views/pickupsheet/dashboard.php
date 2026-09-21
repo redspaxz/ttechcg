@@ -174,6 +174,7 @@ $auditDetails = static function (array $log): string {
 
         <section class="pickup-kpi-grid" aria-label="Pickupsheet KPIs">
             <article><span>Total sheets</span><strong><?= $e(number_format((int) ($summary['sheetCount'] ?? 0))) ?></strong><small>Generated records</small></article>
+            <article><span>Unpaid sheets</span><strong><?= $e(number_format((int) ($summary['unpaidSheetCount'] ?? 0))) ?></strong><small>Open payment records</small></article>
             <article><span>Shipments</span><strong><?= $e(number_format((int) ($summary['shipmentCount'] ?? 0))) ?></strong><small>Cash shipment lines</small></article>
             <article><span>Total cash</span><strong><?= $e(number_format((int) ($summary['totalCashXaf'] ?? 0))) ?></strong><small>XAF recorded across all sheets</small></article>
             <article><span>Unpaid balance</span><strong><?= $e(number_format((int) ($summary['unpaidBalanceXaf'] ?? 0))) ?></strong><small>XAF across open sheets</small></article>
