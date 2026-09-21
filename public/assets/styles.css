@@ -1093,9 +1093,10 @@ button, a, input, select, textarea { -webkit-tap-highlight-color: transparent; }
 .pickup-admin-actions strong { align-self: end; font-size: 1.15rem; }
 .pickup-admin-actions i { align-self: end; color: var(--copper); font-style: normal; }
 .pickup-kpi-grid { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); margin: 28px 0; border: 1px solid #333; background: #131315; }
-.pickup-kpi-grid article { min-height: 176px; padding: 24px; border-right: 1px solid #333; }
+.pickup-kpi-grid article { min-height: 176px; padding: 24px; border-right: 1px solid #333; border-bottom: 1px solid #333; }
 .pickup-kpi-grid article:last-child { border-right: 0; }
-.pickup-kpi-grid .pickup-kpi-financial { grid-column: span 2; border-top: 1px solid #333; }
+.pickup-kpi-grid .pickup-kpi-financial { grid-column: span 2; }
+.pickup-kpi-grid .pickup-kpi-financial:nth-last-child(-n + 2) { border-bottom: 0; }
 .pickup-kpi-grid span { color: #888; font-size: 0.65rem; font-weight: 850; letter-spacing: 0.09em; text-transform: uppercase; }
 .pickup-kpi-grid strong { display: block; margin: 24px 0 12px; color: #fff; font-size: clamp(2rem, 4vw, 3.4rem); letter-spacing: -0.06em; }
 .pickup-kpi-grid small { color: #aaa; }
@@ -1273,7 +1274,6 @@ button, a, input, select, textarea { -webkit-tap-highlight-color: transparent; }
     .pickup-kpi-grid article:nth-child(odd) { border-right: 1px solid #333; }
     .pickup-kpi-grid .pickup-kpi-financial { grid-column: span 1; }
     .pickup-admin-actions a:last-child { grid-column: 1 / -1; border-right: 0; border-bottom: 0; }
-    .pickup-kpi-grid article:nth-child(-n + 2) { border-bottom: 1px solid #333; }
     .pickup-dashboard-grid { grid-template-columns: 1fr; }
     .pickup-audit-log-table thead { display: none; }
     .pickup-audit-log-entry > summary { grid-template-columns: repeat(2, minmax(0, 1fr)) 28px; gap: 14px 18px; align-items: start; }
