@@ -468,6 +468,7 @@ document.querySelectorAll('[data-ajax-pager]').forEach((pager) => {
     const setLoading = (loading) => {
         if (content) content.setAttribute('aria-busy', loading ? 'true' : 'false');
         if (spinner) spinner.hidden = !loading;
+        pager.toggleAttribute?.('data-page-size-loading', loading);
     };
 
     const showLoadError = () => {
@@ -566,6 +567,16 @@ document.querySelectorAll('[data-ajax-pager]').forEach((pager) => {
         browserUrl.searchParams.set(pageParameter, '1');
         browserUrl.searchParams.set(pageSizeParameter, control.value);
         loadUrl(browserUrl);
+    });
+
+    pager.addEventListener('focusin', (event) => {
+        const control = event.target.closest?.('[data-ajax-page-size]');
+        control?.closest('.pickup-pagination-size')?.setAttribute('data-active', '');
+    });
+
+    pager.addEventListener('focusout', (event) => {
+        const control = event.target.closest?.('[data-ajax-page-size]');
+        control?.closest('.pickup-pagination-size')?.removeAttribute('data-active');
     });
 
     ajaxPagerControllers.set(pagerId, {
