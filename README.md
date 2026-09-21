@@ -1,6 +1,44 @@
 ﻿# T&Tech Consulting Group
 
-A PHP 8.2 modular monolith for the T&Tech corporate website and the protected Pickupsheet operations workspace.
+[![PHP 8.2](https://img.shields.io/badge/PHP-8.2-777BB4?logo=php&logoColor=white)](https://www.php.net)
+[![MySQL 8](https://img.shields.io/badge/MySQL-8-4479A1?logo=mysql&logoColor=white)](https://www.mysql.com)
+[![License](https://img.shields.io/badge/License-Internal-blue)]()
+[![Status](https://img.shields.io/badge/Status-Production-ready-green)]()
+
+A PHP 8.2 modular monolith that powers the T&Tech corporate website and the protected Pickupsheet operations workspace.
+
+## Screenshot / project banner
+
+```text
+╔════════════════════════════════════════════════════════════════════════════╗
+║                  T&Tech Consulting Group                               ║
+║         Corporate website + protected Pickupsheet operations            ║
+║                                                                        ║
+║     Public website     |     CRM & loyalty     |     Admin dashboard     ║
+╚════════════════════════════════════════════════════════════════════════════╝
+```
+
+> Add a deployment or UI screenshot here when you want a branded project banner for GitHub or internal docs.
+
+## Screenshots
+
+![Project overview placeholder](https://via.placeholder.com/1200x400?text=T%26Tech+Consulting+Group)
+
+> Replace the placeholder image with a real dashboard or front-end screenshot when the project is deployed and a capture is ready.
+
+## Architecture at a glance
+
+```text
+HTTP request
+  -> index.php / router.php
+  -> bootstrap/app.php
+  -> shared HTTP + security boundary
+  -> module controller
+  -> application service
+  -> domain logic / repository contract
+  -> MySQL adapter or demo/unavailable adapter
+  -> server-rendered view / response
+```
 
 ## Overview
 
@@ -9,7 +47,17 @@ This project serves two related surfaces in one codebase:
 - a public-facing corporate site for services, products, offices, partnerships, and contact enquiries
 - a protected internal Pickupsheet workspace for cash-shipment operations, CRM, loyalty, dashboards, and administrator controls
 
-The application uses a dependency-light MVC structure, a single front controller, and MySQL-backed persistence. Protected writes fail closed when required infrastructure is unavailable, while the public site remains readable in read-only or degraded modes.
+The application uses a dependency-light MVC structure, a single front controller, and MySQL-backed persistence. Protected writes fail closed when required infrastructure is unavailable, while the public site remains readable in degraded or read-only modes.
+
+> Mission: provide a reliable, secure public brand presence and a strict operational workflow for cash-based shipment management that is auditable, role-bound, and easy to recover.
+
+## Repository highlights
+
+- one PHP application with both public and protected business surfaces
+- modular codebase organized by domain and shared infrastructure
+- MySQL-backed operational data, audit evidence, and backup/restore support
+- production-oriented security controls for access, validation, and session management
+- support for local identity, JumpCloud SSO, and Cloudflare Access patterns
 
 ## Stack
 
@@ -19,6 +67,10 @@ The application uses a dependency-light MVC structure, a single front controller
 - Native PHP sessions and server-side security controls
 - No production bundler required
 - JavaScript validation and behavioral checks via the project test suite
+
+### Summary
+
+This project combines a corporate website, secure access workflows, operational pickup records, customer management, loyalty tracking, dashboard reporting, and encrypted operational backup into a single PHP application.
 
 ## Requirements
 
@@ -164,6 +216,24 @@ Customer-facing operational recordkeeping and profile data:
 
 Encrypted application-data backup and restore with transactional safety checks.
 
+## Feature matrix
+
+| Area | Capability | Status |
+|---|---|---|
+| Public site | services, products, about, privacy, offices | Implemented |
+| Contact form | enquiry capture with consent, captcha, honeypot, rate limiting | Implemented |
+| Authentication | local login, MFA, JumpCloud OIDC, optional Cloudflare Access | Implemented |
+| Pickupsheet entry | agent/date sheet creation with 1-50 shipment rows | Implemented |
+| Shipment validation | server-side recalculation, AWB, value, weight, destination checks | Implemented |
+| Workflow control | open/paid/delete lifecycle and audit logging | Implemented |
+| Search and listings | paginated searchable submissions and AJAX fallback | Implemented |
+| Printing and export | A4 print view and native XLSX export | Implemented |
+| CRM | customer profiles, shipment history, follow-up tracking | Implemented |
+| Loyalty | point balances, lifetime totals, tiers, adjustments | Implemented |
+| Dashboard | KPIs, operational metrics, user activity, security log | Implemented |
+| Admin tools | user, MFA, password, backup and restore management | Implemented |
+| Security | CSRF, session hardening, encryption, RBAC boundaries | Implemented |
+
 ## Security and operational expectations
 
 This project is designed with security controls built in:
@@ -176,6 +246,25 @@ This project is designed with security controls built in:
 - pseudonymous audit logging
 - strict session and cookie configuration
 - no secrets in source control or user-facing scripts
+
+## Production deployment checklist
+
+Use this checklist before promoting the application to a production environment:
+
+1. Confirm `.env` is present in the deployment environment and not committed to source control.
+2. Set `APP_ENV=production`, `APP_DEBUG=false`, and a correct `APP_URL` with HTTPS.
+3. Validate `DB_*` credentials, MySQL availability, and required `pdo_mysql` support.
+4. Ensure `openssl`, `curl`, and the required PHP extensions are enabled in the web runtime.
+5. Set `CONTACT_EMAIL` and `CONTACT_FROM_EMAIL` to approved production addresses.
+6. Configure local login, MFA, and storage keys only if the environment is ready for the required security controls.
+7. Configure JumpCloud OIDC and/or Cloudflare Access only after confirming issuer, callback, and RBAC settings.
+8. Set `RUN_MIGRATIONS` only for intentional schema updates; keep it disabled for normal production operation.
+9. Validate writable permissions for `storage/sessions` and `storage/security`.
+10. Confirm the deployment is using HTTPS and secure cookies/session settings.
+11. Test backup creation and restore with a safe dataset before production use.
+12. Confirm monitoring checks and health routes are active for operational visibility.
+13. Run the project validation suite: `php tests/run.php`.
+14. Perform a final role-based verification for public, viewer, operator, and admin workflows.
 
 ## Validation
 
@@ -235,6 +324,34 @@ php tests/run.php
 - leave `RUN_MIGRATIONS` off unless you intentionally want schema changes applied
 - monitor `/health` and operational dependency checks in deployed environments
 
+## Contributing
+
+Contributions are welcome for bug fixes, quality improvements, and operational hardening.
+
+Before opening a pull request:
+
+1. create a feature branch from the latest default branch
+2. keep changes scoped and well documented
+3. run the project validation suite: `php tests/run.php`
+4. avoid committing `.env`, secrets, or private identity configuration
+5. describe the business impact and verification steps in the pull request
+
+## Project status and roadmap
+
+### Current status
+
+- public website shell and content flows are active
+- pick-up operation workflow is implemented and validated
+- customer, loyalty, and admin capabilities are in place
+- security, retention, and access controls are part of the core design
+
+### Planned improvements
+
+- improve operational monitoring and deployment automation
+- expand automated regression coverage for edge-case flows
+- tighten deployment runbooks and environment provisioning documentation
+- review and streamline admin and reporting workflows as operational needs evolve
+
 ## Documentation
 
-This README is meant to be the developer-facing guide for setup and maintenance. The project also contains more detailed product and security documentation under `docs/` and the source code itself.
+This README is the developer-facing guide for setup, maintenance, and operational onboarding. The project also contains more detailed product and security documentation under `docs/` and the source code itself.
