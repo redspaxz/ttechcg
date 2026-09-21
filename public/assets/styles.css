@@ -1224,6 +1224,82 @@ button, a, input, select, textarea { -webkit-tap-highlight-color: transparent; }
 .pickup-dashboard-table-wrap tr:last-child td { border-bottom: 0; }
 .pickup-dashboard-table-wrap a { color: #fff; font-weight: 800; }
 .pickup-dashboard-table-wrap td > small { display: block; margin-top: 4px; color: #888; font-size: 0.64rem; overflow-wrap: anywhere; }
+.pickup-dashboard-table-wrap .pickup-table-row-details { display: block; }
+.pickup-dashboard-table-wrap .pickup-table-row-details > summary {
+    display: grid;
+    grid-template-columns: minmax(160px, 1.3fr) minmax(110px, 0.7fr) minmax(160px, 1fr) minmax(130px, 0.8fr) minmax(120px, 0.7fr) 28px;
+    gap: 14px;
+    align-items: center;
+    padding: 12px 14px;
+    border-bottom: 1px solid #2b2b2e;
+    cursor: pointer;
+    list-style: none;
+}
+.pickup-dashboard-table-wrap .pickup-table-row-details > summary::-webkit-details-marker { display: none; }
+.pickup-dashboard-table-wrap .pickup-table-row-details > summary::marker { content: ''; }
+.pickup-dashboard-table-wrap .pickup-table-row-details > summary:hover { background: #19191c; }
+.pickup-dashboard-table-wrap .pickup-table-row-details > summary:focus-visible { outline: 2px solid var(--copper); outline-offset: -2px; }
+.pickup-dashboard-table-wrap .pickup-table-row-details > summary > span { min-width: 0; }
+.pickup-dashboard-table-wrap .pickup-table-row-details strong { display: block; color: #fff; overflow-wrap: anywhere; }
+.pickup-dashboard-table-wrap .pickup-table-row-details small { display: block; margin-top: 4px; color: #888; overflow-wrap: anywhere; }
+.pickup-dashboard-table-wrap .pickup-table-row-details > summary > i { display: grid; width: 26px; height: 26px; place-items: center; color: var(--copper); font-style: normal; transition: transform 160ms ease; }
+.pickup-dashboard-table-wrap .pickup-table-row-details[open] > summary { background: #19191c; }
+.pickup-dashboard-table-wrap .pickup-table-row-details[open] > summary > i { transform: rotate(45deg); }
+.pickup-dashboard-table-wrap .pickup-table-row-detail { padding: 0 14px 14px; background: #101012; }
+.pickup-dashboard-table-wrap .pickup-table-row-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(160px, 1fr)); gap: 12px 18px; padding-top: 12px; }
+.pickup-dashboard-table-wrap .pickup-table-row-grid > div { display: grid; gap: 4px; min-width: 0; }
+.pickup-dashboard-table-wrap .pickup-table-row-grid small { color: #888; font-size: 0.58rem; font-weight: 800; letter-spacing: 0.06em; text-transform: uppercase; }
+.pickup-dashboard-table-wrap .pickup-table-row-grid span { color: #ddd; overflow-wrap: anywhere; }
+
+.pickup-user-activity-table .pickup-table-row-details { display: block; }
+.pickup-user-activity-table .pickup-table-row-details > summary {
+    display: grid;
+    grid-template-columns: minmax(180px, 1.2fr) minmax(110px, 0.7fr) minmax(110px, 0.7fr) minmax(110px, 0.7fr) minmax(120px, 0.8fr) minmax(90px, 0.6fr) minmax(130px, 0.8fr) 28px;
+    gap: 12px;
+    align-items: center;
+    padding: 12px 14px;
+    border-bottom: 1px solid #2b2b2e;
+    cursor: pointer;
+    list-style: none;
+}
+.pickup-user-activity-table .pickup-table-row-details > summary::-webkit-details-marker { display: none; }
+.pickup-user-activity-table .pickup-table-row-details > summary::marker { content: ''; }
+.pickup-user-activity-table .pickup-table-row-details > summary:hover { background: #19191c; }
+.pickup-user-activity-table .pickup-table-row-details > summary:focus-visible { outline: 2px solid var(--copper); outline-offset: -2px; }
+.pickup-user-activity-table .pickup-table-row-details strong { display: block; color: #fff; }
+.pickup-user-activity-table .pickup-table-row-details small { display: block; margin-top: 4px; color: #888; }
+.pickup-user-activity-table .pickup-table-row-details > summary > i { display: grid; width: 26px; height: 26px; place-items: center; color: var(--copper); font-style: normal; transition: transform 160ms ease; }
+.pickup-user-activity-table .pickup-table-row-details[open] > summary { background: #19191c; }
+.pickup-user-activity-table .pickup-table-row-details[open] > summary > i { transform: rotate(45deg); }
+.pickup-user-activity-table .pickup-table-row-detail { padding: 0 14px 14px; background: #101012; }
+.pickup-user-activity-table .pickup-table-row-grid > div { display: grid; gap: 4px; }
+
+.pickup-crm-table-wrap .pickup-table-row-details { display: block; }
+.pickup-crm-table-wrap .pickup-table-row-details > summary {
+    display: grid;
+    grid-template-columns: minmax(180px, 1.2fr) minmax(110px, 0.8fr) minmax(170px, 1fr) minmax(120px, 0.8fr) minmax(120px, 0.8fr) minmax(120px, 0.8fr) minmax(120px, 0.7fr) 28px;
+    gap: 12px;
+    align-items: center;
+    padding: 12px 14px;
+    border-bottom: 1px solid rgba(69, 50, 0, 0.18);
+    background: #fff;
+    cursor: pointer;
+    list-style: none;
+}
+.pickup-crm-table-wrap .pickup-table-row-details > summary::-webkit-details-marker { display: none; }
+.pickup-crm-table-wrap .pickup-table-row-details > summary::marker { content: ''; }
+.pickup-crm-table-wrap .pickup-table-row-details > summary:hover { background: #fff7d1; }
+.pickup-crm-table-wrap .pickup-table-row-details > summary:focus-visible { outline: 2px solid var(--dhl-red); outline-offset: -2px; }
+.pickup-crm-table-wrap .pickup-table-row-details strong { display: block; color: #241b00; }
+.pickup-crm-table-wrap .pickup-table-row-details small { display: block; margin-top: 4px; color: #806d24; }
+.pickup-crm-table-wrap .pickup-table-row-details > summary > i { display: grid; width: 26px; height: 26px; place-items: center; color: var(--dhl-red); font-style: normal; transition: transform 160ms ease; }
+.pickup-crm-table-wrap .pickup-table-row-details[open] > summary { background: #fff7d1; }
+.pickup-crm-table-wrap .pickup-table-row-details[open] > summary > i { transform: rotate(45deg); }
+.pickup-crm-table-wrap .pickup-table-row-detail { padding: 0 14px 14px; background: #fffdf5; }
+.pickup-crm-table-wrap .pickup-table-row-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(170px, 1fr)); gap: 12px 18px; padding-top: 12px; }
+.pickup-crm-table-wrap .pickup-table-row-grid > div { display: grid; gap: 4px; min-width: 0; }
+.pickup-crm-table-wrap .pickup-table-row-grid small { color: #806d24; font-size: 0.58rem; font-weight: 800; letter-spacing: 0.06em; text-transform: uppercase; }
+.pickup-crm-table-wrap .pickup-table-row-grid span { color: #241b00; overflow-wrap: anywhere; }
 
 /* Compact activity dashboard rhythm */
 .pickup-dashboard-shell {

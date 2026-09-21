@@ -33,14 +33,33 @@ $identityProviderLabel = static fn (string $provider): string => match ($provide
         <?php if ($items === []): ?><tr><td colspan="8">No successful login activity has been recorded during the last 30 days.</td></tr><?php endif; ?>
         <?php foreach ($items as $user): ?>
             <tr>
-                <td><strong><?= $e($user['fullName'] ?? $user['username'] ?? '') ?></strong><small><?= $e($user['username'] ?? '') ?></small></td>
-                <td><?= $e(ucfirst((string) ($user['role'] ?? ''))) ?></td>
-                <td><?= $e($identityProviderLabel((string) ($user['identityProvider'] ?? 'local'))) ?></td>
-                <td><strong><?= $e(number_format((int) ($user['loginCount'] ?? 0))) ?></strong></td>
-                <td><?= $e($formatDuration((int) ($user['totalSessionSeconds'] ?? 0))) ?></td>
-                <td><?= $e($formatDuration((int) ($user['averageSessionSeconds'] ?? 0))) ?></td>
-                <td><?= $e($user['lastLoginAt'] ?? '') ?></td>
-                <td><span class="pickup-session-state <?= ($user['activeNow'] ?? false) ? 'is-active' : '' ?>"><i aria-hidden="true"></i><?= ($user['activeNow'] ?? false) ? 'Active now' : 'Signed out' ?></span></td>
+                <td colspan="8">
+                    <details class="pickup-table-row-details">
+                        <summary>
+                            <span data-label="User"><strong><?= $e($user['fullName'] ?? $user['username'] ?? '') ?></strong><small><?= $e($user['username'] ?? '') ?></small></span>
+                            <span data-label="Role"><strong><?= $e(ucfirst((string) ($user['role'] ?? ''))) ?></strong></span>
+                            <span data-label="Sign-in"><strong><?= $e($identityProviderLabel((string) ($user['identityProvider'] ?? 'local'))) ?></strong></span>
+                            <span data-label="Logins"><strong><?= $e(number_format((int) ($user['loginCount'] ?? 0))) ?></strong></span>
+                            <span data-label="Total session"><strong><?= $e($formatDuration((int) ($user['totalSessionSeconds'] ?? 0))) ?></strong></span>
+                            <span data-label="Average"><strong><?= $e($formatDuration((int) ($user['averageSessionSeconds'] ?? 0))) ?></strong></span>
+                            <span data-label="Last login"><strong><?= $e($user['lastLoginAt'] ?? '') ?></strong></span>
+                            <span data-label="Session"><span class="pickup-session-state <?= ($user['activeNow'] ?? false) ? 'is-active' : '' ?>"><i aria-hidden="true"></i><?= ($user['activeNow'] ?? false) ? 'Active now' : 'Signed out' ?></span></span>
+                            <i aria-hidden="true">+</i>
+                        </summary>
+                        <div class="pickup-table-row-detail">
+                            <div class="pickup-table-row-grid">
+                                <div><small>User</small><span><?= $e($user['fullName'] ?? $user['username'] ?? '') ?></span></div>
+                                <div><small>Role</small><span><?= $e(ucfirst((string) ($user['role'] ?? ''))) ?></span></div>
+                                <div><small>Sign-in</small><span><?= $e($identityProviderLabel((string) ($user['identityProvider'] ?? 'local'))) ?></span></div>
+                                <div><small>Login count</small><span><?= $e(number_format((int) ($user['loginCount'] ?? 0))) ?></span></div>
+                                <div><small>Total session</small><span><?= $e($formatDuration((int) ($user['totalSessionSeconds'] ?? 0))) ?></span></div>
+                                <div><small>Average</small><span><?= $e($formatDuration((int) ($user['averageSessionSeconds'] ?? 0))) ?></span></div>
+                                <div><small>Last login</small><span><?= $e($user['lastLoginAt'] ?? '') ?></span></div>
+                                <div><small>Session</small><span><?= ($user['activeNow'] ?? false) ? 'Active now' : 'Signed out' ?></span></div>
+                            </div>
+                        </div>
+                    </details>
+                </td>
             </tr>
         <?php endforeach; ?>
         </tbody>
