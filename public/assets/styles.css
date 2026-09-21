@@ -1099,7 +1099,7 @@ button, a, input, select, textarea { -webkit-tap-highlight-color: transparent; }
 .pickup-kpi-grid .pickup-kpi-financial:nth-last-child(-n + 2) { border-bottom: 0; }
 .pickup-kpi-grid span { color: #888; font-size: 0.65rem; font-weight: 850; letter-spacing: 0.09em; text-transform: uppercase; }
 .pickup-kpi-grid strong { display: block; margin: 24px 0 12px; color: #fff; font-size: clamp(2rem, 4vw, 3.4rem); letter-spacing: -0.06em; }
-.pickup-kpi-grid .pickup-kpi-financial strong { font-size: clamp(1.5rem, 3vw, 2.75rem); letter-spacing: -0.045em; line-height: 1.1; overflow-wrap: anywhere; }
+.pickup-kpi-grid .pickup-kpi-financial strong { min-width: 0; overflow: hidden; font-size: clamp(1.15rem, 2.7vw, 2.75rem); letter-spacing: -0.045em; line-height: 1.1; text-overflow: ellipsis; white-space: nowrap; }
 .pickup-kpi-grid small { color: #aaa; }
 .pickup-dashboard-grid { display: grid; grid-template-columns: minmax(0, 1.55fr) minmax(300px, 0.75fr); gap: 28px; }
 .pickup-chart-card,
