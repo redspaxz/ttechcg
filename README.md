@@ -2,29 +2,23 @@
 
 [![PHP 8.2](https://img.shields.io/badge/PHP-8.2-777BB4?logo=php&logoColor=white)](https://www.php.net)
 [![MySQL 8](https://img.shields.io/badge/MySQL-8-4479A1?logo=mysql&logoColor=white)](https://www.mysql.com)
-[![License](https://img.shields.io/badge/License-Internal-blue)]()
-[![Status](https://img.shields.io/badge/Status-Production-ready-green)]()
+[![License](https://img.shields.io/badge/License-Internal-blue)](#)
+[![Status](https://img.shields.io/badge/Status-Production--ready-green)](#)
 
 A PHP 8.2 modular monolith that powers the T&Tech corporate website and the protected Pickupsheet operations workspace.
 
 ## Screenshot / project banner
 
 ```text
-╔════════════════════════════════════════════════════════════════════════════╗
-║                  T&Tech Consulting Group                               ║
-║         Corporate website + protected Pickupsheet operations            ║
-║                                                                        ║
-║     Public website     |     CRM & loyalty     |     Admin dashboard     ║
-╚════════════════════════════════════════════════════════════════════════════╝
+╔══════════════════════════════════════════════════════════════════╗
+║                      T&Tech Consulting Group                     ║
+║       Corporate website + protected Pickupsheet operations       ║
+║                                                                  ║
+║   Public website   |   CRM & loyalty   |   Admin dashboard       ║
+╚══════════════════════════════════════════════════════════════════╝
 ```
 
-> Add a deployment or UI screenshot here when you want a branded project banner for GitHub or internal docs.
-
-## Screenshots
-
-![Project overview placeholder](https://via.placeholder.com/1200x400?text=T%26Tech+Consulting+Group)
-
-> Replace the placeholder image with a real dashboard or front-end screenshot when the project is deployed and a capture is ready.
+> Replace this banner with a real dashboard or front-end screenshot when the project is deployed and a capture is ready.
 
 ## Architecture at a glance
 
