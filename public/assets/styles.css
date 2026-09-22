@@ -1113,13 +1113,15 @@ button, a, input, select, textarea { -webkit-tap-highlight-color: transparent; }
 .pickup-chart-card,
 .pickup-destination-card,
 .pickup-sender-performance { padding: 26px; }
+.pickup-chart-card,
+.pickup-destination-card { display: flex; min-height: 100%; flex-direction: column; }
 .pickup-card-heading { display: flex; align-items: end; justify-content: space-between; gap: 24px; }
 .pickup-card-heading > div { min-width: 0; }
 .pickup-card-heading span { color: var(--copper); font-size: 0.64rem; font-weight: 850; letter-spacing: 0.09em; text-transform: uppercase; }
 .pickup-card-heading h2 { margin: 7px 0 0; color: #fff; font-size: clamp(1.45rem, 3vw, 2.2rem); letter-spacing: -0.045em; overflow-wrap: anywhere; }
 .pickup-card-heading small { color: #888; text-transform: uppercase; }
 .pickup-card-heading > a { color: #fff; font-size: 0.72rem; font-weight: 800; }
-.pickup-chart-scroll { margin-top: 28px; overflow-x: auto; }
+.pickup-chart-scroll { flex: 1 1 auto; margin-top: 28px; overflow-x: auto; }
 .pickup-activity-chart { display: block; min-width: 680px; }
 .pickup-activity-chart line { stroke: #444; stroke-width: 1; }
 .pickup-activity-chart .pickup-activity-grid-line { stroke: #363639; }
@@ -1142,7 +1144,7 @@ button, a, input, select, textarea { -webkit-tap-highlight-color: transparent; }
 .pickup-cash-status-values .is-unpaid dt::before { background: var(--copper); }
 .pickup-cash-status-values .is-settled dt::before { background: #168a45; }
 .pickup-cash-status-values dd { margin: 0; color: #fff; font-size: clamp(1rem, 2.5vw, 1.45rem); font-weight: 850; font-variant-numeric: tabular-nums; letter-spacing: -0.035em; text-align: right; white-space: nowrap; }
-.pickup-destination-list { display: grid; gap: 22px; margin-top: 30px; }
+.pickup-destination-list { display: grid; flex: 1 1 auto; align-content: space-evenly; gap: 18px; margin-top: 24px; }
 .pickup-destination-list > div { display: grid; gap: 10px; }
 .pickup-destination-list span { display: flex; align-items: end; justify-content: space-between; gap: 14px; }
 .pickup-destination-list strong { color: #fff; }
