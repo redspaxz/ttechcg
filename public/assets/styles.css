@@ -1276,7 +1276,6 @@ button, a, input, select, textarea { -webkit-tap-highlight-color: transparent; }
     .pickup-admin-actions a:nth-child(even),
     .pickup-kpi-grid article:nth-child(even) { border-right: 0; }
     .pickup-kpi-grid article:nth-child(odd) { border-right: 1px solid #333; }
-    .pickup-kpi-grid .pickup-kpi-financial { grid-column: span 1; }
     .pickup-admin-actions a:last-child { grid-column: 1 / -1; border-right: 0; border-bottom: 0; }
     .pickup-dashboard-grid { grid-template-columns: 1fr; }
     .pickup-audit-log-table thead { display: none; }
