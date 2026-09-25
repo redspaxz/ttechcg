@@ -244,7 +244,18 @@ These indicators use only internal, non-deleted Pickupsheet records and collecti
 
 ### Dashboard tabs
 
-The header, administration links and KPI cards stay visible above folder-style tabs. The tabs are Market analysis, Cash activity, Top senders, Loyalty, User activity, Audit log, Recent sheets and Reports. The open tab is kept in the `?tab=` query parameter. The server renders the requested tab directly, so reloads and shared links open the same section, and AJAX table pagination keeps the parameter. Unknown values fall back to Market analysis.
+The header, administration links and KPI cards stay visible above folder-style tabs. The tabs are Market analysis, Cash activity, Top senders, Loyalty, User activity, Audit log, Recent sheets and Reports. The open tab is kept in the `?tab=` query parameter. The server renders the requested tab directly, so reloads and shared links open the same section, and AJAX table pagination keeps the parameter. Unknown values fall back to Market analysis. On narrow screens the tab bar scrolls sideways, and the open tab is scrolled into view.
+
+### Mobile layout
+
+The administrator dashboard is built for phones down to 360px wide:
+
+- no card is wider than the screen; wide content such as the 14-day cash chart and the activity tables scrolls sideways inside its own card
+- below 620px, administration links, KPI cards, market comparison cards and efficiency indicators use compact two-column grids, and fixed card heights are removed
+- the 12-month trend keeps two columns at every phone width, and report period options stay two per row
+- stacked dashboard grids use `minmax(0, 1fr)` columns. A plain `1fr` column cannot shrink below its content, so wide content like the chart would stretch the card past the screen edge and clip it
+
+After changing dashboard styles, update the `styles.css?v=` and `app.js?v=` versions in `views/layouts/app.php` and the matching assertions in `tests/run.php`, so browsers load the new assets.
 
 ### Performance reports
 
