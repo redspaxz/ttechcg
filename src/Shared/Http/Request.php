@@ -71,6 +71,14 @@ final class Request
         return is_string($value) ? trim($value) : $default;
     }
 
+    /** @return list<string> */
+    public function queryList(string $key): array
+    {
+        $value = $this->query[$key] ?? [];
+        $values = is_array($value) ? $value : [$value];
+        return array_values(array_map('trim', array_filter($values, 'is_string')));
+    }
+
     /** @return null|array{name: string, type: string, tmpName: string, error: int, size: int} */
     public function uploadedFile(string $key): ?array
     {

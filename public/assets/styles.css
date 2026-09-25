@@ -1317,6 +1317,28 @@ button, a, input, select, textarea { -webkit-tap-highlight-color: transparent; }
 .pickup-dashboard-shell .pickup-user-activity-table td,
 .pickup-dashboard-shell .pickup-dashboard-table-wrap th,
 .pickup-dashboard-shell .pickup-dashboard-table-wrap td { padding: 12px 14px; }
+.pickup-dashboard-tablist { position: relative; z-index: 1; display: flex; gap: 4px; margin-bottom: -1px; overflow-x: auto; scrollbar-width: thin; }
+.pickup-dashboard-tab { flex: 0 0 auto; padding: 11px 18px 10px; border: 1px solid #333; border-radius: 6px 6px 0 0; background: #0c0c0e; color: #888; font-size: 0.66rem; font-weight: 850; letter-spacing: 0.08em; text-decoration: none; text-transform: uppercase; white-space: nowrap; }
+.pickup-dashboard-tab:hover { background: #18181a; color: #ddd; }
+.pickup-dashboard-tab:focus-visible { outline: 2px solid var(--copper); outline-offset: -3px; }
+.pickup-dashboard-tab[aria-selected="true"] { border-color: #333 #333 #131315; background: #131315; box-shadow: inset 0 2px 0 var(--copper); color: #fff; }
+.pickup-dashboard-shell .pickup-dashboard-panel > :first-child { margin-top: 0; }
+.pickup-dashboard-shell .pickup-dashboard-panel > :last-child { margin-bottom: 0; }
+.pickup-report-builder { padding: var(--dashboard-card-padding-block) var(--dashboard-card-padding-inline); border: 1px solid #333; background: #131315; }
+.pickup-report-form { display: grid; gap: 20px; margin-top: 18px; }
+.pickup-report-form fieldset { display: grid; gap: 8px; min-width: 0; margin: 0; padding: 0; border: 0; }
+.pickup-report-periods { grid-template-columns: repeat(4, minmax(0, 1fr)); }
+.pickup-report-sections { grid-template-columns: repeat(3, minmax(0, 1fr)); }
+.pickup-report-form legend { margin-bottom: 10px; padding: 0; color: #888; font-size: 0.61rem; font-weight: 850; letter-spacing: 0.08em; text-transform: uppercase; }
+.pickup-report-form label { display: flex; align-items: center; gap: 10px; min-width: 0; padding: 13px 15px; border: 1px solid #333; background: #101012; color: #ccc; font-size: 0.78rem; font-weight: 750; cursor: pointer; }
+.pickup-report-form label:hover { border-color: #555; }
+.pickup-report-form label:has(input:checked) { border-color: var(--copper); color: #fff; }
+.pickup-report-form label:has(input:focus-visible) { outline: 2px solid var(--copper); outline-offset: 2px; }
+.pickup-report-form input { flex: 0 0 auto; margin: 0; accent-color: var(--copper); }
+.pickup-report-form label span { min-width: 0; overflow-wrap: anywhere; }
+.pickup-report-form label small { margin-left: auto; color: #777; font-size: 0.6rem; font-weight: 800; letter-spacing: 0.06em; text-transform: uppercase; }
+.pickup-report-submit { display: flex; flex-wrap: wrap; align-items: center; gap: 12px 18px; }
+.pickup-report-submit small { color: #777; font-size: 0.68rem; }
 
 @media (max-width: 960px) {
     .pickup-login-shell { grid-template-columns: 1fr; }
@@ -1330,6 +1352,8 @@ button, a, input, select, textarea { -webkit-tap-highlight-color: transparent; }
     .pickup-kpi-grid article:nth-child(odd) { border-right: 1px solid #333; }
     .pickup-admin-actions a:last-child { grid-column: 1 / -1; border-right: 0; border-bottom: 0; }
     .pickup-dashboard-grid { grid-template-columns: 1fr; }
+    .pickup-report-periods,
+    .pickup-report-sections { grid-template-columns: repeat(2, minmax(0, 1fr)); }
     .pickup-market-growth { grid-template-columns: repeat(2, minmax(0, 1fr)); }
     .pickup-market-efficiency { grid-template-columns: repeat(3, minmax(0, 1fr)); }
     .pickup-market-detail-grid { grid-template-columns: 1fr; }
@@ -1391,6 +1415,8 @@ button, a, input, select, textarea { -webkit-tap-highlight-color: transparent; }
     .pickup-admin-actions a:last-child,
     .pickup-kpi-grid article:last-child { border-bottom: 0; }
     .pickup-card-heading { align-items: flex-start; flex-direction: column; gap: 10px; }
+    .pickup-report-periods,
+    .pickup-report-sections { grid-template-columns: 1fr; }
     .pickup-market-growth,
     .pickup-market-efficiency { grid-template-columns: 1fr; }
     .pickup-market-months { grid-template-columns: repeat(2, minmax(0, 1fr)); }

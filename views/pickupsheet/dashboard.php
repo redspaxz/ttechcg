@@ -18,6 +18,20 @@ $topCustomers = is_array($topCustomers ?? null) ? $topCustomers : [];
 $userActivity = is_array($userActivity ?? null) ? $userActivity : [];
 $auditLogs = is_array($auditLogs ?? null) ? $auditLogs : [];
 $recentSheets = is_array($recentSheets ?? null) ? $recentSheets : [];
+$dashboardTabs = [
+    'market' => 'Market analysis',
+    'cash' => 'Cash activity',
+    'senders' => 'Top senders',
+    'loyalty' => 'Loyalty',
+    'users' => 'User activity',
+    'logs' => 'Audit log',
+    'sheets' => 'Recent sheets',
+    'reports' => 'Reports',
+];
+$reportPeriods = is_array($reportPeriods ?? null) ? $reportPeriods : [];
+$reportSections = is_array($reportSections ?? null) ? $reportSections : [];
+$reportPeriodLabels = [30 => 'Month', 90 => 'Quarter', 180 => 'Half year', 365 => 'Year'];
+$activeDashboardTab = array_key_exists((string) ($dashboardTab ?? ''), $dashboardTabs) ? (string) $dashboardTab : 'market';
 $accounts = is_array($accounts ?? null) ? $accounts : [];
 $errors = is_array($errors ?? null) ? $errors : [];
 $chartWidth = 760;
@@ -222,211 +236,261 @@ $auditDetails = static function (array $log): string {
             <article class="pickup-kpi-unpaid"><span>Unpaid balance</span><strong class="pickup-kpi-amount"><?= $e(number_format((int) ($summary['unpaidBalanceXaf'] ?? 0))) ?></strong><small>XAF open in the last 3 months</small></article>
         </section>
 
-        <section class="pickup-market-analysis" aria-labelledby="market-analysis-title">
-            <div class="pickup-card-heading pickup-market-heading">
-                <div><span>Internal market intelligence</span><h2 id="market-analysis-title">Performance and market analysis</h2></div>
-                <small>Operational records only</small>
-            </div>
-            <p class="pickup-market-context">Compares the latest <?= $e($marketComparisonDays) ?> days with the preceding <?= $e($marketComparisonDays) ?> days. Indicators describe Pickupsheet activity and do not represent the external logistics market.</p>
-
-            <div class="pickup-market-growth" aria-label="Period-over-period performance">
-                <?php foreach ($marketGrowthCards as $card): ?>
-                    <article>
-                        <div><span><?= $e($card['label']) ?></span><strong><?= $e($card['value']) ?></strong></div>
-                        <mark class="<?= $e($card['growth']['class']) ?>"><?= $e($card['growth']['label']) ?></mark>
-                        <small>Previous period: <?= $e($card['previous']) ?></small>
-                    </article>
+        <div class="pickup-dashboard-tabs" data-dashboard-tabs>
+            <div class="pickup-dashboard-tablist" role="tablist" aria-label="Dashboard sections">
+                <?php foreach ($dashboardTabs as $tabKey => $tabLabel): ?>
+                    <a class="pickup-dashboard-tab" id="dashboard-tab-<?= $e($tabKey) ?>" href="?tab=<?= $e($tabKey) ?>" role="tab" aria-controls="dashboard-panel-<?= $e($tabKey) ?>" aria-selected="<?= $tabKey === $activeDashboardTab ? 'true' : 'false' ?>" tabindex="<?= $tabKey === $activeDashboardTab ? '0' : '-1' ?>" data-dashboard-tab="<?= $e($tabKey) ?>"><?= $e($tabLabel) ?></a>
                 <?php endforeach; ?>
             </div>
 
-            <div class="pickup-market-efficiency" aria-label="Market efficiency indicators">
-                <article><span>Pieces handled</span><strong><?= $e(number_format((int) ($marketCurrent['totalPieces'] ?? 0))) ?></strong><small>Shipment pieces, latest period</small></article>
-                <article><span>Cash per shipment</span><strong><?= $e(number_format((int) ($marketMetrics['averageCashPerShipmentXaf'] ?? 0))) ?></strong><small>XAF average, latest period</small></article>
-                <article><span>Cash per kilogram</span><strong><?= $e(number_format((int) ($marketMetrics['cashPerKgXaf'] ?? 0))) ?></strong><small>XAF per kg, latest period</small></article>
-                <article><span>Payment conversion</span><strong><?= $e(number_format((float) ($marketMetrics['paymentRatePercent'] ?? 0), 1)) ?>%</strong><small>Sheets marked paid, latest period</small></article>
-                <article><span>Repeat sender rate</span><strong><?= $e(number_format((float) ($marketMetrics['repeatSenderRatePercent'] ?? 0), 1)) ?>%</strong><small>Senders with 2+ shipments, <?= $e($marketTrendMonths) ?> months</small></article>
-                <article><span>Top lane concentration</span><strong><?= $e(number_format((float) ($marketMetrics['topDestinationSharePercent'] ?? 0), 1)) ?>%</strong><small>Shipment share of leading destination</small></article>
+            <div class="pickup-dashboard-panel" id="dashboard-panel-market" role="tabpanel" aria-labelledby="dashboard-tab-market" data-dashboard-panel="market"<?= $activeDashboardTab === 'market' ? '' : ' hidden' ?>>
+                <section class="pickup-market-analysis" aria-labelledby="market-analysis-title">
+                    <div class="pickup-card-heading pickup-market-heading">
+                        <div><span>Internal market intelligence</span><h2 id="market-analysis-title">Performance and market analysis</h2></div>
+                        <small>Operational records only</small>
+                    </div>
+                    <p class="pickup-market-context">Compares the latest <?= $e($marketComparisonDays) ?> days with the preceding <?= $e($marketComparisonDays) ?> days. Indicators describe Pickupsheet activity and do not represent the external logistics market.</p>
+
+                    <div class="pickup-market-growth" aria-label="Period-over-period performance">
+                        <?php foreach ($marketGrowthCards as $card): ?>
+                            <article>
+                                <div><span><?= $e($card['label']) ?></span><strong><?= $e($card['value']) ?></strong></div>
+                                <mark class="<?= $e($card['growth']['class']) ?>"><?= $e($card['growth']['label']) ?></mark>
+                                <small>Previous period: <?= $e($card['previous']) ?></small>
+                            </article>
+                        <?php endforeach; ?>
+                    </div>
+
+                    <div class="pickup-market-efficiency" aria-label="Market efficiency indicators">
+                        <article><span>Pieces handled</span><strong><?= $e(number_format((int) ($marketCurrent['totalPieces'] ?? 0))) ?></strong><small>Shipment pieces, latest period</small></article>
+                        <article><span>Cash per shipment</span><strong><?= $e(number_format((int) ($marketMetrics['averageCashPerShipmentXaf'] ?? 0))) ?></strong><small>XAF average, latest period</small></article>
+                        <article><span>Cash per kilogram</span><strong><?= $e(number_format((int) ($marketMetrics['cashPerKgXaf'] ?? 0))) ?></strong><small>XAF per kg, latest period</small></article>
+                        <article><span>Payment conversion</span><strong><?= $e(number_format((float) ($marketMetrics['paymentRatePercent'] ?? 0), 1)) ?>%</strong><small>Sheets marked paid, latest period</small></article>
+                        <article><span>Repeat sender rate</span><strong><?= $e(number_format((float) ($marketMetrics['repeatSenderRatePercent'] ?? 0), 1)) ?>%</strong><small>Senders with 2+ shipments, <?= $e($marketTrendMonths) ?> months</small></article>
+                        <article><span>Top lane concentration</span><strong><?= $e(number_format((float) ($marketMetrics['topDestinationSharePercent'] ?? 0), 1)) ?>%</strong><small>Shipment share of leading destination</small></article>
+                    </div>
+
+                    <div class="pickup-market-detail-grid">
+                        <section class="pickup-market-trend" aria-labelledby="market-trend-title">
+                            <div class="pickup-card-heading">
+                                <div><span>Momentum</span><h3 id="market-trend-title"><?= $e($marketTrendMonths) ?>-month activity trend</h3></div>
+                                <small>Cash / shipments / senders</small>
+                            </div>
+                            <?php if ($marketMonthly === []): ?>
+                                <p class="pickup-market-empty">No trend data is available.</p>
+                            <?php else: ?>
+                                <div class="pickup-market-months">
+                                    <?php foreach ($marketMonthly as $month): ?>
+                                        <?php
+                                        $monthDate = DateTimeImmutable::createFromFormat('!Y-m', (string) ($month['month'] ?? ''));
+                                        $monthLabel = $monthDate instanceof DateTimeImmutable ? $monthDate->format('M Y') : (string) ($month['month'] ?? '');
+                                        ?>
+                                        <article>
+                                            <span><?= $e($monthLabel) ?></span>
+                                            <strong><?= $e(number_format((int) ($month['shipmentCount'] ?? 0))) ?> <small>shipments</small></strong>
+                                            <progress max="<?= $e($maximumMonthlyCash) ?>" value="<?= $e((int) ($month['totalCashXaf'] ?? 0)) ?>" aria-label="<?= $e($monthLabel) ?> recorded cash: <?= $e(number_format((int) ($month['totalCashXaf'] ?? 0))) ?> XAF"><?= $e((int) ($month['totalCashXaf'] ?? 0)) ?></progress>
+                                            <dl>
+                                                <div><dt>Cash</dt><dd><?= $e(number_format((int) ($month['totalCashXaf'] ?? 0))) ?> XAF</dd></div>
+                                                <div><dt>Weight</dt><dd><?= $e(number_format((float) ($month['totalWeightKg'] ?? 0), 1)) ?> kg</dd></div>
+                                                <div><dt>Senders</dt><dd><?= $e(number_format((int) ($month['uniqueSenders'] ?? 0))) ?></dd></div>
+                                            </dl>
+                                        </article>
+                                    <?php endforeach; ?>
+                                </div>
+                            <?php endif; ?>
+                        </section>
+
+                        <section class="pickup-market-mix" aria-labelledby="market-mix-title">
+                            <div class="pickup-card-heading">
+                                <div><span>Destination mix</span><h3 id="market-mix-title">Leading shipment lanes</h3></div>
+                                <small>Rolling <?= $e($marketTrendMonths) ?> months</small>
+                            </div>
+                            <?php if ($marketDestinations === []): ?>
+                                <p class="pickup-market-empty">No destination activity is available.</p>
+                            <?php else: ?>
+                                <ol class="pickup-market-lanes">
+                                    <?php foreach ($marketDestinations as $index => $destination): ?>
+                                        <?php $marketShare = (float) ($destination['shipmentSharePercent'] ?? 0); ?>
+                                        <li>
+                                            <span class="pickup-market-lane-rank"><?= $e($index + 1) ?></span>
+                                            <div>
+                                                <span><strong><?= $e($destination['destination'] ?? '') ?></strong><small><?= $e(number_format($marketShare, 1)) ?>% share</small></span>
+                                                <progress max="100" value="<?= $e($marketShare) ?>" aria-label="<?= $e($destination['destination'] ?? '') ?> shipment share: <?= $e(number_format($marketShare, 1)) ?>%"><?= $e($marketShare) ?></progress>
+                                                <dl>
+                                                    <div><dt>Shipments</dt><dd><?= $e(number_format((int) ($destination['shipmentCount'] ?? 0))) ?></dd></div>
+                                                    <div><dt>Cash</dt><dd><?= $e(number_format((int) ($destination['totalCashXaf'] ?? 0))) ?> XAF</dd></div>
+                                                    <div><dt>Weight</dt><dd><?= $e(number_format((float) ($destination['totalWeightKg'] ?? 0), 1)) ?> kg</dd></div>
+                                                </dl>
+                                            </div>
+                                        </li>
+                                    <?php endforeach; ?>
+                                </ol>
+                            <?php endif; ?>
+                        </section>
+                    </div>
+                </section>
             </div>
 
-            <div class="pickup-market-detail-grid">
-                <section class="pickup-market-trend" aria-labelledby="market-trend-title">
-                    <div class="pickup-card-heading">
-                        <div><span>Momentum</span><h3 id="market-trend-title"><?= $e($marketTrendMonths) ?>-month activity trend</h3></div>
-                        <small>Cash / shipments / senders</small>
-                    </div>
-                    <?php if ($marketMonthly === []): ?>
-                        <p class="pickup-market-empty">No trend data is available.</p>
-                    <?php else: ?>
-                        <div class="pickup-market-months">
-                            <?php foreach ($marketMonthly as $month): ?>
-                                <?php
-                                $monthDate = DateTimeImmutable::createFromFormat('!Y-m', (string) ($month['month'] ?? ''));
-                                $monthLabel = $monthDate instanceof DateTimeImmutable ? $monthDate->format('M Y') : (string) ($month['month'] ?? '');
-                                ?>
-                                <article>
-                                    <span><?= $e($monthLabel) ?></span>
-                                    <strong><?= $e(number_format((int) ($month['shipmentCount'] ?? 0))) ?> <small>shipments</small></strong>
-                                    <progress max="<?= $e($maximumMonthlyCash) ?>" value="<?= $e((int) ($month['totalCashXaf'] ?? 0)) ?>" aria-label="<?= $e($monthLabel) ?> recorded cash: <?= $e(number_format((int) ($month['totalCashXaf'] ?? 0))) ?> XAF"><?= $e((int) ($month['totalCashXaf'] ?? 0)) ?></progress>
-                                    <dl>
-                                        <div><dt>Cash</dt><dd><?= $e(number_format((int) ($month['totalCashXaf'] ?? 0))) ?> XAF</dd></div>
-                                        <div><dt>Weight</dt><dd><?= $e(number_format((float) ($month['totalWeightKg'] ?? 0), 1)) ?> kg</dd></div>
-                                        <div><dt>Senders</dt><dd><?= $e(number_format((int) ($month['uniqueSenders'] ?? 0))) ?></dd></div>
-                                    </dl>
-                                </article>
+            <div class="pickup-dashboard-panel" id="dashboard-panel-cash" role="tabpanel" aria-labelledby="dashboard-tab-cash" data-dashboard-panel="cash"<?= $activeDashboardTab === 'cash' ? '' : ' hidden' ?>>
+                <div class="pickup-dashboard-grid">
+                    <section class="pickup-chart-card" aria-labelledby="cash-activity-title">
+                        <div class="pickup-card-heading"><div><span>14-day activity</span><h2 id="cash-activity-title">Cash recorded by day</h2></div><small>XAF</small></div>
+                        <div class="pickup-chart-scroll">
+                            <svg class="pickup-activity-chart" viewBox="0 0 <?= $e($chartWidth) ?> <?= $e($chartHeight) ?>" role="img" aria-label="Cash recorded during the last fourteen days">
+                                <desc>Daily cash totals in XAF, from 0 to <?= $e(number_format($cashScaleMaximum)) ?>.</desc>
+                                <?php for ($tickIndex = 0; $tickIndex <= $cashScaleIntervals; $tickIndex++): ?>
+                                    <?php
+                                    $tickValue = $cashScaleMaximum - ($tickIndex * $cashTickStep);
+                                    $tickY = $plotTop + (($plotHeight / $cashScaleIntervals) * $tickIndex);
+                                    ?>
+                                    <g class="pickup-activity-axis-tick">
+                                        <line class="pickup-activity-grid-line" x1="<?= $e($plotLeft) ?>" y1="<?= $e($tickY) ?>" x2="<?= $e($plotRight) ?>" y2="<?= $e($tickY) ?>"></line>
+                                        <text class="pickup-activity-axis-label" x="<?= $e($plotLeft - 10) ?>" y="<?= $e($tickY + 3) ?>"><?= $e(number_format($tickValue)) ?></text>
+                                    </g>
+                                <?php endfor; ?>
+                                <?php foreach ($activity as $index => $row): ?>
+                                    <?php
+                                    $value = (int) ($row['totalCashXaf'] ?? 0);
+                                    $height = $value === 0 ? 2 : max(4, (int) round(($value / $cashScaleMaximum) * $plotHeight));
+                                    $x = $plotLeft + $index * ($barWidth + $barGap);
+                                    $y = $plotBottom - $height;
+                                    ?>
+                                    <g><title><?= $e($row['date']) ?>: <?= $e(number_format($value)) ?> XAF</title><rect x="<?= $e($x) ?>" y="<?= $e($y) ?>" width="<?= $e($barWidth) ?>" height="<?= $e($height) ?>"></rect><text x="<?= $e($x + (int) floor($barWidth / 2)) ?>" y="<?= $e($plotBottom + 22) ?>"><?= $e(substr((string) $row['date'], 8, 2)) ?></text></g>
+                                <?php endforeach; ?>
+                            </svg>
+                        </div>
+                    </section>
+
+                    <section class="pickup-destination-card" aria-labelledby="destination-title">
+                        <div class="pickup-card-heading"><div><span>Routing</span><h2 id="destination-title">Top destinations</h2></div><small>By shipment count</small></div>
+                        <div class="pickup-destination-list">
+                            <?php if ($destinations === []): ?><p>No destination activity yet.</p><?php endif; ?>
+                            <?php $maxDestination = max([1, ...array_map(static fn (array $row): int => (int) ($row['shipmentCount'] ?? 0), $destinations)]); ?>
+                            <?php foreach ($destinations as $destination): ?>
+                                <div><span><strong><?= $e($destination['destination']) ?></strong><small><?= $e($destination['shipmentCount']) ?> shipments · <?= $e(number_format((int) $destination['totalCashXaf'])) ?> XAF</small></span><progress max="<?= $e($maxDestination) ?>" value="<?= $e($destination['shipmentCount']) ?>"><?= $e($destination['shipmentCount']) ?></progress></div>
                             <?php endforeach; ?>
                         </div>
-                    <?php endif; ?>
-                </section>
+                    </section>
+                </div>
 
-                <section class="pickup-market-mix" aria-labelledby="market-mix-title">
+                <section class="pickup-cash-status-card" aria-labelledby="cash-status-title">
                     <div class="pickup-card-heading">
-                        <div><span>Destination mix</span><h3 id="market-mix-title">Leading shipment lanes</h3></div>
-                        <small>Rolling <?= $e($marketTrendMonths) ?> months</small>
+                        <div><span>Cash settlement</span><h2 id="cash-status-title">Recorded cash and unpaid balance</h2></div>
+                        <small>All-time XAF</small>
                     </div>
-                    <?php if ($marketDestinations === []): ?>
-                        <p class="pickup-market-empty">No destination activity is available.</p>
+                    <div class="pickup-cash-status-layout">
+                        <div class="pickup-cash-pie-visual">
+                            <svg class="pickup-cash-pie-chart" viewBox="0 0 120 120" role="img" aria-labelledby="cash-status-title cash-status-description">
+                                <desc id="cash-status-description">Total cash recorded is <?= $e(number_format($totalCashRecordedXaf)) ?> XAF. Unpaid balance is <?= $e(number_format($unpaidBalanceXaf)) ?> XAF.</desc>
+                                <circle class="pickup-cash-pie-track" cx="60" cy="60" r="29" pathLength="100" fill="none" stroke="#168a45" stroke-width="58"></circle>
+                                <circle class="pickup-cash-pie-unpaid" cx="60" cy="60" r="29" pathLength="100" fill="none" stroke="#d40511" stroke-width="58" stroke-dasharray="<?= $e($unpaidChartValue) ?> <?= $e($settledChartValue) ?>" transform="rotate(-90 60 60)"></circle>
+                            </svg>
+                        </div>
+                        <dl class="pickup-cash-status-values">
+                            <div class="is-total"><dt>Total cash recorded</dt><dd><?= $e(number_format($totalCashRecordedXaf)) ?> XAF</dd></div>
+                            <div class="is-unpaid"><dt>Unpaid balance <small><?= $e($unpaidPercentageLabel) ?> of total</small></dt><dd><?= $e(number_format($unpaidBalanceXaf)) ?> XAF</dd></div>
+                            <div class="is-settled"><dt>Paid cash</dt><dd><?= $e(number_format($settledCashXaf)) ?> XAF</dd></div>
+                        </dl>
+                    </div>
+                </section>
+            </div>
+
+            <div class="pickup-dashboard-panel" id="dashboard-panel-senders" role="tabpanel" aria-labelledby="dashboard-tab-senders" data-dashboard-panel="senders"<?= $activeDashboardTab === 'senders' ? '' : ' hidden' ?>>
+                <section class="pickup-sender-performance" aria-labelledby="sender-performance-title">
+                    <div class="pickup-card-heading">
+                        <div><span>Rolling 12-month performance</span><h2 id="sender-performance-title">Top 10 senders</h2></div>
+                        <small>Most to least shipments</small>
+                    </div>
+                    <?php if ($senders === []): ?>
+                        <p class="pickup-sender-empty">No sender activity has been recorded during the last 12 months.</p>
                     <?php else: ?>
-                        <ol class="pickup-market-lanes">
-                            <?php foreach ($marketDestinations as $index => $destination): ?>
-                                <?php $marketShare = (float) ($destination['shipmentSharePercent'] ?? 0); ?>
+                        <ol class="pickup-sender-chart" aria-label="Top senders ranked by shipment frequency">
+                            <?php foreach ($senders as $index => $sender): ?>
+                                <?php $shipmentCount = (int) ($sender['shipmentCount'] ?? 0); ?>
                                 <li>
-                                    <span class="pickup-market-lane-rank"><?= $e($index + 1) ?></span>
-                                    <div>
-                                        <span><strong><?= $e($destination['destination'] ?? '') ?></strong><small><?= $e(number_format($marketShare, 1)) ?>% share</small></span>
-                                        <progress max="100" value="<?= $e($marketShare) ?>" aria-label="<?= $e($destination['destination'] ?? '') ?> shipment share: <?= $e(number_format($marketShare, 1)) ?>%"><?= $e($marketShare) ?></progress>
-                                        <dl>
-                                            <div><dt>Shipments</dt><dd><?= $e(number_format((int) ($destination['shipmentCount'] ?? 0))) ?></dd></div>
-                                            <div><dt>Cash</dt><dd><?= $e(number_format((int) ($destination['totalCashXaf'] ?? 0))) ?> XAF</dd></div>
-                                            <div><dt>Weight</dt><dd><?= $e(number_format((float) ($destination['totalWeightKg'] ?? 0), 1)) ?> kg</dd></div>
-                                        </dl>
-                                    </div>
+                                    <span class="pickup-sender-rank" aria-label="Rank <?= $e($index + 1) ?>"><?= $e($index + 1) ?></span>
+                                    <span class="pickup-sender-name" title="<?= $e($sender['sender'] ?? '') ?>"><?= $e($sender['sender'] ?? '') ?></span>
+                                    <progress max="<?= $e($maximumSenderShipments) ?>" value="<?= $e($shipmentCount) ?>" aria-label="<?= $e($sender['sender'] ?? '') ?>: <?= $e($shipmentCount) ?> shipments"><?= $e($shipmentCount) ?></progress>
+                                    <strong><?= $e(number_format($shipmentCount)) ?> <?= $shipmentCount === 1 ? 'shipment' : 'shipments' ?></strong>
                                 </li>
                             <?php endforeach; ?>
                         </ol>
                     <?php endif; ?>
                 </section>
             </div>
-        </section>
 
-        <div class="pickup-dashboard-grid">
-            <section class="pickup-chart-card" aria-labelledby="cash-activity-title">
-                <div class="pickup-card-heading"><div><span>14-day activity</span><h2 id="cash-activity-title">Cash recorded by day</h2></div><small>XAF</small></div>
-                <div class="pickup-chart-scroll">
-                    <svg class="pickup-activity-chart" viewBox="0 0 <?= $e($chartWidth) ?> <?= $e($chartHeight) ?>" role="img" aria-label="Cash recorded during the last fourteen days">
-                        <desc>Daily cash totals in XAF, from 0 to <?= $e(number_format($cashScaleMaximum)) ?>.</desc>
-                        <?php for ($tickIndex = 0; $tickIndex <= $cashScaleIntervals; $tickIndex++): ?>
-                            <?php
-                            $tickValue = $cashScaleMaximum - ($tickIndex * $cashTickStep);
-                            $tickY = $plotTop + (($plotHeight / $cashScaleIntervals) * $tickIndex);
-                            ?>
-                            <g class="pickup-activity-axis-tick">
-                                <line class="pickup-activity-grid-line" x1="<?= $e($plotLeft) ?>" y1="<?= $e($tickY) ?>" x2="<?= $e($plotRight) ?>" y2="<?= $e($tickY) ?>"></line>
-                                <text class="pickup-activity-axis-label" x="<?= $e($plotLeft - 10) ?>" y="<?= $e($tickY + 3) ?>"><?= $e(number_format($tickValue)) ?></text>
-                            </g>
-                        <?php endfor; ?>
-                        <?php foreach ($activity as $index => $row): ?>
-                            <?php
-                            $value = (int) ($row['totalCashXaf'] ?? 0);
-                            $height = $value === 0 ? 2 : max(4, (int) round(($value / $cashScaleMaximum) * $plotHeight));
-                            $x = $plotLeft + $index * ($barWidth + $barGap);
-                            $y = $plotBottom - $height;
-                            ?>
-                            <g><title><?= $e($row['date']) ?>: <?= $e(number_format($value)) ?> XAF</title><rect x="<?= $e($x) ?>" y="<?= $e($y) ?>" width="<?= $e($barWidth) ?>" height="<?= $e($height) ?>"></rect><text x="<?= $e($x + (int) floor($barWidth / 2)) ?>" y="<?= $e($plotBottom + 22) ?>"><?= $e(substr((string) $row['date'], 8, 2)) ?></text></g>
-                        <?php endforeach; ?>
-                    </svg>
-                </div>
-            </section>
+            <div class="pickup-dashboard-panel" id="dashboard-panel-loyalty" role="tabpanel" aria-labelledby="dashboard-tab-loyalty" data-dashboard-panel="loyalty"<?= $activeDashboardTab === 'loyalty' ? '' : ' hidden' ?>>
+                <section class="pickup-sender-performance pickup-loyalty-performance" aria-labelledby="loyalty-performance-title">
+                    <div class="pickup-card-heading">
+                        <div><span>Customer loyalty</span><h2 id="loyalty-performance-title">Top 5 customers by points</h2></div>
+                        <small>Highest to lowest balance</small>
+                    </div>
+                    <?php if ($topCustomers === []): ?>
+                        <p class="pickup-sender-empty">No customer reward points have been recorded.</p>
+                    <?php else: ?>
+                        <ol class="pickup-sender-chart pickup-loyalty-chart" aria-label="Customers ranked by total points balance">
+                            <?php foreach ($topCustomers as $index => $customer): ?>
+                                <?php $points = $customer->rewardBalance(); ?>
+                                <li>
+                                    <span class="pickup-sender-rank" aria-label="Rank <?= $e($index + 1) ?>"><?= $e($index + 1) ?></span>
+                                    <a class="pickup-sender-name" href="<?= $e($basePath) ?>/dhl/pickupsheet/customers/edit?customer=<?= $e(rawurlencode($customer->customerKey)) ?>" title="<?= $e($customer->displayName) ?>"><?= $e($customer->displayName) ?></a>
+                                    <progress max="<?= $e($maximumCustomerPoints) ?>" value="<?= $e($points) ?>" aria-label="<?= $e($customer->displayName) ?>: <?= $e($points) ?> points"><?= $e($points) ?></progress>
+                                    <strong><?= $e(number_format($points)) ?> <?= $points === 1 ? 'point' : 'points' ?> · <?= $e($customer->loyaltyTier()) ?></strong>
+                                </li>
+                            <?php endforeach; ?>
+                        </ol>
+                    <?php endif; ?>
+                </section>
+            </div>
 
-            <section class="pickup-destination-card" aria-labelledby="destination-title">
-                <div class="pickup-card-heading"><div><span>Routing</span><h2 id="destination-title">Top destinations</h2></div><small>By shipment count</small></div>
-                <div class="pickup-destination-list">
-                    <?php if ($destinations === []): ?><p>No destination activity yet.</p><?php endif; ?>
-                    <?php $maxDestination = max([1, ...array_map(static fn (array $row): int => (int) ($row['shipmentCount'] ?? 0), $destinations)]); ?>
-                    <?php foreach ($destinations as $destination): ?>
-                        <div><span><strong><?= $e($destination['destination']) ?></strong><small><?= $e($destination['shipmentCount']) ?> shipments · <?= $e(number_format((int) $destination['totalCashXaf'])) ?> XAF</small></span><progress max="<?= $e($maxDestination) ?>" value="<?= $e($destination['shipmentCount']) ?>"><?= $e($destination['shipmentCount']) ?></progress></div>
-                    <?php endforeach; ?>
-                </div>
-            </section>
+            <div class="pickup-dashboard-panel" id="dashboard-panel-users" role="tabpanel" aria-labelledby="dashboard-tab-users" data-dashboard-panel="users"<?= $activeDashboardTab === 'users' ? '' : ' hidden' ?>>
+                <section class="pickup-user-activity ajax-pager" aria-labelledby="user-activity-title" data-ajax-pager data-ajax-pager-id="dashboard-user-activity" data-page-endpoint="<?= $e($basePath) ?>/dhl/pickupsheet/dashboard/user-activity/page" data-page-param="login_page" data-page-size-param="login_per_page" data-current-page="<?= $e($userActivity['page'] ?? 1) ?>" data-error-message="User login activity could not be loaded. Please try again.">
+                    <div class="ajax-pager-loading" data-ajax-pager-spinner role="status" hidden><span class="pickup-loading-spinner" aria-hidden="true"></span><span>Loading user activity...</span></div>
+                    <div data-ajax-pager-content aria-live="polite" aria-busy="false"><?php require __DIR__ . '/_dashboard-user-activity.php'; ?></div>
+                </section>
+            </div>
+
+            <div class="pickup-dashboard-panel" id="dashboard-panel-logs" role="tabpanel" aria-labelledby="dashboard-tab-logs" data-dashboard-panel="logs"<?= $activeDashboardTab === 'logs' ? '' : ' hidden' ?>>
+                <section class="pickup-audit-log ajax-pager" aria-labelledby="audit-log-title" data-ajax-pager data-ajax-pager-id="dashboard-audit-logs" data-page-endpoint="<?= $e($basePath) ?>/dhl/pickupsheet/dashboard/audit-logs/page" data-page-param="log_page" data-page-size-param="log_per_page" data-current-page="<?= $e($auditLogs['page'] ?? 1) ?>" data-error-message="Detailed user logs could not be loaded. Please try again.">
+                    <div class="ajax-pager-loading" data-ajax-pager-spinner role="status" hidden><span class="pickup-loading-spinner" aria-hidden="true"></span><span>Loading detailed logs...</span></div>
+                    <div data-ajax-pager-content aria-live="polite" aria-busy="false"><?php require __DIR__ . '/_dashboard-audit-logs.php'; ?></div>
+                </section>
+            </div>
+
+            <div class="pickup-dashboard-panel" id="dashboard-panel-sheets" role="tabpanel" aria-labelledby="dashboard-tab-sheets" data-dashboard-panel="sheets"<?= $activeDashboardTab === 'sheets' ? '' : ' hidden' ?>>
+                <section class="pickup-dashboard-recent ajax-pager" aria-labelledby="recent-sheets-title" data-ajax-pager data-ajax-pager-id="dashboard-recent-sheets" data-page-endpoint="<?= $e($basePath) ?>/dhl/pickupsheet/dashboard/recent-sheets/page" data-page-param="recent_page" data-page-size-param="recent_per_page" data-current-page="<?= $e($recentSheets['page'] ?? 1) ?>" data-error-message="Recent pickup sheets could not be loaded. Please try again.">
+                    <div class="ajax-pager-loading" data-ajax-pager-spinner role="status" hidden><span class="pickup-loading-spinner" aria-hidden="true"></span><span>Loading recent sheets...</span></div>
+                    <div data-ajax-pager-content aria-live="polite" aria-busy="false"><?php require __DIR__ . '/_dashboard-recent-sheets.php'; ?></div>
+                </section>
+            </div>
+
+            <div class="pickup-dashboard-panel" id="dashboard-panel-reports" role="tabpanel" aria-labelledby="dashboard-tab-reports" data-dashboard-panel="reports"<?= $activeDashboardTab === 'reports' ? '' : ' hidden' ?>>
+                <section class="pickup-report-builder" aria-labelledby="report-builder-title">
+                    <div class="pickup-card-heading">
+                        <div><span>Reporting</span><h2 id="report-builder-title">Generate a printable report</h2></div>
+                        <small>A4 · Print or save as PDF</small>
+                    </div>
+                    <p class="pickup-market-context">Choose a reporting period and the sections to include. The report opens in a new tab, ready to print or save as PDF. Period comparisons use the preceding period of the same length.</p>
+                    <form class="pickup-report-form" method="get" action="<?= $e($basePath) ?>/dhl/pickupsheet/dashboard/report" target="_blank">
+                        <fieldset class="pickup-report-periods">
+                            <legend>Reporting period</legend>
+                            <?php foreach ($reportPeriods as $reportPeriod): ?>
+                                <label><input type="radio" name="period" value="<?= $e($reportPeriod) ?>"<?= (int) $reportPeriod === 90 ? ' checked' : '' ?>><span><?= $e($reportPeriod) ?> days</span><small><?= $e($reportPeriodLabels[(int) $reportPeriod] ?? '') ?></small></label>
+                            <?php endforeach; ?>
+                        </fieldset>
+                        <fieldset class="pickup-report-sections">
+                            <legend>Report sections</legend>
+                            <?php foreach ($reportSections as $sectionKey => $sectionLabel): ?>
+                                <label><input type="checkbox" name="sections[]" value="<?= $e($sectionKey) ?>" checked><span><?= $e($sectionLabel) ?></span></label>
+                            <?php endforeach; ?>
+                        </fieldset>
+                        <div class="pickup-report-submit">
+                            <button class="button button-red" type="submit">Generate report <span aria-hidden="true">&#8599;</span></button>
+                            <small>If no section is selected, the full report is generated.</small>
+                        </div>
+                    </form>
+                </section>
+            </div>
         </div>
-
-        <section class="pickup-cash-status-card" aria-labelledby="cash-status-title">
-            <div class="pickup-card-heading">
-                <div><span>Cash settlement</span><h2 id="cash-status-title">Recorded cash and unpaid balance</h2></div>
-                <small>All-time XAF</small>
-            </div>
-            <div class="pickup-cash-status-layout">
-                <div class="pickup-cash-pie-visual">
-                    <svg class="pickup-cash-pie-chart" viewBox="0 0 120 120" role="img" aria-labelledby="cash-status-title cash-status-description">
-                        <desc id="cash-status-description">Total cash recorded is <?= $e(number_format($totalCashRecordedXaf)) ?> XAF. Unpaid balance is <?= $e(number_format($unpaidBalanceXaf)) ?> XAF.</desc>
-                        <circle class="pickup-cash-pie-track" cx="60" cy="60" r="29" pathLength="100" fill="none" stroke="#168a45" stroke-width="58"></circle>
-                        <circle class="pickup-cash-pie-unpaid" cx="60" cy="60" r="29" pathLength="100" fill="none" stroke="#d40511" stroke-width="58" stroke-dasharray="<?= $e($unpaidChartValue) ?> <?= $e($settledChartValue) ?>" transform="rotate(-90 60 60)"></circle>
-                    </svg>
-                </div>
-                <dl class="pickup-cash-status-values">
-                    <div class="is-total"><dt>Total cash recorded</dt><dd><?= $e(number_format($totalCashRecordedXaf)) ?> XAF</dd></div>
-                    <div class="is-unpaid"><dt>Unpaid balance <small><?= $e($unpaidPercentageLabel) ?> of total</small></dt><dd><?= $e(number_format($unpaidBalanceXaf)) ?> XAF</dd></div>
-                    <div class="is-settled"><dt>Paid cash</dt><dd><?= $e(number_format($settledCashXaf)) ?> XAF</dd></div>
-                </dl>
-            </div>
-        </section>
-
-        <section class="pickup-sender-performance" aria-labelledby="sender-performance-title">
-            <div class="pickup-card-heading">
-                <div><span>Rolling 12-month performance</span><h2 id="sender-performance-title">Top 10 senders</h2></div>
-                <small>Most to least shipments</small>
-            </div>
-            <?php if ($senders === []): ?>
-                <p class="pickup-sender-empty">No sender activity has been recorded during the last 12 months.</p>
-            <?php else: ?>
-                <ol class="pickup-sender-chart" aria-label="Top senders ranked by shipment frequency">
-                    <?php foreach ($senders as $index => $sender): ?>
-                        <?php $shipmentCount = (int) ($sender['shipmentCount'] ?? 0); ?>
-                        <li>
-                            <span class="pickup-sender-rank" aria-label="Rank <?= $e($index + 1) ?>"><?= $e($index + 1) ?></span>
-                            <span class="pickup-sender-name" title="<?= $e($sender['sender'] ?? '') ?>"><?= $e($sender['sender'] ?? '') ?></span>
-                            <progress max="<?= $e($maximumSenderShipments) ?>" value="<?= $e($shipmentCount) ?>" aria-label="<?= $e($sender['sender'] ?? '') ?>: <?= $e($shipmentCount) ?> shipments"><?= $e($shipmentCount) ?></progress>
-                            <strong><?= $e(number_format($shipmentCount)) ?> <?= $shipmentCount === 1 ? 'shipment' : 'shipments' ?></strong>
-                        </li>
-                    <?php endforeach; ?>
-                </ol>
-            <?php endif; ?>
-        </section>
-
-        <section class="pickup-sender-performance pickup-loyalty-performance" aria-labelledby="loyalty-performance-title">
-            <div class="pickup-card-heading">
-                <div><span>Customer loyalty</span><h2 id="loyalty-performance-title">Top 5 customers by points</h2></div>
-                <small>Highest to lowest balance</small>
-            </div>
-            <?php if ($topCustomers === []): ?>
-                <p class="pickup-sender-empty">No customer reward points have been recorded.</p>
-            <?php else: ?>
-                <ol class="pickup-sender-chart pickup-loyalty-chart" aria-label="Customers ranked by total points balance">
-                    <?php foreach ($topCustomers as $index => $customer): ?>
-                        <?php $points = $customer->rewardBalance(); ?>
-                        <li>
-                            <span class="pickup-sender-rank" aria-label="Rank <?= $e($index + 1) ?>"><?= $e($index + 1) ?></span>
-                            <a class="pickup-sender-name" href="<?= $e($basePath) ?>/dhl/pickupsheet/customers/edit?customer=<?= $e(rawurlencode($customer->customerKey)) ?>" title="<?= $e($customer->displayName) ?>"><?= $e($customer->displayName) ?></a>
-                            <progress max="<?= $e($maximumCustomerPoints) ?>" value="<?= $e($points) ?>" aria-label="<?= $e($customer->displayName) ?>: <?= $e($points) ?> points"><?= $e($points) ?></progress>
-                            <strong><?= $e(number_format($points)) ?> <?= $points === 1 ? 'point' : 'points' ?> · <?= $e($customer->loyaltyTier()) ?></strong>
-                        </li>
-                    <?php endforeach; ?>
-                </ol>
-            <?php endif; ?>
-        </section>
-
-        <section class="pickup-user-activity ajax-pager" aria-labelledby="user-activity-title" data-ajax-pager data-ajax-pager-id="dashboard-user-activity" data-page-endpoint="<?= $e($basePath) ?>/dhl/pickupsheet/dashboard/user-activity/page" data-page-param="login_page" data-page-size-param="login_per_page" data-current-page="<?= $e($userActivity['page'] ?? 1) ?>" data-error-message="User login activity could not be loaded. Please try again.">
-            <div class="ajax-pager-loading" data-ajax-pager-spinner role="status" hidden><span class="pickup-loading-spinner" aria-hidden="true"></span><span>Loading user activity...</span></div>
-            <div data-ajax-pager-content aria-live="polite" aria-busy="false"><?php require __DIR__ . '/_dashboard-user-activity.php'; ?></div>
-        </section>
-
-        <section class="pickup-audit-log ajax-pager" aria-labelledby="audit-log-title" data-ajax-pager data-ajax-pager-id="dashboard-audit-logs" data-page-endpoint="<?= $e($basePath) ?>/dhl/pickupsheet/dashboard/audit-logs/page" data-page-param="log_page" data-page-size-param="log_per_page" data-current-page="<?= $e($auditLogs['page'] ?? 1) ?>" data-error-message="Detailed user logs could not be loaded. Please try again.">
-            <div class="ajax-pager-loading" data-ajax-pager-spinner role="status" hidden><span class="pickup-loading-spinner" aria-hidden="true"></span><span>Loading detailed logs...</span></div>
-            <div data-ajax-pager-content aria-live="polite" aria-busy="false"><?php require __DIR__ . '/_dashboard-audit-logs.php'; ?></div>
-        </section>
-
-        <section class="pickup-dashboard-recent ajax-pager" aria-labelledby="recent-sheets-title" data-ajax-pager data-ajax-pager-id="dashboard-recent-sheets" data-page-endpoint="<?= $e($basePath) ?>/dhl/pickupsheet/dashboard/recent-sheets/page" data-page-param="recent_page" data-page-size-param="recent_per_page" data-current-page="<?= $e($recentSheets['page'] ?? 1) ?>" data-error-message="Recent pickup sheets could not be loaded. Please try again.">
-            <div class="ajax-pager-loading" data-ajax-pager-spinner role="status" hidden><span class="pickup-loading-spinner" aria-hidden="true"></span><span>Loading recent sheets...</span></div>
-            <div data-ajax-pager-content aria-live="polite" aria-busy="false"><?php require __DIR__ . '/_dashboard-recent-sheets.php'; ?></div>
-        </section>
     </div>
 </section>

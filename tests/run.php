@@ -1593,6 +1593,8 @@ $operatorEdit = $pickupController->edit(new Request('GET', '/dhl/pickupsheet/sub
 $assert($operatorEdit->status() === 403, 'An operator must not open the audited record editor.');
 $operatorDashboard = $pickupController->dashboard(new Request('GET', '/dhl/pickupsheet/dashboard'));
 $assert($operatorDashboard->status() === 403, 'An operator should not enter the administrator dashboard.');
+$operatorReport = $pickupController->report(new Request('GET', '/dhl/pickupsheet/dashboard/report'));
+$assert($operatorReport->status() === 403, 'An operator must not generate administrator performance reports.');
 $operatorDashboardActivity = $pickupController->dashboardUserActivityPage(new Request('GET', '/dhl/pickupsheet/dashboard/user-activity/page'));
 $operatorDashboardLogs = $pickupController->dashboardAuditLogPage(new Request('GET', '/dhl/pickupsheet/dashboard/audit-logs/page'));
 $operatorDashboardSheets = $pickupController->dashboardRecentSheetsPage(new Request('GET', '/dhl/pickupsheet/dashboard/recent-sheets/page'));
@@ -1692,6 +1694,21 @@ $assert(str_contains($adminDashboard->body(), 'Performance and market analysis')
 $assert(str_contains($adminDashboard->body(), 'Pieces handled') && str_contains($adminDashboard->body(), 'Cash per shipment') && str_contains($adminDashboard->body(), 'Payment conversion') && str_contains($adminDashboard->body(), 'Repeat sender rate'), 'The market dashboard should expose volume, efficiency, settlement, and retention indicators.');
 $assert(str_contains($adminDashboard->body(), '12-month activity trend') && str_contains($adminDashboard->body(), 'Leading shipment lanes') && str_contains($adminDashboard->body(), 'Operational records only'), 'The market dashboard should provide a detailed monthly trend, destination mix, and an internal-data scope disclaimer.');
 $assert(str_contains($adminDashboard->body(), 'pickup-activity-chart'), 'The dashboard should render its activity graph without client-side chart dependencies.');
+$assert(str_contains($adminDashboard->body(), 'role="tablist" aria-label="Dashboard sections"') && substr_count($adminDashboard->body(), 'role="tabpanel"') === 8, 'The dashboard should split its card sections into eight folder tabs instead of one long scroll.');
+$assert(str_contains($adminDashboard->body(), 'id="dashboard-tab-market" href="?tab=market" role="tab" aria-controls="dashboard-panel-market" aria-selected="true"') && str_contains($adminDashboard->body(), 'data-dashboard-panel="market">') && str_contains($adminDashboard->body(), 'data-dashboard-panel="logs" hidden>'), 'The market analysis tab should open by default with every other panel hidden.');
+$logsTabDashboard = $pickupController->dashboard(new Request('GET', '/dhl/pickupsheet/dashboard', ['tab' => 'logs']));
+$assert(str_contains($logsTabDashboard->body(), 'data-dashboard-panel="logs">') && str_contains($logsTabDashboard->body(), 'data-dashboard-panel="market" hidden>'), 'A tab query parameter should render the requested dashboard panel without client-side scripting.');
+$invalidTabDashboard = $pickupController->dashboard(new Request('GET', '/dhl/pickupsheet/dashboard', ['tab' => '"><script>']));
+$assert(str_contains($invalidTabDashboard->body(), 'data-dashboard-panel="market">') && !str_contains($invalidTabDashboard->body(), '"><script>'), 'An unknown tab value should fall back to market analysis without being reflected.');
+$assert(str_contains($adminDashboard->body(), 'id="dashboard-panel-reports"') && str_contains($adminDashboard->body(), 'action="/dhl/pickupsheet/dashboard/report" target="_blank"') && str_contains($adminDashboard->body(), 'name="period" value="90" checked') && substr_count($adminDashboard->body(), 'name="sections[]"') === 6, 'The Reports tab should offer a reporting period and six selectable report sections.');
+$fullReport = $pickupController->report(new Request('GET', '/dhl/pickupsheet/dashboard/report'));
+$assert($fullReport->status() === 200 && str_contains($fullReport->body(), 'Performance report') && str_contains($fullReport->body(), 'data-print-pickup') && str_contains($fullReport->body(), 'print.css?v=20260925-performance-report'), 'An administrator should open a printable performance report in the A4 print layout.');
+$assert(str_contains($fullReport->body(), '1. KPI summary and cash settlement') && str_contains($fullReport->body(), '6. Customer loyalty leaders') && str_contains($fullReport->body(), '(90 days)') && str_contains($fullReport->body(), 'New baseline'), 'A report without explicit sections should include every section for the default 90-day period.');
+$assert(str_contains($fullReport->body(), '<td>Total cash recorded</td><td class="is-number">14,000</td>') && str_contains($fullReport->body(), 'Confidential · Internal operational data'), 'The report should reuse dashboard KPI figures and carry an internal-data footer.');
+$filteredReport = $pickupController->report(new Request('GET', '/dhl/pickupsheet/dashboard/report', ['period' => '30', 'sections' => ['destinations', 'bogus', 'market']]));
+$assert(str_contains($filteredReport->body(), '1. Period-over-period market performance') && str_contains($filteredReport->body(), '2. Destination mix') && !str_contains($filteredReport->body(), 'KPI summary and cash settlement') && str_contains($filteredReport->body(), '(30 days)'), 'A report should include only valid requested sections, in canonical order, for the chosen period.');
+$invalidPeriodReport = $pickupController->report(new Request('GET', '/dhl/pickupsheet/dashboard/report', ['period' => '9999', 'sections' => 'trend']));
+$assert(str_contains($invalidPeriodReport->body(), '(90 days)') && str_contains($invalidPeriodReport->body(), '1. 12-month activity trend') && str_contains($invalidPeriodReport->body(), '<tfoot>'), 'An unsupported report period should fall back to 90 days and a scalar section value should be accepted.');
 $assert(substr_count($adminDashboard->body(), 'class="pickup-activity-axis-label"') === 5 && str_contains($adminDashboard->body(), '>0</text>'), 'The daily cash graph should render a readable five-level numeric vertical scale.');
 $assert(str_contains($adminDashboard->body(), 'pickup-cash-pie-chart') && str_contains($adminDashboard->body(), '<dt>Total cash recorded</dt><dd>14,000 XAF</dd>') && str_contains($adminDashboard->body(), '<dt>Unpaid balance <small>0% of total</small></dt><dd>0 XAF</dd>'), 'The administrator dashboard should chart total recorded cash and the current unpaid balance.');
 $assert(str_contains($adminDashboard->body(), 'stroke-dasharray="0.00 100.00"'), 'A fully settled cash balance should render an empty unpaid pie segment.');
@@ -2075,7 +2092,7 @@ $printResponse = $pickupController->print(new Request('GET', '/dhl/pickupsheet/s
 $printStyles = file_get_contents(dirname(__DIR__) . '/public/assets/print.css');
 $printScript = file_get_contents(dirname(__DIR__) . '/public/assets/print.js');
 $assert($printResponse->status() === 200, 'A direct pickup sheet should render for printing.');
-$assert(str_contains($printResponse->body(), 'print.css?v=20260830-awb-tracking'), 'The print view should load its cache-safe external stylesheet.');
+$assert(str_contains($printResponse->body(), 'print.css?v=20260925-performance-report'), 'The print view should load its cache-safe external stylesheet.');
 $assert(str_contains($printResponse->body(), 'print.js?v=20260825-print-dialog'), 'The print view should load its CSP-compatible external behavior.');
 $assert(str_contains($printResponse->body(), 'data-print-pickup'), 'The print view should provide a manual print-dialog trigger.');
 $assert(!str_contains($printResponse->body(), 'onclick='), 'The print view should not rely on CSP-blocked inline event handlers.');
@@ -2206,8 +2223,8 @@ $assert(is_string($dhlAsset) && !str_contains($dhlAsset, '<text'), 'The disquali
 $partnerSources = file_get_contents(dirname(__DIR__) . '/public/assets/partners/README.md');
 $assert(is_string($partnerSources) && str_contains($partnerSources, 'www.dhl.com/content/dam/dhl/global/core/images/logos/dhl-logo.svg'), 'The official DHL artwork source should be documented.');
 $assert(!str_contains($home, 'href="/dhl/pickupsheet"'), 'Pickupsheet should not be discoverable from the public site chrome or homepage.');
-$assert(str_contains($home, 'styles.css?v=20260925-market-analysis'), 'Market-performance dashboard styles and prior Pickupsheet refinements should use a cache-safe stylesheet version.');
-$assert(str_contains($home, 'app.js?v=20260909-audit-log-accordion'), 'AJAX audit-log accordions and prior OWASP-aligned interactions should use a cache-safe script version.');
+$assert(str_contains($home, 'styles.css?v=20260925-dashboard-tabs'), 'Market-performance dashboard styles and prior Pickupsheet refinements should use a cache-safe stylesheet version.');
+$assert(str_contains($home, 'app.js?v=20260925-dashboard-tabs'), 'AJAX audit-log accordions and prior OWASP-aligned interactions should use a cache-safe script version.');
 $assert(str_contains($home, 'analytics.js?v=20260825-security-hardening'), 'The current consent-aware Google Analytics loader should render on every page.');
 $assert(str_contains($home, 'data-analytics-accept'), 'The site should offer an explicit analytics acceptance control.');
 $assert(str_contains($home, 'data-analytics-decline'), 'The site should offer an explicit analytics decline control.');
@@ -2442,6 +2459,8 @@ $assert(is_string($styles) && str_contains($styles, '/* Pickupsheet login portal
 $assert(is_string($styles) && str_contains($styles, '.pickup-admin-workspace') && str_contains($styles, '.pickup-kpi-grid'), 'The administrator should have a dedicated KPI control-panel layout.');
 $assert(is_string($styles) && str_contains($styles, '.pickup-market-growth') && str_contains($styles, '.pickup-market-efficiency') && str_contains($styles, '.pickup-market-detail-grid'), 'Market performance should use responsive comparison, efficiency, and detail layouts.');
 $assert(is_string($styles) && str_contains($styles, '.pickup-market-months') && str_contains($styles, '.pickup-market-lanes') && str_contains($styles, 'grid-template-columns: repeat(2, minmax(0, 1fr));'), 'Monthly trends and destination mix should adapt without fixed-width dashboard overflow.');
+$assert(is_string($styles) && str_contains($styles, ".pickup-dashboard-tab[aria-selected=\"true\"]") && str_contains($styles, "border-radius: 6px 6px 0 0;"), "Dashboard tabs should render as folder tabs attached to the active panel.");
+$assert(is_string($styles) && str_contains($styles, ".pickup-report-form label:has(input:checked)") && str_contains($styles, ".pickup-report-sections { grid-template-columns: repeat(3, minmax(0, 1fr)); }"), "The report builder should use responsive option cards.");
 $assert(is_string($styles) && str_contains($styles, '.pickup-cash-status-layout') && str_contains($styles, '.pickup-cash-pie-unpaid') && str_contains($styles, '.pickup-cash-status-values') && str_contains($styles, 'stroke-width: 58;'), 'The administrator cash-status chart should render as a responsive, labeled, fully filled pie.');
 $assert(is_string($styles) && str_contains($styles, '.shipment-editor > *') && str_contains($styles, 'max-width: 1180px;'), 'The cash-shipment editor should be centered within the available screen width.');
 $assert(is_string($styles) && str_contains($styles, '.shipment-editor-heading > div { grid-column: 2; text-align: center; }'), 'The Cash Shipments heading should remain visually centered beside its row action.');
@@ -2464,6 +2483,8 @@ $assert(is_string($script) && str_contains($script, "event.key === 'Escape'"), '
 $assert(is_string($script) && str_contains($script, "toggleAttribute('inert', open)"), 'The open mobile navigation should isolate background content.');
 $assert(is_string($script) && str_contains($script, "matchMedia('(min-width: 821px)')"), 'The navigation state should reset when returning to desktop width.');
 $assert(is_string($script) && str_contains($script, "document.querySelector('[data-pickup-form]')"), 'The pickup form should initialize its dynamic row editor.');
+$assert(is_string($script) && str_contains($script, "document.querySelector('[data-dashboard-tabs]')") && str_contains($script, "ArrowRight:") && str_contains($script, "browserUrl.searchParams.set('tab', activeTab.dataset.dashboardTab)"), 'Dashboard tabs should switch in place, support arrow-key navigation, and keep the active tab in the URL.');
+$assert(is_string($script) && str_contains($script, "if (activeTab && !browserUrl.searchParams.has('tab')) browserUrl.searchParams.set('tab', activeTab);"), 'AJAX pagination should keep the active dashboard tab in its history URL.');
 $assert(is_string($script) && str_contains($script, 'maximumRows = 50'), 'The browser should enforce the server shipment-row limit.');
 $assert(is_string($script) && str_contains($script, 'numberFormatter.format(total)'), 'The browser should calculate and format cash totals.');
 $assert(is_string($script) && str_contains($script, "[data-field]:not([data-identity-field])"), 'Account-populated checker fields should not make an otherwise blank shipment count as complete.');

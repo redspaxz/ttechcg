@@ -314,6 +314,7 @@ $router->post('/dhl/pickupsheet/logout', fn (Request $request): Response => $pic
 $router->get('/dhl/pickupsheet/dashboard', fn (Request $request): Response => $pickupsheetController->dashboard($request));
 $router->get('/dhl/pickupsheet/dashboard/user-activity/page', fn (Request $request): Response => $pickupsheetController->dashboardUserActivityPage($request));
 $router->get('/dhl/pickupsheet/dashboard/audit-logs/page', fn (Request $request): Response => $pickupsheetController->dashboardAuditLogPage($request));
+$router->get('/dhl/pickupsheet/dashboard/report', fn (Request $request): Response => $pickupsheetController->report($request));
 $router->get('/dhl/pickupsheet/dashboard/recent-sheets/page', fn (Request $request): Response => $pickupsheetController->dashboardRecentSheetsPage($request));
 $router->get('/dhl/pickupsheet/admin/backup', fn (Request $request): Response => $backupController->index($request));
 $router->post('/dhl/pickupsheet/admin/backup/download', fn (Request $request): Response => $backupController->download($request));

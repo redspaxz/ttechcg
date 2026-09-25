@@ -507,6 +507,8 @@ document.querySelectorAll('[data-ajax-pager]').forEach((pager) => {
     const loadUrl = async (browserUrl, updateHistory = true) => {
         if (!content || !endpoint) return;
         const requestedPage = pageFromUrl(browserUrl);
+        const activeTab = new URL(window.location.href).searchParams.get('tab');
+        if (activeTab && !browserUrl.searchParams.has('tab')) browserUrl.searchParams.set('tab', activeTab);
 
         activeRequest?.abort();
         const request = new AbortController();
@@ -625,6 +627,56 @@ if (ajaxPagerControllers.size > 0) {
         ajaxPagerControllers.forEach((controller) => {
             if (controller.needsLoad(browserUrl)) controller.loadUrl(new URL(browserUrl), false);
         });
+    });
+}
+
+const dashboardTabs = document.querySelector('[data-dashboard-tabs]');
+if (dashboardTabs) {
+    const tabs = Array.from(dashboardTabs.querySelectorAll('[data-dashboard-tab]'));
+    const panels = Array.from(dashboardTabs.querySelectorAll('[data-dashboard-panel]'));
+
+    const activateTab = (key, { focus = false, updateUrl = true } = {}) => {
+        const activeTab = tabs.find((tab) => tab.dataset.dashboardTab === key) ?? tabs[0];
+        if (!activeTab) return;
+        tabs.forEach((tab) => {
+            const selected = tab === activeTab;
+            tab.setAttribute('aria-selected', String(selected));
+            tab.tabIndex = selected ? 0 : -1;
+        });
+        panels.forEach((panel) => {
+            panel.hidden = panel.dataset.dashboardPanel !== activeTab.dataset.dashboardTab;
+        });
+        if (focus) activeTab.focus();
+        if (updateUrl) {
+            const browserUrl = new URL(window.location.href);
+            browserUrl.searchParams.set('tab', activeTab.dataset.dashboardTab);
+            window.history.replaceState(window.history.state, '', browserUrl);
+        }
+    };
+
+    dashboardTabs.addEventListener('click', (event) => {
+        const tab = event.target.closest?.('[data-dashboard-tab]');
+        if (!tab) return;
+        event.preventDefault();
+        activateTab(tab.dataset.dashboardTab);
+    });
+
+    dashboardTabs.querySelector('[role="tablist"]')?.addEventListener('keydown', (event) => {
+        const currentIndex = tabs.indexOf(document.activeElement);
+        if (currentIndex < 0) return;
+        const targetIndex = {
+            ArrowRight: (currentIndex + 1) % tabs.length,
+            ArrowLeft: (currentIndex - 1 + tabs.length) % tabs.length,
+            Home: 0,
+            End: tabs.length - 1,
+        }[event.key];
+        if (targetIndex === undefined) return;
+        event.preventDefault();
+        activateTab(tabs[targetIndex].dataset.dashboardTab, { focus: true });
+    });
+
+    window.addEventListener('popstate', () => {
+        activateTab(new URL(window.location.href).searchParams.get('tab') || 'market', { updateUrl: false });
     });
 }
 

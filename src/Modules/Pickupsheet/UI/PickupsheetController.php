@@ -22,12 +22,26 @@ use App\Shared\Security\RecordsUserService;
 use App\Shared\Security\SecurityLogger;
 use App\Shared\Spreadsheet\XlsxWriter;
 use App\Shared\View\View;
+use DateTimeImmutable;
 use InvalidArgumentException;
 use RuntimeException;
 use Throwable;
 
 final class PickupsheetController
 {
+    /** @var list<int> */
+    public const REPORT_PERIODS = [30, 90, 180, 365];
+
+    /** @var array<string, string> */
+    public const REPORT_SECTIONS = [
+        'kpi' => 'KPI summary and cash settlement',
+        'market' => 'Period-over-period market performance',
+        'trend' => '12-month activity trend',
+        'destinations' => 'Destination mix',
+        'senders' => 'Top 10 senders',
+        'loyalty' => 'Customer loyalty leaders',
+    ];
+
     /** @param array<string, mixed> $config */
     public function __construct(
         private readonly PickupSheetService $service,
@@ -304,6 +318,9 @@ final class PickupsheetController
             'userActivity' => $userActivity,
             'auditLogs' => $auditLogs,
             'recentSheets' => $recentSheets,
+            'dashboardTab' => $request->queryString('tab'),
+            'reportPeriods' => self::REPORT_PERIODS,
+            'reportSections' => self::REPORT_SECTIONS,
             'accounts' => $accounts,
             'errors' => $errors,
             'recordsUsername' => $authorization->username,
@@ -1054,6 +1071,71 @@ final class PickupsheetController
             'basePath' => $request->basePath,
             'assetBase' => $request->basePath . '/public/assets',
             'pickupSheet' => $pickupSheet,
+        ], 'layouts/print');
+
+        return Response::html($body, 200, $this->privateHeaders());
+    }
+
+    public function report(Request $request): Response
+    {
+        $authorization = $this->authorizeRecords($request, 'report');
+        if ($authorization instanceof Response) {
+            return $authorization;
+        }
+
+        $periodDays = (int) $request->queryString('period', '90');
+        if (!in_array($periodDays, self::REPORT_PERIODS, true)) {
+            $periodDays = 90;
+        }
+        $sections = array_values(array_intersect(array_keys(self::REPORT_SECTIONS), $request->queryList('sections')));
+        if ($sections === []) {
+            $sections = array_keys(self::REPORT_SECTIONS);
+        }
+
+        $summary = [];
+        $marketAnalysis = [];
+        $senders = [];
+        $topCustomers = [];
+        $errors = [];
+
+        try {
+            $summary = $this->service->summary();
+            $senders = $this->service->topSenders(12, 10);
+        } catch (RuntimeException $exception) {
+            error_log($exception->__toString());
+            $errors[] = 'KPI and sender data could not be loaded.';
+        }
+
+        try {
+            $marketAnalysis = $this->service->marketAnalysis($periodDays, 12, 8);
+        } catch (RuntimeException $exception) {
+            error_log($exception->__toString());
+            $errors[] = 'Market performance analysis could not be loaded.';
+        }
+
+        if ($this->customerService !== null && in_array('loyalty', $sections, true)) {
+            try {
+                $topCustomers = $this->customerService->topByPoints(10);
+            } catch (RuntimeException $exception) {
+                error_log($exception->__toString());
+                $errors[] = 'Customer loyalty rankings could not be loaded.';
+            }
+        }
+
+        $body = $this->view->render('pickupsheet/report', [
+            'pageTitle' => 'Performance report',
+            'basePath' => $request->basePath,
+            'assetBase' => $request->basePath . '/public/assets',
+            'periodDays' => $periodDays,
+            'sections' => $sections,
+            'sectionLabels' => self::REPORT_SECTIONS,
+            'summary' => $summary,
+            'marketAnalysis' => $marketAnalysis,
+            'senders' => $senders,
+            'topCustomers' => $topCustomers,
+            'errors' => $errors,
+            'generatedBy' => $authorization->fullName(),
+            'generatedAt' => new DateTimeImmutable('now'),
         ], 'layouts/print');
 
         return Response::html($body, 200, $this->privateHeaders());

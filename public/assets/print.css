@@ -203,3 +203,38 @@ body { margin: 0; background: #5b5b5b; color: #151515; }
     }
     .pickup-awb-link { color: #000 !important; }
 }
+
+/* Performance report */
+.report-sheet { padding: 14mm 13mm 12mm; font-size: 9pt; line-height: 1.4; text-transform: none; }
+.report-header { display: flex; justify-content: space-between; gap: 8mm; padding-bottom: 5mm; border-bottom: 2pt solid #000; }
+.report-eyebrow { margin: 0 0 2mm; color: #555; font-size: 7.5pt; font-weight: 700; letter-spacing: 0.08em; text-transform: uppercase; }
+.report-header h1 { margin: 0; font-size: 20pt; letter-spacing: -0.02em; line-height: 1.05; }
+.report-meta { display: grid; gap: 1.2mm; margin: 0; font-size: 8pt; }
+.report-meta div { display: grid; grid-template-columns: 30mm auto; gap: 3mm; }
+.report-meta dt { color: #555; font-weight: 700; }
+.report-meta dd { margin: 0; font-variant-numeric: tabular-nums; }
+.report-scope { margin: 4mm 0 0; color: #444; font-size: 7.5pt; }
+.report-errors { margin-top: 4mm; padding: 2.5mm 3mm; border: 1pt solid #b00; color: #900; }
+.report-errors p { margin: 0; }
+.report-section { margin-top: 7mm; break-inside: avoid-page; }
+.report-section h2 { margin: 0 0 3mm; padding-bottom: 1.5mm; border-bottom: 0.75pt solid #000; font-size: 11.5pt; }
+.report-kpis { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); margin-bottom: 3mm; border: 0.75pt solid #000; }
+.report-kpis div { padding: 2.5mm 3mm; border-right: 0.75pt solid #000; }
+.report-kpis div:last-child { border-right: 0; }
+.report-kpis span,
+.report-kpis small { display: block; color: #555; font-size: 7pt; }
+.report-kpis span { font-weight: 700; text-transform: uppercase; }
+.report-kpis strong { display: block; margin: 1.5mm 0 1mm; font-size: 15pt; font-variant-numeric: tabular-nums; }
+.report-table { width: 100%; margin-top: 3mm; border-collapse: collapse; font-variant-numeric: tabular-nums; }
+.report-table th,
+.report-table td { padding: 1.4mm 2mm; border-bottom: 0.5pt solid #bbb; text-align: left; }
+.report-table thead th { border-bottom: 0.75pt solid #000; color: #333; font-size: 7.5pt; text-transform: uppercase; }
+.report-table tfoot th { border-top: 0.75pt solid #000; border-bottom: 0; }
+.report-table tr { break-inside: avoid; }
+.report-table .is-number { text-align: right; white-space: nowrap; }
+.report-empty,
+.report-note { margin: 2mm 0 0; color: #555; font-size: 7.5pt; }
+.report-footer { margin-top: 9mm; padding-top: 2mm; border-top: 0.5pt solid #999; color: #666; font-size: 7pt; text-align: center; }
+@media print {
+    .report-table thead { display: table-header-group; }
+}

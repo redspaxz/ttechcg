@@ -224,7 +224,8 @@ Encrypted application-data backup and restore with transactional safety checks.
 | Printing and export | A4 print view and native XLSX export | Implemented |
 | CRM | customer profiles, shipment history, follow-up tracking | Implemented |
 | Loyalty | point balances, lifetime totals, tiers, adjustments | Implemented |
-| Dashboard | KPIs, market performance, operational metrics, user activity, security log | Implemented |
+| Dashboard | tabbed KPIs, market performance, operational metrics, user activity, security log | Implemented |
+| Reporting | printable A4 performance reports with selectable period and sections | Implemented |
 | Admin tools | user, MFA, password, backup and restore management | Implemented |
 | Security | CSRF, session hardening, encryption, RBAC boundaries | Implemented |
 
@@ -237,6 +238,8 @@ The administrator dashboard turns first-party Pickupsheet records into operation
 - pieces handled, cash per shipment, cash per kilogram, payment conversion, repeat-sender rate, and top-destination concentration
 - a complete rolling 12-month activity series, including zero-activity months, with shipment, cash, weight, and unique-sender details
 - a ranked destination mix with shipment share, recorded cash, and cargo weight for the eight leading lanes
+
+Administrators can also generate a printable A4 performance report from the dashboard's Reports tab, choosing a 30-, 90-, 180- or 365-day period and any combination of KPI, market, trend, destination, sender and loyalty sections.
 
 These indicators use only internal, non-deleted Pickupsheet records and collection dates. They are operational performance measures—not estimates of total logistics-market size, accounting revenue, or external competitor performance. Dashboard access remains restricted to the `admin` role.
 
