@@ -634,6 +634,12 @@ const dashboardTabs = document.querySelector('[data-dashboard-tabs]');
 if (dashboardTabs) {
     const tabs = Array.from(dashboardTabs.querySelectorAll('[data-dashboard-tab]'));
     const panels = Array.from(dashboardTabs.querySelectorAll('[data-dashboard-panel]'));
+    const tablist = dashboardTabs.querySelector('[role="tablist"]');
+
+    const revealTab = (tab) => {
+        if (!tablist || tablist.scrollWidth <= tablist.clientWidth) return;
+        tablist.scrollLeft = Math.max(0, tab.offsetLeft - ((tablist.clientWidth - tab.offsetWidth) / 2));
+    };
 
     const activateTab = (key, { focus = false, updateUrl = true } = {}) => {
         const activeTab = tabs.find((tab) => tab.dataset.dashboardTab === key) ?? tabs[0];
@@ -646,7 +652,8 @@ if (dashboardTabs) {
         panels.forEach((panel) => {
             panel.hidden = panel.dataset.dashboardPanel !== activeTab.dataset.dashboardTab;
         });
-        if (focus) activeTab.focus();
+        revealTab(activeTab);
+        if (focus) activeTab.focus({ preventScroll: true });
         if (updateUrl) {
             const browserUrl = new URL(window.location.href);
             browserUrl.searchParams.set('tab', activeTab.dataset.dashboardTab);
@@ -661,7 +668,7 @@ if (dashboardTabs) {
         activateTab(tab.dataset.dashboardTab);
     });
 
-    dashboardTabs.querySelector('[role="tablist"]')?.addEventListener('keydown', (event) => {
+    tablist?.addEventListener('keydown', (event) => {
         const currentIndex = tabs.indexOf(document.activeElement);
         if (currentIndex < 0) return;
         const targetIndex = {
@@ -678,6 +685,9 @@ if (dashboardTabs) {
     window.addEventListener('popstate', () => {
         activateTab(new URL(window.location.href).searchParams.get('tab') || 'market', { updateUrl: false });
     });
+
+    const initialTab = tabs.find((tab) => tab.getAttribute('aria-selected') === 'true');
+    if (initialTab) revealTab(initialTab);
 }
 
 document.addEventListener('toggle', (event) => {

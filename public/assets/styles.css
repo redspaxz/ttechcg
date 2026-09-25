@@ -1351,12 +1351,13 @@ button, a, input, select, textarea { -webkit-tap-highlight-color: transparent; }
     .pickup-kpi-grid article:nth-child(even) { border-right: 0; }
     .pickup-kpi-grid article:nth-child(odd) { border-right: 1px solid #333; }
     .pickup-admin-actions a:last-child { grid-column: 1 / -1; border-right: 0; border-bottom: 0; }
-    .pickup-dashboard-grid { grid-template-columns: 1fr; }
+    .pickup-dashboard-grid { grid-template-columns: minmax(0, 1fr); }
+    .pickup-kpi-grid article:nth-last-child(-n+2) { border-bottom: 0; }
     .pickup-report-periods,
     .pickup-report-sections { grid-template-columns: repeat(2, minmax(0, 1fr)); }
     .pickup-market-growth { grid-template-columns: repeat(2, minmax(0, 1fr)); }
     .pickup-market-efficiency { grid-template-columns: repeat(3, minmax(0, 1fr)); }
-    .pickup-market-detail-grid { grid-template-columns: 1fr; }
+    .pickup-market-detail-grid { grid-template-columns: minmax(0, 1fr); }
     .pickup-market-months { grid-template-columns: repeat(4, minmax(0, 1fr)); }
     .pickup-audit-log-table thead { display: none; }
     .pickup-audit-log-entry > summary { grid-template-columns: repeat(2, minmax(0, 1fr)) 28px; gap: 14px 18px; align-items: start; }
@@ -1408,21 +1409,35 @@ button, a, input, select, textarea { -webkit-tap-highlight-color: transparent; }
     .pickup-admin-shell { padding-top: 42px; }
     .pickup-dashboard-shell { --dashboard-card-padding-block: 17px; --dashboard-card-padding-inline: 17px; padding-top: 34px; }
     .pickup-admin-heading { align-items: flex-start; flex-direction: column; }
-    .pickup-admin-actions,
-    .pickup-kpi-grid { grid-template-columns: 1fr; }
-    .pickup-admin-actions a,
-    .pickup-kpi-grid article { border-right: 0; border-bottom: 1px solid #333; }
-    .pickup-admin-actions a:last-child,
-    .pickup-kpi-grid article:last-child { border-bottom: 0; }
+    .pickup-dashboard-shell .pickup-admin-heading { gap: 16px; margin-bottom: 18px; }
+    .pickup-dashboard-shell .pickup-admin-heading h1 { font-size: clamp(2.5rem, 12vw, 3.4rem); }
+    .pickup-dashboard-shell .pickup-admin-heading > div > p:last-child { margin-top: 12px; font-size: 0.86rem; line-height: 1.55; }
+    .pickup-dashboard-shell .pickup-admin-actions a { min-height: 0; gap: 8px; padding: 13px 14px; }
+    .pickup-dashboard-shell .pickup-admin-actions strong { font-size: 0.86rem; line-height: 1.3; }
+    .pickup-dashboard-shell .pickup-kpi-grid { margin: 14px 0; }
+    .pickup-dashboard-shell .pickup-kpi-grid article { min-height: 0; padding: 14px; }
+    .pickup-dashboard-shell .pickup-kpi-grid strong { margin: 8px 0 4px; font-size: clamp(1.6rem, 8vw, 2.1rem); }
+    .pickup-dashboard-shell .pickup-kpi-grid strong.pickup-kpi-amount { font-size: clamp(1.3rem, 6.5vw, 1.7rem); }
+    .pickup-dashboard-shell .pickup-kpi-grid small { font-size: 0.7rem; }
     .pickup-card-heading { align-items: flex-start; flex-direction: column; gap: 10px; }
-    .pickup-report-periods,
     .pickup-report-sections { grid-template-columns: 1fr; }
+    .pickup-report-form label { padding: 11px 12px; }
+    .pickup-report-periods label { display: grid; grid-template-columns: auto minmax(0, 1fr); gap: 3px 10px; }
+    .pickup-report-periods label span { white-space: nowrap; }
+    .pickup-report-periods label small { grid-column: 2; margin-left: 0; }
+    .pickup-chart-scroll { margin-top: 16px; }
     .pickup-market-growth,
-    .pickup-market-efficiency { grid-template-columns: 1fr; }
+    .pickup-market-efficiency { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+    .pickup-market-growth article { grid-template-columns: minmax(0, 1fr); gap: 7px; padding: 12px; }
+    .pickup-market-growth article mark { justify-self: start; grid-row: 2; }
+    .pickup-market-growth article strong { margin-top: 7px; font-size: 1.2rem; }
+    .pickup-market-efficiency article { padding: 12px; }
+    .pickup-market-efficiency strong { margin: 7px 0 4px; font-size: 1.1rem; }
     .pickup-market-months { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+    .pickup-market-months article { padding: 10px; }
     .pickup-market-trend,
-    .pickup-market-mix { padding: 15px; }
-    .pickup-market-lanes dl { grid-template-columns: 1fr; }
+    .pickup-market-mix { padding: 12px; }
+    .pickup-market-lanes > li { gap: 10px; padding: 11px 0; }
     .pickup-cash-status-card { padding: 16px; }
     .pickup-cash-status-layout { grid-template-columns: 1fr; gap: 12px; margin-top: 12px; }
     .pickup-cash-pie-visual { width: min(150px, 100%); }
@@ -1435,10 +1450,6 @@ button, a, input, select, textarea { -webkit-tap-highlight-color: transparent; }
     .pickup-audit-log-entry > summary > i { grid-column: 2; grid-row: 1; }
     .pickup-audit-log-detail { padding: 0 14px 14px; }
     .pickup-audit-log-detail dl { grid-template-columns: 1fr; }
-}
-
-@media (max-width: 430px) {
-    .pickup-market-months { grid-template-columns: 1fr; }
 }
 
 /* Pickup records user management */
