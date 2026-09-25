@@ -1120,8 +1120,8 @@ button, a, input, select, textarea { -webkit-tap-highlight-color: transparent; }
 .pickup-card-heading small { color: #888; text-transform: uppercase; }
 .pickup-card-heading > a { color: #fff; font-size: 0.72rem; font-weight: 800; }
 .pickup-market-analysis { margin-bottom: 18px; padding: 26px; }
-.pickup-market-context { max-width: 900px; margin: 14px 0 0; color: #999; font-size: 0.74rem; line-height: 1.6; }
-.pickup-market-growth { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); margin-top: 22px; border-top: 1px solid #333; border-left: 1px solid #333; }
+.pickup-market-context { max-width: 900px; margin: 10px 0 0; color: #999; font-size: 0.74rem; line-height: 1.6; }
+.pickup-market-growth { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); margin-top: 14px; border-top: 1px solid #333; border-left: 1px solid #333; }
 .pickup-market-growth article { display: grid; grid-template-columns: minmax(0, 1fr) auto; gap: 9px 12px; min-width: 0; padding: 17px; border-right: 1px solid #333; border-bottom: 1px solid #333; background: #101012; }
 .pickup-market-growth article > div { min-width: 0; }
 .pickup-market-growth article span,
@@ -1136,11 +1136,11 @@ button, a, input, select, textarea { -webkit-tap-highlight-color: transparent; }
 .pickup-market-efficiency article { min-width: 0; padding: 15px 17px; border-right: 1px solid #333; border-bottom: 1px solid #333; background: #171719; }
 .pickup-market-efficiency strong { display: block; margin: 10px 0 6px; color: #fff; font-size: clamp(1.15rem, 2vw, 1.55rem); font-variant-numeric: tabular-nums; overflow-wrap: anywhere; }
 .pickup-market-efficiency small { color: #858589; font-size: 0.63rem; line-height: 1.45; }
-.pickup-market-detail-grid { display: grid; grid-template-columns: minmax(0, 1.45fr) minmax(300px, 0.75fr); gap: 18px; margin-top: 18px; }
+.pickup-market-detail-grid { display: grid; grid-template-columns: minmax(0, 1.45fr) minmax(300px, 0.75fr); gap: 12px; margin-top: 12px; }
 .pickup-market-trend,
 .pickup-market-mix { min-width: 0; padding: 20px; border: 1px solid #333; background: #101012; }
 .pickup-market-detail-grid .pickup-card-heading h3 { margin: 7px 0 0; color: #fff; font-size: clamp(1.2rem, 2.3vw, 1.75rem); letter-spacing: -0.04em; }
-.pickup-market-months { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); margin-top: 18px; border-top: 1px solid #2e2e31; border-left: 1px solid #2e2e31; }
+.pickup-market-months { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); margin-top: 12px; border-top: 1px solid #2e2e31; border-left: 1px solid #2e2e31; }
 .pickup-market-months article { min-width: 0; padding: 13px; border-right: 1px solid #2e2e31; border-bottom: 1px solid #2e2e31; }
 .pickup-market-months article > span { color: #aaa; font-size: 0.63rem; font-weight: 850; letter-spacing: 0.06em; text-transform: uppercase; }
 .pickup-market-months article > strong { display: block; margin: 9px 0; color: #fff; font-size: 1.05rem; }
@@ -1161,7 +1161,7 @@ button, a, input, select, textarea { -webkit-tap-highlight-color: transparent; }
 .pickup-market-lanes dt { color: #666; font-size: 0.58rem; font-weight: 800; text-transform: uppercase; }
 .pickup-market-months dd,
 .pickup-market-lanes dd { margin: 0; color: #aaa; font-size: 0.62rem; font-variant-numeric: tabular-nums; overflow-wrap: anywhere; text-align: right; }
-.pickup-market-lanes { display: grid; gap: 0; margin: 18px 0 0; padding: 0; list-style: none; }
+.pickup-market-lanes { display: grid; gap: 0; margin: 12px 0 0; padding: 0; list-style: none; }
 .pickup-market-lanes > li { display: grid; grid-template-columns: 28px minmax(0, 1fr); gap: 12px; padding: 13px 0; border-bottom: 1px solid #2e2e31; }
 .pickup-market-lanes > li:last-child { border-bottom: 0; padding-bottom: 0; }
 .pickup-market-lane-rank { display: grid; width: 27px; height: 27px; place-items: center; border: 1px solid #444; color: #888; font-size: 0.65rem; font-weight: 850; }
@@ -1171,7 +1171,7 @@ button, a, input, select, textarea { -webkit-tap-highlight-color: transparent; }
 .pickup-market-lanes dl { grid-template-columns: repeat(3, minmax(0, 1fr)); }
 .pickup-market-lanes dl > div { display: block; }
 .pickup-market-lanes dd { margin-top: 4px; text-align: left; }
-.pickup-market-empty { margin: 20px 0 0; color: #888; }
+.pickup-market-empty { margin: 12px 0 0; color: #888; }
 .pickup-chart-scroll { flex: 1 1 auto; margin-top: 28px; overflow-x: auto; }
 .pickup-activity-chart { display: block; min-width: 680px; }
 .pickup-activity-chart line { stroke: #444; stroke-width: 1; }
