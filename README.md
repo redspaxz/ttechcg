@@ -195,7 +195,8 @@ Protected operational workspace for:
 - print/PDF and Excel export
 - customer synchronization and CRM activity
 - loyalty and rewards management
-- dashboards and administrative controls
+- tabbed administrator dashboard and administrative controls
+- printable A4 performance reports
 
 ### CRM
 
@@ -239,9 +240,23 @@ The administrator dashboard turns first-party Pickupsheet records into operation
 - a complete rolling 12-month activity series, including zero-activity months, with shipment, cash, weight, and unique-sender details
 - a ranked destination mix with shipment share, recorded cash, and cargo weight for the eight leading lanes
 
-Administrators can also generate a printable A4 performance report from the dashboard's Reports tab, choosing a 30-, 90-, 180- or 365-day period and any combination of KPI, market, trend, destination, sender and loyalty sections.
-
 These indicators use only internal, non-deleted Pickupsheet records and collection dates. They are operational performance measures—not estimates of total logistics-market size, accounting revenue, or external competitor performance. Dashboard access remains restricted to the `admin` role.
+
+### Dashboard tabs
+
+The header, administration links and KPI cards stay visible above folder-style tabs. The tabs are Market analysis, Cash activity, Top senders, Loyalty, User activity, Audit log, Recent sheets and Reports. The open tab is kept in the `?tab=` query parameter. The server renders the requested tab directly, so reloads and shared links open the same section, and AJAX table pagination keeps the parameter. Unknown values fall back to Market analysis.
+
+### Performance reports
+
+The Reports tab builds a printable A4 report at `/dhl/pickupsheet/dashboard/report`:
+
+- periods: 30, 90 (default), 180 or 365 days, each compared with the preceding period of the same length
+- sections: KPI summary and cash settlement, period-over-period market performance, 12-month activity trend, destination mix, top 10 senders, and customer loyalty leaders
+- no section selected, or only invalid values, produces the full report; unsupported periods fall back to 90 days
+- the report opens in the print layout with Print / Save as PDF and shows the reporting dates, the preparer and the generation time
+- a new `report` permission restricts it to the `admin` role, and each generation is recorded in the security log as records access with action `report`
+
+Cash settlement always covers the last 3 months. Trend, destination, sender and repeat-sender figures always cover a rolling 12 months. The report labels these bases.
 
 ## Security and operational expectations
 
@@ -284,6 +299,14 @@ php tests/run.php
 ```
 
 This includes the repository's assertion-based checks for application behavior and security-related logic.
+
+Run the JavaScript behaviour checks with Node.js:
+
+```bash
+for test in tests/*.test.js; do node "$test"; done
+```
+
+Business user acceptance testing follows the scripts in `docs/uat/`. The current release is covered by [docs/uat/admin-dashboard-reporting-uat.md](docs/uat/admin-dashboard-reporting-uat.md).
 
 ## Useful commands
 
@@ -363,4 +386,7 @@ Before opening a pull request:
 
 ## Documentation
 
-This README is the developer-facing guide for setup, maintenance, and operational onboarding. The project also contains more detailed product and security documentation under `docs/` and the source code itself.
+This README is the developer-facing guide for setup, maintenance, and operational onboarding. The project also contains more detailed product and security documentation under `docs/` and the source code itself:
+
+- [docs/security/iso-27001-application-controls.md](docs/security/iso-27001-application-controls.md): application security controls
+- [docs/uat/admin-dashboard-reporting-uat.md](docs/uat/admin-dashboard-reporting-uat.md): UAT script and sign-off for the administrator dashboard, market analysis and reporting
