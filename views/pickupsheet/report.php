@@ -2,6 +2,8 @@
 
 declare(strict_types=1);
 
+use App\Modules\Pickupsheet\UI\ReportCharts;
+
 $e = static fn (mixed $value): string => htmlspecialchars((string) $value, ENT_QUOTES, 'UTF-8');
 $sections = is_array($sections ?? null) ? $sections : [];
 $sectionLabels = is_array($sectionLabels ?? null) ? $sectionLabels : [];
@@ -38,6 +40,17 @@ $unpaidBalanceXaf = max(0, (int) ($summary['unpaidBalanceXaf'] ?? 0));
 $paidCashXaf = max(0, $totalCashXaf - $unpaidBalanceXaf);
 $unpaidShare = $totalCashXaf > 0 ? ($unpaidBalanceXaf / $totalCashXaf) * 100 : 0.0;
 $sectionNumber = 0;
+$monthLabel = static function (array $month): string {
+    $monthDate = DateTimeImmutable::createFromFormat('!Y-m', (string) ($month['month'] ?? ''));
+    return $monthDate instanceof DateTimeImmutable ? $monthDate->format('M Y') : (string) ($month['month'] ?? '');
+};
+$legend = static function (array $items) use ($e): string {
+    $html = '<ul class="report-legend">';
+    foreach ($items as [$color, $label]) {
+        $html .= '<li><i style="background:' . $e($color) . '" aria-hidden="true"></i>' . $e($label) . '</li>';
+    }
+    return $html . '</ul>';
+};
 ?>
 <div class="print-actions">
     <button type="button" data-print-pickup>Print / Save as PDF</button>
@@ -74,6 +87,14 @@ $sectionNumber = 0;
                 <div><span>Unpaid sheets</span><strong><?= $e($number($summary['unpaidSheetCount'] ?? 0)) ?></strong><small>Open payment records</small></div>
                 <div><span>Unpaid balance</span><strong><?= $e($number($unpaidBalanceXaf)) ?></strong><small>XAF open, last 3 months</small></div>
             </div>
+            <figure class="report-figure">
+                <figcaption>Cash settlement, last 3 months</figcaption>
+                <?= ReportCharts::shareBar([
+                    ['label' => 'Paid cash', 'value' => $paidCashXaf, 'display' => $number($paidCashXaf) . ' XAF', 'color' => ReportCharts::ACCENT],
+                    ['label' => 'Unpaid balance', 'value' => $unpaidBalanceXaf, 'display' => $number($unpaidBalanceXaf) . ' XAF', 'color' => ReportCharts::SECOND],
+                ], 'Cash settlement: ' . $number($paidCashXaf) . ' XAF paid and ' . $number($unpaidBalanceXaf) . ' XAF unpaid') ?>
+                <?= $legend([[ReportCharts::ACCENT, 'Paid cash · ' . $number($paidCashXaf) . ' XAF'], [ReportCharts::SECOND, 'Unpaid balance · ' . $number($unpaidBalanceXaf) . ' XAF']]) ?>
+            </figure>
             <table class="report-table">
                 <thead><tr><th>Cash settlement (last 3 months)</th><th class="is-number">XAF</th><th class="is-number">Share</th></tr></thead>
                 <tbody>
@@ -88,6 +109,23 @@ $sectionNumber = 0;
     <?php if ($includes('market')): ?>
         <section class="report-section">
             <h2><?= $e(++$sectionNumber) ?>. <?= $e($sectionLabels['market'] ?? 'Market performance') ?></h2>
+            <figure class="report-figure">
+                <figcaption>Latest <?= $e($periodDays) ?> days compared with the previous <?= $e($periodDays) ?> days</figcaption>
+                <?= $legend([[ReportCharts::ACCENT, 'Latest period'], [ReportCharts::CONTEXT, 'Previous period']]) ?>
+                <div class="report-multiples">
+                    <?php foreach ([
+                        ['Shipments', 'shipmentCount', $number],
+                        ['Cash recorded (XAF)', 'totalCashXaf', $number],
+                        ['Cargo weight (kg)', 'totalWeightKg', $weight],
+                        ['Active senders', 'uniqueSenders', $number],
+                    ] as [$metricLabel, $metricKey, $metricFormat]): ?>
+                        <div>
+                            <h3><?= $e($metricLabel) ?></h3>
+                            <?= ReportCharts::periodPair($metricLabel, (float) ($marketCurrent[$metricKey] ?? 0), (float) ($marketPrevious[$metricKey] ?? 0), $metricFormat($marketCurrent[$metricKey] ?? 0), $metricFormat($marketPrevious[$metricKey] ?? 0)) ?>
+                        </div>
+                    <?php endforeach; ?>
+                </div>
+            </figure>
             <table class="report-table">
                 <thead><tr><th>Indicator</th><th class="is-number">Latest <?= $e($periodDays) ?> days</th><th class="is-number">Previous <?= $e($periodDays) ?> days</th><th class="is-number">Change</th></tr></thead>
                 <tbody>
@@ -118,6 +156,14 @@ $sectionNumber = 0;
             <?php if ($marketMonthly === []): ?>
                 <p class="report-empty">No trend data is available.</p>
             <?php else: ?>
+                <figure class="report-figure">
+                    <figcaption>Shipments per month</figcaption>
+                    <?= ReportCharts::columns(array_map(static fn (array $month): array => ['label' => $monthLabel($month), 'value' => (int) ($month['shipmentCount'] ?? 0), 'display' => $number($month['shipmentCount'] ?? 0)], $marketMonthly), 'Shipments per month over the last 12 months', true) ?>
+                </figure>
+                <figure class="report-figure">
+                    <figcaption>Cash recorded per month (XAF)</figcaption>
+                    <?= ReportCharts::line(array_map(static fn (array $month): array => ['label' => $monthLabel($month), 'value' => (int) ($month['totalCashXaf'] ?? 0), 'display' => $number($month['totalCashXaf'] ?? 0)], $marketMonthly), 'Cash recorded per month over the last 12 months, in XAF') ?>
+                </figure>
                 <table class="report-table">
                     <thead><tr><th>Month</th><th class="is-number">Shipments</th><th class="is-number">Cash (XAF)</th><th class="is-number">Weight (kg)</th><th class="is-number">Senders</th></tr></thead>
                     <tbody>
@@ -149,6 +195,10 @@ $sectionNumber = 0;
             <?php if ($marketDestinations === []): ?>
                 <p class="report-empty">No destination activity is available.</p>
             <?php else: ?>
+                <figure class="report-figure">
+                    <figcaption>Shipments by destination, with share of all shipments</figcaption>
+                    <?= ReportCharts::horizontalBars(array_map(static fn (array $destination): array => ['label' => (string) ($destination['destination'] ?? ''), 'value' => (int) ($destination['shipmentCount'] ?? 0), 'display' => $number($destination['shipmentCount'] ?? 0) . ' · ' . $percent($destination['shipmentSharePercent'] ?? 0)], $marketDestinations), 'Shipments by destination over the last 12 months') ?>
+                </figure>
                 <table class="report-table">
                     <thead><tr><th>#</th><th>Destination</th><th class="is-number">Shipments</th><th class="is-number">Share</th><th class="is-number">Cash (XAF)</th><th class="is-number">Weight (kg)</th></tr></thead>
                     <tbody>
@@ -168,6 +218,10 @@ $sectionNumber = 0;
             <?php if ($senders === []): ?>
                 <p class="report-empty">No sender activity is available.</p>
             <?php else: ?>
+                <figure class="report-figure">
+                    <figcaption>Shipments per sender</figcaption>
+                    <?= ReportCharts::horizontalBars(array_map(static fn (array $sender): array => ['label' => (string) ($sender['sender'] ?? ''), 'value' => (int) ($sender['shipmentCount'] ?? 0), 'display' => $number($sender['shipmentCount'] ?? 0)], $senders), 'Shipments per sender for the top 10 senders over the last 12 months') ?>
+                </figure>
                 <table class="report-table">
                     <thead><tr><th>#</th><th>Sender</th><th class="is-number">Shipments</th></tr></thead>
                     <tbody>
@@ -187,6 +241,10 @@ $sectionNumber = 0;
             <?php if ($topCustomers === []): ?>
                 <p class="report-empty">No customer loyalty data is available.</p>
             <?php else: ?>
+                <figure class="report-figure">
+                    <figcaption>Reward points balance per customer</figcaption>
+                    <?= ReportCharts::horizontalBars(array_map(static fn ($customer): array => ['label' => (string) $customer->displayName, 'value' => $customer->rewardBalance(), 'display' => $number($customer->rewardBalance())], $topCustomers), 'Reward points balance for the leading customers') ?>
+                </figure>
                 <table class="report-table">
                     <thead><tr><th>#</th><th>Customer</th><th class="is-number">Points</th><th>Tier</th></tr></thead>
                     <tbody>

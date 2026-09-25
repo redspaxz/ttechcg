@@ -54,6 +54,7 @@ Record each result as **Pass**, **Fail** or **Blocked**. For a failure, note wha
 | C1 | Open the **Reports** tab. | A form shows four period options (30, 90, 180, 365 days, with 90 selected) and six section checkboxes, all ticked. | | |
 | C2 | Click **Generate report** with the default settings. | The report opens in a new tab as an A4 page, and the print dialog opens. It includes all six numbered sections, the reporting and comparison dates, **Prepared by** with your name, and the generation time. | | |
 | C3 | Compare the report's KPI and market figures with the dashboard. | The figures match the dashboard for the same 90-day period. | | |
+| C3a | Review the charts in each section. Hover over a bar or point. | Every section has a chart above its table, and chart values match the table. Charts with two colours have a legend. Hovering shows the exact value. Months with no activity show as zero, not as gaps. | | |
 | C4 | Choose **30 days**, tick only **Destination mix** and **Period-over-period market performance**, then generate. | The report shows just those two sections, numbered 1 and 2, and the period reads "(30 days)". | | |
 | C5 | Untick every section and generate. | The full report (all six sections) is generated. | | |
 | C6 | Print to PDF using **Save as PDF**. | The PDF has no buttons or grey background. Tables are not cut mid-row, and table headings repeat on each new page. | | |

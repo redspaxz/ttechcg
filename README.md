@@ -265,6 +265,7 @@ The Reports tab builds a printable A4 report at `/dhl/pickupsheet/dashboard/repo
 - sections: KPI summary and cash settlement, period-over-period market performance, 12-month activity trend, destination mix, top 10 senders, and customer loyalty leaders
 - no section selected, or only invalid values, produces the full report; unsupported periods fall back to 90 days
 - the report opens in the print layout with Print / Save as PDF and shows the reporting dates, the preparer and the generation time
+- each section has a server-rendered SVG chart above its table: a paid/unpaid share bar, latest-vs-previous bars for each market metric on its own scale, monthly shipment columns and a separate monthly cash line (never a dual axis), and ranked bars for destinations, senders and loyalty points. Charts need no JavaScript, print in colour, carry hover tooltips and legends, and the tables stay as the accessible table view. Chart markup is built in `src/Modules/Pickupsheet/UI/ReportCharts.php`
 - a new `report` permission restricts it to the `admin` role, and each generation is recorded in the security log as records access with action `report`
 
 Cash settlement always covers the last 3 months. Trend, destination, sender and repeat-sender figures always cover a rolling 12 months. The report labels these bases.
