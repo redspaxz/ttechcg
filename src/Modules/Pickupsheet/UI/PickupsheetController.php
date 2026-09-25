@@ -208,6 +208,16 @@ final class PickupsheetController
         $activity = [];
         $destinations = [];
         $senders = [];
+        $marketAnalysis = [
+            'comparisonDays' => 90,
+            'trendMonths' => 12,
+            'current' => [],
+            'previous' => [],
+            'monthly' => [],
+            'destinations' => [],
+            'growth' => [],
+            'metrics' => [],
+        ];
         $topCustomers = [];
         $userActivity = $this->emptyPagination() + ['activeRecords' => 0];
         $auditLogs = $this->emptyPagination();
@@ -224,6 +234,13 @@ final class PickupsheetController
         } catch (RuntimeException $exception) {
             error_log($exception->__toString());
             $errors = ['Dashboard activity could not be loaded. Check the MySQL connection and account schema.'];
+        }
+
+        try {
+            $marketAnalysis = $this->service->marketAnalysis(90, 12, 8);
+        } catch (RuntimeException $exception) {
+            error_log($exception->__toString());
+            $errors[] = 'Market performance analysis could not be loaded. Check the pickup-sheet schema.';
         }
 
         if ($this->customerService !== null) {
@@ -282,6 +299,7 @@ final class PickupsheetController
             'activity' => $activity,
             'destinations' => $destinations,
             'senders' => $senders,
+            'marketAnalysis' => $marketAnalysis,
             'topCustomers' => $topCustomers,
             'userActivity' => $userActivity,
             'auditLogs' => $auditLogs,

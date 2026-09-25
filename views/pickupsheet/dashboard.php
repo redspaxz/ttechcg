@@ -7,6 +7,13 @@ $summary = is_array($summary ?? null) ? $summary : [];
 $activity = is_array($activity ?? null) ? $activity : [];
 $destinations = is_array($destinations ?? null) ? $destinations : [];
 $senders = is_array($senders ?? null) ? $senders : [];
+$marketAnalysis = is_array($marketAnalysis ?? null) ? $marketAnalysis : [];
+$marketCurrent = is_array($marketAnalysis['current'] ?? null) ? $marketAnalysis['current'] : [];
+$marketPrevious = is_array($marketAnalysis['previous'] ?? null) ? $marketAnalysis['previous'] : [];
+$marketGrowth = is_array($marketAnalysis['growth'] ?? null) ? $marketAnalysis['growth'] : [];
+$marketMetrics = is_array($marketAnalysis['metrics'] ?? null) ? $marketAnalysis['metrics'] : [];
+$marketMonthly = is_array($marketAnalysis['monthly'] ?? null) ? $marketAnalysis['monthly'] : [];
+$marketDestinations = is_array($marketAnalysis['destinations'] ?? null) ? $marketAnalysis['destinations'] : [];
 $topCustomers = is_array($topCustomers ?? null) ? $topCustomers : [];
 $userActivity = is_array($userActivity ?? null) ? $userActivity : [];
 $auditLogs = is_array($auditLogs ?? null) ? $auditLogs : [];
@@ -47,6 +54,45 @@ $settledChartValue = number_format(100 - $unpaidPercentage, 2, '.', '');
 $unpaidPercentageLabel = rtrim(rtrim(number_format($unpaidPercentage, 1, '.', ''), '0'), '.') . '%';
 $maximumSenderShipments = max([1, ...array_map(static fn (array $row): int => (int) ($row['shipmentCount'] ?? 0), $senders)]);
 $maximumCustomerPoints = max([1, ...array_map(static fn ($customer): int => $customer->rewardBalance(), $topCustomers)]);
+$maximumMonthlyCash = max([1, ...array_map(static fn (array $row): int => (int) ($row['totalCashXaf'] ?? 0), $marketMonthly)]);
+$marketComparisonDays = max(1, (int) ($marketAnalysis['comparisonDays'] ?? 90));
+$marketTrendMonths = max(1, (int) ($marketAnalysis['trendMonths'] ?? 12));
+$growthIndicator = static function (mixed $value): array {
+    if ($value === null) {
+        return ['class' => 'is-new', 'label' => 'New baseline'];
+    }
+    $numericValue = (float) $value;
+    return [
+        'class' => $numericValue > 0 ? 'is-up' : ($numericValue < 0 ? 'is-down' : 'is-flat'),
+        'label' => ($numericValue > 0 ? '+' : '') . rtrim(rtrim(number_format($numericValue, 1, '.', ''), '0'), '.') . '%',
+    ];
+};
+$marketGrowthCards = [
+    [
+        'label' => 'Shipments',
+        'value' => number_format((int) ($marketCurrent['shipmentCount'] ?? 0)),
+        'previous' => number_format((int) ($marketPrevious['shipmentCount'] ?? 0)),
+        'growth' => $growthIndicator(array_key_exists('shipmentPercent', $marketGrowth) ? $marketGrowth['shipmentPercent'] : 0.0),
+    ],
+    [
+        'label' => 'Cash recorded',
+        'value' => number_format((int) ($marketCurrent['totalCashXaf'] ?? 0)) . ' XAF',
+        'previous' => number_format((int) ($marketPrevious['totalCashXaf'] ?? 0)) . ' XAF',
+        'growth' => $growthIndicator(array_key_exists('cashPercent', $marketGrowth) ? $marketGrowth['cashPercent'] : 0.0),
+    ],
+    [
+        'label' => 'Cargo weight',
+        'value' => number_format((float) ($marketCurrent['totalWeightKg'] ?? 0), 1) . ' kg',
+        'previous' => number_format((float) ($marketPrevious['totalWeightKg'] ?? 0), 1) . ' kg',
+        'growth' => $growthIndicator(array_key_exists('weightPercent', $marketGrowth) ? $marketGrowth['weightPercent'] : 0.0),
+    ],
+    [
+        'label' => 'Active senders',
+        'value' => number_format((int) ($marketCurrent['uniqueSenders'] ?? 0)),
+        'previous' => number_format((int) ($marketPrevious['uniqueSenders'] ?? 0)),
+        'growth' => $growthIndicator(array_key_exists('senderPercent', $marketGrowth) ? $marketGrowth['senderPercent'] : 0.0),
+    ],
+];
 $activeSessions = max(0, (int) ($userActivity['activeRecords'] ?? 0));
 $formatDuration = static function (int $seconds): string {
     if ($seconds < 60) {
@@ -174,6 +220,92 @@ $auditDetails = static function (array $log): string {
             <article><span>Shipments</span><strong><?= $e(number_format((int) ($summary['shipmentCount'] ?? 0))) ?></strong><small>Cash shipment lines</small></article>
             <article><span>Unpaid sheets</span><strong><?= $e(number_format((int) ($summary['unpaidSheetCount'] ?? 0))) ?></strong><small>Open payment records</small></article>
             <article class="pickup-kpi-unpaid"><span>Unpaid balance</span><strong class="pickup-kpi-amount"><?= $e(number_format((int) ($summary['unpaidBalanceXaf'] ?? 0))) ?></strong><small>XAF open in the last 3 months</small></article>
+        </section>
+
+        <section class="pickup-market-analysis" aria-labelledby="market-analysis-title">
+            <div class="pickup-card-heading pickup-market-heading">
+                <div><span>Internal market intelligence</span><h2 id="market-analysis-title">Performance and market analysis</h2></div>
+                <small>Operational records only</small>
+            </div>
+            <p class="pickup-market-context">Compares the latest <?= $e($marketComparisonDays) ?> days with the preceding <?= $e($marketComparisonDays) ?> days. Indicators describe Pickupsheet activity and do not represent the external logistics market.</p>
+
+            <div class="pickup-market-growth" aria-label="Period-over-period performance">
+                <?php foreach ($marketGrowthCards as $card): ?>
+                    <article>
+                        <div><span><?= $e($card['label']) ?></span><strong><?= $e($card['value']) ?></strong></div>
+                        <mark class="<?= $e($card['growth']['class']) ?>"><?= $e($card['growth']['label']) ?></mark>
+                        <small>Previous period: <?= $e($card['previous']) ?></small>
+                    </article>
+                <?php endforeach; ?>
+            </div>
+
+            <div class="pickup-market-efficiency" aria-label="Market efficiency indicators">
+                <article><span>Pieces handled</span><strong><?= $e(number_format((int) ($marketCurrent['totalPieces'] ?? 0))) ?></strong><small>Shipment pieces, latest period</small></article>
+                <article><span>Cash per shipment</span><strong><?= $e(number_format((int) ($marketMetrics['averageCashPerShipmentXaf'] ?? 0))) ?></strong><small>XAF average, latest period</small></article>
+                <article><span>Cash per kilogram</span><strong><?= $e(number_format((int) ($marketMetrics['cashPerKgXaf'] ?? 0))) ?></strong><small>XAF per kg, latest period</small></article>
+                <article><span>Payment conversion</span><strong><?= $e(number_format((float) ($marketMetrics['paymentRatePercent'] ?? 0), 1)) ?>%</strong><small>Sheets marked paid, latest period</small></article>
+                <article><span>Repeat sender rate</span><strong><?= $e(number_format((float) ($marketMetrics['repeatSenderRatePercent'] ?? 0), 1)) ?>%</strong><small>Senders with 2+ shipments, <?= $e($marketTrendMonths) ?> months</small></article>
+                <article><span>Top lane concentration</span><strong><?= $e(number_format((float) ($marketMetrics['topDestinationSharePercent'] ?? 0), 1)) ?>%</strong><small>Shipment share of leading destination</small></article>
+            </div>
+
+            <div class="pickup-market-detail-grid">
+                <section class="pickup-market-trend" aria-labelledby="market-trend-title">
+                    <div class="pickup-card-heading">
+                        <div><span>Momentum</span><h3 id="market-trend-title"><?= $e($marketTrendMonths) ?>-month activity trend</h3></div>
+                        <small>Cash / shipments / senders</small>
+                    </div>
+                    <?php if ($marketMonthly === []): ?>
+                        <p class="pickup-market-empty">No trend data is available.</p>
+                    <?php else: ?>
+                        <div class="pickup-market-months">
+                            <?php foreach ($marketMonthly as $month): ?>
+                                <?php
+                                $monthDate = DateTimeImmutable::createFromFormat('!Y-m', (string) ($month['month'] ?? ''));
+                                $monthLabel = $monthDate instanceof DateTimeImmutable ? $monthDate->format('M Y') : (string) ($month['month'] ?? '');
+                                ?>
+                                <article>
+                                    <span><?= $e($monthLabel) ?></span>
+                                    <strong><?= $e(number_format((int) ($month['shipmentCount'] ?? 0))) ?> <small>shipments</small></strong>
+                                    <progress max="<?= $e($maximumMonthlyCash) ?>" value="<?= $e((int) ($month['totalCashXaf'] ?? 0)) ?>" aria-label="<?= $e($monthLabel) ?> recorded cash: <?= $e(number_format((int) ($month['totalCashXaf'] ?? 0))) ?> XAF"><?= $e((int) ($month['totalCashXaf'] ?? 0)) ?></progress>
+                                    <dl>
+                                        <div><dt>Cash</dt><dd><?= $e(number_format((int) ($month['totalCashXaf'] ?? 0))) ?> XAF</dd></div>
+                                        <div><dt>Weight</dt><dd><?= $e(number_format((float) ($month['totalWeightKg'] ?? 0), 1)) ?> kg</dd></div>
+                                        <div><dt>Senders</dt><dd><?= $e(number_format((int) ($month['uniqueSenders'] ?? 0))) ?></dd></div>
+                                    </dl>
+                                </article>
+                            <?php endforeach; ?>
+                        </div>
+                    <?php endif; ?>
+                </section>
+
+                <section class="pickup-market-mix" aria-labelledby="market-mix-title">
+                    <div class="pickup-card-heading">
+                        <div><span>Destination mix</span><h3 id="market-mix-title">Leading shipment lanes</h3></div>
+                        <small>Rolling <?= $e($marketTrendMonths) ?> months</small>
+                    </div>
+                    <?php if ($marketDestinations === []): ?>
+                        <p class="pickup-market-empty">No destination activity is available.</p>
+                    <?php else: ?>
+                        <ol class="pickup-market-lanes">
+                            <?php foreach ($marketDestinations as $index => $destination): ?>
+                                <?php $marketShare = (float) ($destination['shipmentSharePercent'] ?? 0); ?>
+                                <li>
+                                    <span class="pickup-market-lane-rank"><?= $e($index + 1) ?></span>
+                                    <div>
+                                        <span><strong><?= $e($destination['destination'] ?? '') ?></strong><small><?= $e(number_format($marketShare, 1)) ?>% share</small></span>
+                                        <progress max="100" value="<?= $e($marketShare) ?>" aria-label="<?= $e($destination['destination'] ?? '') ?> shipment share: <?= $e(number_format($marketShare, 1)) ?>%"><?= $e($marketShare) ?></progress>
+                                        <dl>
+                                            <div><dt>Shipments</dt><dd><?= $e(number_format((int) ($destination['shipmentCount'] ?? 0))) ?></dd></div>
+                                            <div><dt>Cash</dt><dd><?= $e(number_format((int) ($destination['totalCashXaf'] ?? 0))) ?> XAF</dd></div>
+                                            <div><dt>Weight</dt><dd><?= $e(number_format((float) ($destination['totalWeightKg'] ?? 0), 1)) ?> kg</dd></div>
+                                        </dl>
+                                    </div>
+                                </li>
+                            <?php endforeach; ?>
+                        </ol>
+                    <?php endif; ?>
+                </section>
+            </div>
         </section>
 
         <div class="pickup-dashboard-grid">

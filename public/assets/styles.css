@@ -1103,6 +1103,7 @@ button, a, input, select, textarea { -webkit-tap-highlight-color: transparent; }
 .pickup-chart-card,
 .pickup-destination-card,
 .pickup-cash-status-card,
+.pickup-market-analysis,
 .pickup-sender-performance,
 .pickup-user-activity,
 .pickup-audit-log,
@@ -1118,6 +1119,59 @@ button, a, input, select, textarea { -webkit-tap-highlight-color: transparent; }
 .pickup-card-heading h2 { margin: 7px 0 0; color: #fff; font-size: clamp(1.45rem, 3vw, 2.2rem); letter-spacing: -0.045em; overflow-wrap: anywhere; }
 .pickup-card-heading small { color: #888; text-transform: uppercase; }
 .pickup-card-heading > a { color: #fff; font-size: 0.72rem; font-weight: 800; }
+.pickup-market-analysis { margin-bottom: 18px; padding: 26px; }
+.pickup-market-context { max-width: 900px; margin: 14px 0 0; color: #999; font-size: 0.74rem; line-height: 1.6; }
+.pickup-market-growth { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); margin-top: 22px; border-top: 1px solid #333; border-left: 1px solid #333; }
+.pickup-market-growth article { display: grid; grid-template-columns: minmax(0, 1fr) auto; gap: 9px 12px; min-width: 0; padding: 17px; border-right: 1px solid #333; border-bottom: 1px solid #333; background: #101012; }
+.pickup-market-growth article > div { min-width: 0; }
+.pickup-market-growth article span,
+.pickup-market-efficiency span { display: block; color: #888; font-size: 0.61rem; font-weight: 850; letter-spacing: 0.08em; text-transform: uppercase; }
+.pickup-market-growth article strong { display: block; margin-top: 11px; color: #fff; font-size: clamp(1.25rem, 2.2vw, 1.85rem); letter-spacing: -0.045em; overflow-wrap: anywhere; }
+.pickup-market-growth article mark { align-self: start; padding: 5px 7px; border: 1px solid #555; background: transparent; color: #bbb; font-size: 0.65rem; font-weight: 850; white-space: nowrap; }
+.pickup-market-growth article mark.is-up { border-color: rgba(85, 200, 120, 0.45); color: #78dc95; }
+.pickup-market-growth article mark.is-down { border-color: rgba(239, 119, 119, 0.5); color: #ef7777; }
+.pickup-market-growth article mark.is-new { border-color: rgba(239, 181, 64, 0.52); color: #efb540; }
+.pickup-market-growth article > small { grid-column: 1 / -1; color: #777; font-size: 0.64rem; }
+.pickup-market-efficiency { display: grid; grid-template-columns: repeat(6, minmax(0, 1fr)); border-left: 1px solid #333; }
+.pickup-market-efficiency article { min-width: 0; padding: 15px 17px; border-right: 1px solid #333; border-bottom: 1px solid #333; background: #171719; }
+.pickup-market-efficiency strong { display: block; margin: 10px 0 6px; color: #fff; font-size: clamp(1.15rem, 2vw, 1.55rem); font-variant-numeric: tabular-nums; overflow-wrap: anywhere; }
+.pickup-market-efficiency small { color: #858589; font-size: 0.63rem; line-height: 1.45; }
+.pickup-market-detail-grid { display: grid; grid-template-columns: minmax(0, 1.45fr) minmax(300px, 0.75fr); gap: 18px; margin-top: 18px; }
+.pickup-market-trend,
+.pickup-market-mix { min-width: 0; padding: 20px; border: 1px solid #333; background: #101012; }
+.pickup-market-detail-grid .pickup-card-heading h3 { margin: 7px 0 0; color: #fff; font-size: clamp(1.2rem, 2.3vw, 1.75rem); letter-spacing: -0.04em; }
+.pickup-market-months { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); margin-top: 18px; border-top: 1px solid #2e2e31; border-left: 1px solid #2e2e31; }
+.pickup-market-months article { min-width: 0; padding: 13px; border-right: 1px solid #2e2e31; border-bottom: 1px solid #2e2e31; }
+.pickup-market-months article > span { color: #aaa; font-size: 0.63rem; font-weight: 850; letter-spacing: 0.06em; text-transform: uppercase; }
+.pickup-market-months article > strong { display: block; margin: 9px 0; color: #fff; font-size: 1.05rem; }
+.pickup-market-months article > strong small { color: #777; font-size: 0.6rem; font-weight: 700; }
+.pickup-market-months progress,
+.pickup-market-lanes progress { width: 100%; height: 6px; border: 0; background: #333; accent-color: var(--copper); }
+.pickup-market-months progress::-webkit-progress-bar,
+.pickup-market-lanes progress::-webkit-progress-bar { background: #333; }
+.pickup-market-months progress::-webkit-progress-value,
+.pickup-market-lanes progress::-webkit-progress-value { background: var(--copper); }
+.pickup-market-months progress::-moz-progress-bar,
+.pickup-market-lanes progress::-moz-progress-bar { background: var(--copper); }
+.pickup-market-months dl,
+.pickup-market-lanes dl { display: grid; gap: 6px; margin: 11px 0 0; }
+.pickup-market-months dl > div,
+.pickup-market-lanes dl > div { display: flex; justify-content: space-between; gap: 10px; }
+.pickup-market-months dt,
+.pickup-market-lanes dt { color: #666; font-size: 0.58rem; font-weight: 800; text-transform: uppercase; }
+.pickup-market-months dd,
+.pickup-market-lanes dd { margin: 0; color: #aaa; font-size: 0.62rem; font-variant-numeric: tabular-nums; overflow-wrap: anywhere; text-align: right; }
+.pickup-market-lanes { display: grid; gap: 0; margin: 18px 0 0; padding: 0; list-style: none; }
+.pickup-market-lanes > li { display: grid; grid-template-columns: 28px minmax(0, 1fr); gap: 12px; padding: 13px 0; border-bottom: 1px solid #2e2e31; }
+.pickup-market-lanes > li:last-child { border-bottom: 0; padding-bottom: 0; }
+.pickup-market-lane-rank { display: grid; width: 27px; height: 27px; place-items: center; border: 1px solid #444; color: #888; font-size: 0.65rem; font-weight: 850; }
+.pickup-market-lanes li > div > span { display: flex; justify-content: space-between; gap: 12px; margin-bottom: 8px; }
+.pickup-market-lanes li > div > span strong { color: #fff; }
+.pickup-market-lanes li > div > span small { color: #888; font-size: 0.64rem; }
+.pickup-market-lanes dl { grid-template-columns: repeat(3, minmax(0, 1fr)); }
+.pickup-market-lanes dl > div { display: block; }
+.pickup-market-lanes dd { margin-top: 4px; text-align: left; }
+.pickup-market-empty { margin: 20px 0 0; color: #888; }
 .pickup-chart-scroll { flex: 1 1 auto; margin-top: 28px; overflow-x: auto; }
 .pickup-activity-chart { display: block; min-width: 680px; }
 .pickup-activity-chart line { stroke: #444; stroke-width: 1; }
@@ -1243,6 +1297,7 @@ button, a, input, select, textarea { -webkit-tap-highlight-color: transparent; }
 .pickup-dashboard-shell .pickup-dashboard-grid { gap: 18px; }
 .pickup-dashboard-shell .pickup-chart-card,
 .pickup-dashboard-shell .pickup-destination-card,
+.pickup-dashboard-shell .pickup-market-analysis,
 .pickup-dashboard-shell .pickup-sender-performance,
 .pickup-dashboard-shell .pickup-cash-status-card { padding: var(--dashboard-card-padding-block) var(--dashboard-card-padding-inline); }
 .pickup-dashboard-shell .pickup-sender-performance,
@@ -1275,6 +1330,10 @@ button, a, input, select, textarea { -webkit-tap-highlight-color: transparent; }
     .pickup-kpi-grid article:nth-child(odd) { border-right: 1px solid #333; }
     .pickup-admin-actions a:last-child { grid-column: 1 / -1; border-right: 0; border-bottom: 0; }
     .pickup-dashboard-grid { grid-template-columns: 1fr; }
+    .pickup-market-growth { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+    .pickup-market-efficiency { grid-template-columns: repeat(3, minmax(0, 1fr)); }
+    .pickup-market-detail-grid { grid-template-columns: 1fr; }
+    .pickup-market-months { grid-template-columns: repeat(4, minmax(0, 1fr)); }
     .pickup-audit-log-table thead { display: none; }
     .pickup-audit-log-entry > summary { grid-template-columns: repeat(2, minmax(0, 1fr)) 28px; gap: 14px 18px; align-items: start; }
     .pickup-audit-log-entry > summary > span::before { display: block; margin-bottom: 5px; color: #777; content: attr(data-label); font-size: 0.58rem; font-weight: 850; letter-spacing: 0.08em; text-transform: uppercase; }
@@ -1332,6 +1391,12 @@ button, a, input, select, textarea { -webkit-tap-highlight-color: transparent; }
     .pickup-admin-actions a:last-child,
     .pickup-kpi-grid article:last-child { border-bottom: 0; }
     .pickup-card-heading { align-items: flex-start; flex-direction: column; gap: 10px; }
+    .pickup-market-growth,
+    .pickup-market-efficiency { grid-template-columns: 1fr; }
+    .pickup-market-months { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+    .pickup-market-trend,
+    .pickup-market-mix { padding: 15px; }
+    .pickup-market-lanes dl { grid-template-columns: 1fr; }
     .pickup-cash-status-card { padding: 16px; }
     .pickup-cash-status-layout { grid-template-columns: 1fr; gap: 12px; margin-top: 12px; }
     .pickup-cash-pie-visual { width: min(150px, 100%); }
@@ -1344,6 +1409,10 @@ button, a, input, select, textarea { -webkit-tap-highlight-color: transparent; }
     .pickup-audit-log-entry > summary > i { grid-column: 2; grid-row: 1; }
     .pickup-audit-log-detail { padding: 0 14px 14px; }
     .pickup-audit-log-detail dl { grid-template-columns: 1fr; }
+}
+
+@media (max-width: 430px) {
+    .pickup-market-months { grid-template-columns: 1fr; }
 }
 
 /* Pickup records user management */

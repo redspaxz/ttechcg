@@ -33,6 +33,20 @@ interface PickupSheetRepository
     /** @return list<array{sender: string, shipmentCount: int}> */
     public function topSenders(int $months, int $limit): array;
 
+    /**
+     * @return array{
+     *     comparisonDays: int,
+     *     trendMonths: int,
+     *     current: array{sheetCount: int, shipmentCount: int, totalCashXaf: int, totalWeightKg: float, totalPieces: int, paidSheetCount: int, uniqueSenders: int},
+     *     previous: array{sheetCount: int, shipmentCount: int, totalCashXaf: int, totalWeightKg: float, totalPieces: int, paidSheetCount: int, uniqueSenders: int},
+     *     monthly: list<array{month: string, shipmentCount: int, totalCashXaf: int, totalWeightKg: float, uniqueSenders: int}>,
+     *     destinations: list<array{destination: string, shipmentCount: int, totalCashXaf: int, totalWeightKg: float}>,
+     *     repeatSenderCount: int,
+     *     trendUniqueSenders: int
+     * }
+     */
+    public function marketAnalysis(int $comparisonDays, int $trendMonths, int $destinationLimit): array;
+
     /** @return list<string> */
     public function consignorSuggestions(string $query, int $limit): array;
 

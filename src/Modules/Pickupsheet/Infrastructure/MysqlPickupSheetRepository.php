@@ -10,6 +10,7 @@ use App\Modules\Pickupsheet\Domain\PickupShipment;
 use DateTimeImmutable;
 use DateTimeZone;
 use PDO;
+use PDOStatement;
 use Throwable;
 
 final class MysqlPickupSheetRepository implements PickupSheetRepository
@@ -536,6 +537,137 @@ final class MysqlPickupSheetRepository implements PickupSheetRepository
             'sender' => (string) $row['sender'],
             'shipmentCount' => (int) $row['shipment_count'],
         ], $statement->fetchAll());
+    }
+
+    public function marketAnalysis(int $comparisonDays, int $trendMonths, int $destinationLimit): array
+    {
+        $this->ensureLifecycleSchema();
+        $today = new DateTimeImmutable('today');
+        $currentStart = $today->modify('-' . ($comparisonDays - 1) . ' days')->format('Y-m-d');
+        $previousEnd = $today->modify('-' . $comparisonDays . ' days')->format('Y-m-d');
+        $previousStart = $today->modify('-' . (($comparisonDays * 2) - 1) . ' days')->format('Y-m-d');
+        $trendStartDate = $today->modify('first day of -' . ($trendMonths - 1) . ' months');
+        $trendStart = $trendStartDate->format('Y-m-d');
+        $todayString = $today->format('Y-m-d');
+
+        $periodStatement = $this->connection->prepare(
+            'SELECT COUNT(DISTINCT p.id) AS sheet_count,
+                    COUNT(ps.id) AS shipment_count,
+                    COALESCE(SUM(ps.amount_xaf), 0) AS total_cash_xaf,
+                    COALESCE(SUM(ps.weight_kg), 0) AS total_weight_kg,
+                    COALESCE(SUM(ps.pieces), 0) AS total_pieces,
+                    COUNT(DISTINCT CASE WHEN p.status = \'paid\' THEN p.id END) AS paid_sheet_count,
+                    COUNT(DISTINCT LOWER(TRIM(ps.consignor))) AS unique_senders
+             FROM pickup_sheets p
+             INNER JOIN pickup_shipments ps ON ps.pickup_sheet_id = p.id
+             WHERE p.deleted_at IS NULL
+               AND p.collection_date >= :start_date
+               AND p.collection_date <= :end_date',
+        );
+        $period = static function (PDOStatement $statement, string $startDate, string $endDate): array {
+            $statement->execute(['start_date' => $startDate, 'end_date' => $endDate]);
+            $row = $statement->fetch() ?: [];
+            return [
+                'sheetCount' => (int) ($row['sheet_count'] ?? 0),
+                'shipmentCount' => (int) ($row['shipment_count'] ?? 0),
+                'totalCashXaf' => (int) ($row['total_cash_xaf'] ?? 0),
+                'totalWeightKg' => round((float) ($row['total_weight_kg'] ?? 0), 3),
+                'totalPieces' => (int) ($row['total_pieces'] ?? 0),
+                'paidSheetCount' => (int) ($row['paid_sheet_count'] ?? 0),
+                'uniqueSenders' => (int) ($row['unique_senders'] ?? 0),
+            ];
+        };
+        $current = $period($periodStatement, $currentStart, $todayString);
+        $previous = $period($periodStatement, $previousStart, $previousEnd);
+
+        $monthlyStatement = $this->connection->prepare(
+            'SELECT DATE_FORMAT(p.collection_date, \'%Y-%m\') AS activity_month,
+                    COUNT(ps.id) AS shipment_count,
+                    COALESCE(SUM(ps.amount_xaf), 0) AS total_cash_xaf,
+                    COALESCE(SUM(ps.weight_kg), 0) AS total_weight_kg,
+                    COUNT(DISTINCT LOWER(TRIM(ps.consignor))) AS unique_senders
+             FROM pickup_sheets p
+             INNER JOIN pickup_shipments ps ON ps.pickup_sheet_id = p.id
+             WHERE p.deleted_at IS NULL
+               AND p.collection_date >= :trend_start
+               AND p.collection_date <= :today
+             GROUP BY DATE_FORMAT(p.collection_date, \'%Y-%m\')
+             ORDER BY activity_month',
+        );
+        $monthlyStatement->execute(['trend_start' => $trendStart, 'today' => $todayString]);
+        $monthlyRows = [];
+        foreach ($monthlyStatement->fetchAll() as $row) {
+            $monthlyRows[(string) $row['activity_month']] = [
+                'month' => (string) $row['activity_month'],
+                'shipmentCount' => (int) $row['shipment_count'],
+                'totalCashXaf' => (int) $row['total_cash_xaf'],
+                'totalWeightKg' => round((float) $row['total_weight_kg'], 3),
+                'uniqueSenders' => (int) $row['unique_senders'],
+            ];
+        }
+        $monthly = [];
+        for ($monthIndex = 0; $monthIndex < $trendMonths; $monthIndex++) {
+            $month = $trendStartDate->modify('+' . $monthIndex . ' months')->format('Y-m');
+            $monthly[] = $monthlyRows[$month] ?? [
+                'month' => $month,
+                'shipmentCount' => 0,
+                'totalCashXaf' => 0,
+                'totalWeightKg' => 0.0,
+                'uniqueSenders' => 0,
+            ];
+        }
+
+        $destinationStatement = $this->connection->prepare(
+            'SELECT ps.destination AS destination,
+                    COUNT(*) AS shipment_count,
+                    COALESCE(SUM(ps.amount_xaf), 0) AS total_cash_xaf,
+                    COALESCE(SUM(ps.weight_kg), 0) AS total_weight_kg
+             FROM pickup_shipments ps
+             INNER JOIN pickup_sheets p ON p.id = ps.pickup_sheet_id
+             WHERE p.deleted_at IS NULL
+               AND p.collection_date >= :trend_start
+               AND p.collection_date <= :today
+             GROUP BY ps.destination
+             ORDER BY shipment_count DESC, total_cash_xaf DESC, destination ASC
+             LIMIT :limit',
+        );
+        $destinationStatement->bindValue(':trend_start', $trendStart);
+        $destinationStatement->bindValue(':today', $todayString);
+        $destinationStatement->bindValue(':limit', $destinationLimit, PDO::PARAM_INT);
+        $destinationStatement->execute();
+        $destinations = array_map(static fn (array $row): array => [
+            'destination' => (string) $row['destination'],
+            'shipmentCount' => (int) $row['shipment_count'],
+            'totalCashXaf' => (int) $row['total_cash_xaf'],
+            'totalWeightKg' => round((float) $row['total_weight_kg'], 3),
+        ], $destinationStatement->fetchAll());
+
+        $retentionStatement = $this->connection->prepare(
+            'SELECT COUNT(*) AS unique_senders,
+                    COALESCE(SUM(sender_shipments.shipment_count > 1), 0) AS repeat_senders
+             FROM (
+                 SELECT COUNT(*) AS shipment_count
+                 FROM pickup_shipments ps
+                 INNER JOIN pickup_sheets p ON p.id = ps.pickup_sheet_id
+                 WHERE p.deleted_at IS NULL
+                   AND p.collection_date >= :trend_start
+                   AND p.collection_date <= :today
+                 GROUP BY LOWER(TRIM(ps.consignor))
+             ) sender_shipments',
+        );
+        $retentionStatement->execute(['trend_start' => $trendStart, 'today' => $todayString]);
+        $retention = $retentionStatement->fetch() ?: [];
+
+        return [
+            'comparisonDays' => $comparisonDays,
+            'trendMonths' => $trendMonths,
+            'current' => $current,
+            'previous' => $previous,
+            'monthly' => $monthly,
+            'destinations' => $destinations,
+            'repeatSenderCount' => (int) ($retention['repeat_senders'] ?? 0),
+            'trendUniqueSenders' => (int) ($retention['unique_senders'] ?? 0),
+        ];
     }
 
     public function consignorSuggestions(string $query, int $limit): array

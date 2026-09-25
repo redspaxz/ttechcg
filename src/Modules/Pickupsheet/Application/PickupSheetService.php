@@ -86,6 +86,67 @@ final class PickupSheetService
         );
     }
 
+    /**
+     * Build decision-ready market indicators without treating recorded cash as recognized revenue.
+     *
+     * @return array<string, mixed>
+     */
+    public function marketAnalysis(int $comparisonDays = 90, int $trendMonths = 12, int $destinationLimit = 8): array
+    {
+        $comparisonDays = max(30, min($comparisonDays, 365));
+        $trendMonths = max(3, min($trendMonths, 24));
+        $destinationLimit = max(3, min($destinationLimit, 12));
+        $analysis = $this->repository->marketAnalysis($comparisonDays, $trendMonths, $destinationLimit);
+        $current = $analysis['current'];
+        $previous = $analysis['previous'];
+        $trendShipments = array_sum(array_map(
+            static fn (array $row): int => (int) ($row['shipmentCount'] ?? 0),
+            $analysis['monthly'],
+        ));
+        $topDestinationShipments = (int) ($analysis['destinations'][0]['shipmentCount'] ?? 0);
+
+        $growth = static function (int|float $currentValue, int|float $previousValue): ?float {
+            if ((float) $previousValue === 0.0) {
+                return (float) $currentValue === 0.0 ? 0.0 : null;
+            }
+
+            return round((((float) $currentValue - (float) $previousValue) / (float) $previousValue) * 100, 1);
+        };
+
+        $analysis['growth'] = [
+            'shipmentPercent' => $growth($current['shipmentCount'], $previous['shipmentCount']),
+            'cashPercent' => $growth($current['totalCashXaf'], $previous['totalCashXaf']),
+            'weightPercent' => $growth($current['totalWeightKg'], $previous['totalWeightKg']),
+            'senderPercent' => $growth($current['uniqueSenders'], $previous['uniqueSenders']),
+        ];
+        $analysis['metrics'] = [
+            'averageCashPerShipmentXaf' => $current['shipmentCount'] > 0
+                ? (int) round($current['totalCashXaf'] / $current['shipmentCount'])
+                : 0,
+            'cashPerKgXaf' => $current['totalWeightKg'] > 0
+                ? (int) round($current['totalCashXaf'] / $current['totalWeightKg'])
+                : 0,
+            'paymentRatePercent' => $current['sheetCount'] > 0
+                ? round(($current['paidSheetCount'] / $current['sheetCount']) * 100, 1)
+                : 0.0,
+            'repeatSenderRatePercent' => $analysis['trendUniqueSenders'] > 0
+                ? round(($analysis['repeatSenderCount'] / $analysis['trendUniqueSenders']) * 100, 1)
+                : 0.0,
+            'topDestinationSharePercent' => $trendShipments > 0
+                ? round(($topDestinationShipments / $trendShipments) * 100, 1)
+                : 0.0,
+        ];
+
+        foreach ($analysis['destinations'] as &$destination) {
+            $destination['shipmentSharePercent'] = $trendShipments > 0
+                ? round(((int) $destination['shipmentCount'] / $trendShipments) * 100, 1)
+                : 0.0;
+        }
+        unset($destination);
+
+        return $analysis;
+    }
+
     /** @return list<string> */
     public function consignorSuggestions(string $query = '', int $limit = 50): array
     {

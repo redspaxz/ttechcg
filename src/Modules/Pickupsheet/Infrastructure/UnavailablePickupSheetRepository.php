@@ -65,6 +65,11 @@ final class UnavailablePickupSheetRepository implements PickupSheetRepository
         throw new RuntimeException('Pickup-sheet storage is unavailable.');
     }
 
+    public function marketAnalysis(int $comparisonDays, int $trendMonths, int $destinationLimit): array
+    {
+        throw new RuntimeException('Pickup-sheet storage is unavailable.');
+    }
+
     public function consignorSuggestions(string $query, int $limit): array
     {
         throw new RuntimeException('Pickup-sheet storage is unavailable.');

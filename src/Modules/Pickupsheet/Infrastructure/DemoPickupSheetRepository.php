@@ -231,6 +231,118 @@ final class DemoPickupSheetRepository implements PickupSheetRepository
         return array_slice($senders, 0, max(1, min($limit, 10)));
     }
 
+    public function marketAnalysis(int $comparisonDays, int $trendMonths, int $destinationLimit): array
+    {
+        $today = new DateTimeImmutable('today');
+        $currentStart = $today->modify('-' . ($comparisonDays - 1) . ' days')->format('Y-m-d');
+        $previousEnd = $today->modify('-' . $comparisonDays . ' days')->format('Y-m-d');
+        $previousStart = $today->modify('-' . (($comparisonDays * 2) - 1) . ' days')->format('Y-m-d');
+        $trendStartDate = $today->modify('first day of -' . ($trendMonths - 1) . ' months');
+        $trendStart = $trendStartDate->format('Y-m-d');
+        $todayString = $today->format('Y-m-d');
+        $periodTemplate = [
+            'sheetCount' => 0,
+            'shipmentCount' => 0,
+            'totalCashXaf' => 0,
+            'totalWeightKg' => 0.0,
+            'totalPieces' => 0,
+            'paidSheetCount' => 0,
+            'uniqueSenders' => 0,
+            'senderKeys' => [],
+        ];
+        $periods = ['current' => $periodTemplate, 'previous' => $periodTemplate];
+        $monthly = [];
+        for ($monthIndex = 0; $monthIndex < $trendMonths; $monthIndex++) {
+            $month = $trendStartDate->modify('+' . $monthIndex . ' months')->format('Y-m');
+            $monthly[$month] = [
+                'month' => $month,
+                'shipmentCount' => 0,
+                'totalCashXaf' => 0,
+                'totalWeightKg' => 0.0,
+                'uniqueSenders' => 0,
+                'senderKeys' => [],
+            ];
+        }
+        $destinations = [];
+        $trendSenderCounts = [];
+
+        foreach ($this->recent(PHP_INT_MAX) as $sheet) {
+            if (!$sheet instanceof PickupSheet || $sheet->collectionDate > $todayString) {
+                continue;
+            }
+
+            $periodKey = match (true) {
+                $sheet->collectionDate >= $currentStart => 'current',
+                $sheet->collectionDate >= $previousStart && $sheet->collectionDate <= $previousEnd => 'previous',
+                default => null,
+            };
+            if ($periodKey !== null) {
+                $periods[$periodKey]['sheetCount']++;
+                $periods[$periodKey]['paidSheetCount'] += $sheet->isPaid() ? 1 : 0;
+            }
+
+            $inTrend = $sheet->collectionDate >= $trendStart;
+            $monthKey = substr($sheet->collectionDate, 0, 7);
+            foreach ($sheet->shipments as $shipment) {
+                $senderKey = strtolower(trim($shipment->consignor));
+                if ($periodKey !== null) {
+                    $periods[$periodKey]['shipmentCount']++;
+                    $periods[$periodKey]['totalCashXaf'] += $shipment->amountXaf;
+                    $periods[$periodKey]['totalWeightKg'] += (float) $shipment->weightKg;
+                    $periods[$periodKey]['totalPieces'] += $shipment->pieces;
+                    $periods[$periodKey]['senderKeys'][$senderKey] = true;
+                }
+                if (!$inTrend || !isset($monthly[$monthKey])) {
+                    continue;
+                }
+
+                $monthly[$monthKey]['shipmentCount']++;
+                $monthly[$monthKey]['totalCashXaf'] += $shipment->amountXaf;
+                $monthly[$monthKey]['totalWeightKg'] += (float) $shipment->weightKg;
+                $monthly[$monthKey]['senderKeys'][$senderKey] = true;
+                $trendSenderCounts[$senderKey] = ($trendSenderCounts[$senderKey] ?? 0) + 1;
+                $destination = strtoupper(trim($shipment->destination));
+                $destinations[$destination] ??= [
+                    'destination' => $destination,
+                    'shipmentCount' => 0,
+                    'totalCashXaf' => 0,
+                    'totalWeightKg' => 0.0,
+                ];
+                $destinations[$destination]['shipmentCount']++;
+                $destinations[$destination]['totalCashXaf'] += $shipment->amountXaf;
+                $destinations[$destination]['totalWeightKg'] += (float) $shipment->weightKg;
+            }
+        }
+
+        foreach (['current', 'previous'] as $periodKey) {
+            $periods[$periodKey]['uniqueSenders'] = count($periods[$periodKey]['senderKeys']);
+            $periods[$periodKey]['totalWeightKg'] = round((float) $periods[$periodKey]['totalWeightKg'], 3);
+            unset($periods[$periodKey]['senderKeys']);
+        }
+        foreach ($monthly as &$month) {
+            $month['uniqueSenders'] = count($month['senderKeys']);
+            $month['totalWeightKg'] = round((float) $month['totalWeightKg'], 3);
+            unset($month['senderKeys']);
+        }
+        unset($month);
+        usort($destinations, static function (array $left, array $right): int {
+            return ($right['shipmentCount'] <=> $left['shipmentCount'])
+                ?: ($right['totalCashXaf'] <=> $left['totalCashXaf'])
+                ?: strcmp($left['destination'], $right['destination']);
+        });
+
+        return [
+            'comparisonDays' => $comparisonDays,
+            'trendMonths' => $trendMonths,
+            'current' => $periods['current'],
+            'previous' => $periods['previous'],
+            'monthly' => array_values($monthly),
+            'destinations' => array_slice($destinations, 0, $destinationLimit),
+            'repeatSenderCount' => count(array_filter($trendSenderCounts, static fn (int $count): bool => $count > 1)),
+            'trendUniqueSenders' => count($trendSenderCounts),
+        ];
+    }
+
     public function consignorSuggestions(string $query, int $limit): array
     {
         $senders = [];

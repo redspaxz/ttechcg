@@ -355,6 +355,13 @@ $senderPerformanceService->submit([
 ]);
 $assert($senderPerformanceService->consignorSuggestions('A', 12) === ['ACB Query Sender', 'ABC Query Sender'], 'Autocomplete should reject non-prefix matches and rank a more frequently used matching consignor first.');
 $assert($senderPerformanceService->consignorSuggestions('ABC Query Sender', 12) === ['ABC Query Sender'], 'An exact consignor query should receive the highest relevance priority.');
+$marketAnalysis = $senderPerformanceService->marketAnalysis(90, 12, 8);
+$assert(($marketAnalysis['current']['shipmentCount'] ?? 0) === 22 && ($marketAnalysis['current']['totalCashXaf'] ?? 0) === 22000, 'Market analysis should aggregate the latest comparison period from shipment-level records.');
+$assert(($marketAnalysis['current']['uniqueSenders'] ?? 0) === 15 && ($marketAnalysis['trendUniqueSenders'] ?? 0) === 15, 'Market analysis should group sender casing and report active market participants.');
+$assert(array_key_exists('shipmentPercent', $marketAnalysis['growth']) && $marketAnalysis['growth']['shipmentPercent'] === null && $marketAnalysis['growth']['cashPercent'] === null, 'Market growth should identify a new baseline when the preceding period has no activity.');
+$assert(($marketAnalysis['metrics']['averageCashPerShipmentXaf'] ?? 0) === 1000 && ($marketAnalysis['metrics']['cashPerKgXaf'] ?? 0) === 2000, 'Market efficiency should calculate average cash per shipment and per kilogram.');
+$assert(($marketAnalysis['metrics']['repeatSenderRatePercent'] ?? 0) === 26.7 && ($marketAnalysis['metrics']['topDestinationSharePercent'] ?? 0) === 100.0, 'Market analysis should calculate repeat-sender and leading-lane concentration rates.');
+$assert(count($marketAnalysis['monthly'] ?? []) === 12 && ($marketAnalysis['destinations'][0]['destination'] ?? '') === 'DLA', 'Market analysis should produce a complete twelve-month series and ranked destination mix.');
 $_SESSION['_demo_pickup_sheets'] = $existingDemoPickupSheets;
 
 $pickupConsentFailed = false;
@@ -1681,6 +1688,9 @@ $adminDashboard = $pickupController->dashboard(new Request('GET', '/dhl/pickupsh
 $assert($adminDashboard->status() === 200, 'An administrator should open the KPI dashboard.');
 $assert(str_contains($adminDashboard->body(), '14,000'), 'The KPI dashboard should reflect the administrator-corrected cash activity.');
 $assert(str_contains($adminDashboard->body(), '<span>Unpaid balance</span><strong class="pickup-kpi-amount">0</strong><small>XAF open in the last 3 months</small>'), 'The dashboard should render unpaid balance as a KPI card.');
+$assert(str_contains($adminDashboard->body(), 'Performance and market analysis') && str_contains($adminDashboard->body(), 'Previous period:') && str_contains($adminDashboard->body(), 'pickup-market-growth') && str_contains($adminDashboard->body(), 'New baseline'), 'The administrator dashboard should compare current market activity with the preceding period and identify a missing historical baseline.');
+$assert(str_contains($adminDashboard->body(), 'Pieces handled') && str_contains($adminDashboard->body(), 'Cash per shipment') && str_contains($adminDashboard->body(), 'Payment conversion') && str_contains($adminDashboard->body(), 'Repeat sender rate'), 'The market dashboard should expose volume, efficiency, settlement, and retention indicators.');
+$assert(str_contains($adminDashboard->body(), '12-month activity trend') && str_contains($adminDashboard->body(), 'Leading shipment lanes') && str_contains($adminDashboard->body(), 'Operational records only'), 'The market dashboard should provide a detailed monthly trend, destination mix, and an internal-data scope disclaimer.');
 $assert(str_contains($adminDashboard->body(), 'pickup-activity-chart'), 'The dashboard should render its activity graph without client-side chart dependencies.');
 $assert(substr_count($adminDashboard->body(), 'class="pickup-activity-axis-label"') === 5 && str_contains($adminDashboard->body(), '>0</text>'), 'The daily cash graph should render a readable five-level numeric vertical scale.');
 $assert(str_contains($adminDashboard->body(), 'pickup-cash-pie-chart') && str_contains($adminDashboard->body(), '<dt>Total cash recorded</dt><dd>14,000 XAF</dd>') && str_contains($adminDashboard->body(), '<dt>Unpaid balance <small>0% of total</small></dt><dd>0 XAF</dd>'), 'The administrator dashboard should chart total recorded cash and the current unpaid balance.');
@@ -2196,7 +2206,7 @@ $assert(is_string($dhlAsset) && !str_contains($dhlAsset, '<text'), 'The disquali
 $partnerSources = file_get_contents(dirname(__DIR__) . '/public/assets/partners/README.md');
 $assert(is_string($partnerSources) && str_contains($partnerSources, 'www.dhl.com/content/dam/dhl/global/core/images/logos/dhl-logo.svg'), 'The official DHL artwork source should be documented.');
 $assert(!str_contains($home, 'href="/dhl/pickupsheet"'), 'Pickupsheet should not be discoverable from the public site chrome or homepage.');
-$assert(str_contains($home, 'styles.css?v=20260909-dashboard-card-padding'), 'Consistently padded dashboard cards and prior Pickupsheet refinements should use a cache-safe stylesheet version.');
+$assert(str_contains($home, 'styles.css?v=20260925-market-analysis'), 'Market-performance dashboard styles and prior Pickupsheet refinements should use a cache-safe stylesheet version.');
 $assert(str_contains($home, 'app.js?v=20260909-audit-log-accordion'), 'AJAX audit-log accordions and prior OWASP-aligned interactions should use a cache-safe script version.');
 $assert(str_contains($home, 'analytics.js?v=20260825-security-hardening'), 'The current consent-aware Google Analytics loader should render on every page.');
 $assert(str_contains($home, 'data-analytics-accept'), 'The site should offer an explicit analytics acceptance control.');
@@ -2430,6 +2440,8 @@ $assert(is_string($styles) && str_contains($styles, '.pickup-mfa-setup') && str_
 $assert(is_string($styles) && str_contains($styles, '/* Signed-in user settings */') && str_contains($styles, '.pickup-settings-grid') && str_contains($styles, '.pickup-settings-status[data-enabled="true"]'), 'Signed-in account and 2FA settings should have a dedicated responsive visual system.');
 $assert(is_string($styles) && str_contains($styles, '/* Pickupsheet login portal */'), 'Pickupsheet should have a dedicated responsive login portal.');
 $assert(is_string($styles) && str_contains($styles, '.pickup-admin-workspace') && str_contains($styles, '.pickup-kpi-grid'), 'The administrator should have a dedicated KPI control-panel layout.');
+$assert(is_string($styles) && str_contains($styles, '.pickup-market-growth') && str_contains($styles, '.pickup-market-efficiency') && str_contains($styles, '.pickup-market-detail-grid'), 'Market performance should use responsive comparison, efficiency, and detail layouts.');
+$assert(is_string($styles) && str_contains($styles, '.pickup-market-months') && str_contains($styles, '.pickup-market-lanes') && str_contains($styles, 'grid-template-columns: repeat(2, minmax(0, 1fr));'), 'Monthly trends and destination mix should adapt without fixed-width dashboard overflow.');
 $assert(is_string($styles) && str_contains($styles, '.pickup-cash-status-layout') && str_contains($styles, '.pickup-cash-pie-unpaid') && str_contains($styles, '.pickup-cash-status-values') && str_contains($styles, 'stroke-width: 58;'), 'The administrator cash-status chart should render as a responsive, labeled, fully filled pie.');
 $assert(is_string($styles) && str_contains($styles, '.shipment-editor > *') && str_contains($styles, 'max-width: 1180px;'), 'The cash-shipment editor should be centered within the available screen width.');
 $assert(is_string($styles) && str_contains($styles, '.shipment-editor-heading > div { grid-column: 2; text-align: center; }'), 'The Cash Shipments heading should remain visually centered beside its row action.');
@@ -2539,6 +2551,9 @@ $assert(str_contains($pickupMysqlRepository, 'pickup_sheet_lifecycle_audit'), 'P
 $assert(str_contains($pickupMysqlRepository, 'GROUP BY LOWER(TRIM(ps.consignor))'), 'MySQL sender performance should group sender name casing consistently.');
 $assert(str_contains($pickupMysqlRepository, 'p.collection_date >= :minimum_date') && str_contains($pickupMysqlRepository, 'p.collection_date <= :maximum_date'), 'MySQL sender performance should use a bounded rolling collection-date window.');
 $assert(str_contains($pickupMysqlRepository, 'ORDER BY shipment_count DESC, sender ASC'), 'MySQL sender performance should rank the most frequent senders first with deterministic ties.');
+$assert(str_contains($pickupMysqlRepository, 'public function marketAnalysis') && str_contains($pickupMysqlRepository, 'COUNT(DISTINCT LOWER(TRIM(ps.consignor))) AS unique_senders'), 'MySQL market analysis should calculate normalized active-sender counts.');
+$assert(str_contains($pickupMysqlRepository, "COUNT(DISTINCT CASE WHEN p.status = \\'paid\\' THEN p.id END) AS paid_sheet_count") && str_contains($pickupMysqlRepository, 'SUM(sender_shipments.shipment_count > 1)'), 'MySQL market analysis should calculate payment conversion and repeat-sender retention inputs.');
+$assert(str_contains($pickupMysqlRepository, "DATE_FORMAT(p.collection_date, \\'%Y-%m\\') AS activity_month") && str_contains($pickupMysqlRepository, 'ORDER BY shipment_count DESC, total_cash_xaf DESC, destination ASC'), 'MySQL market analysis should provide monthly momentum and deterministic destination ranking.');
 $assert(str_contains($pickupMysqlRepository, 'public function consignorSuggestions') && str_contains($pickupMysqlRepository, 'ORDER BY relevance_score DESC, LOWER(consignor) ASC, consignor ASC'), 'MySQL should rank matching consignors by relevance with deterministic alphabetical ties.');
 $assert(str_contains($pickupMysqlRepository, 'LEFT(LOWER(TRIM(ps.consignor)), CHAR_LENGTH(LOWER(:query_length))) = LOWER(:query_prefix)'), 'MySQL consignor autocomplete should enforce a normalized prefix match without wildcard input.');
 $assert(str_contains($pickupMysqlRepository, 'LEAST(COUNT(*), 9999) * 100') && str_contains($pickupMysqlRepository, 'DATEDIFF(UTC_DATE(), MAX(p.collection_date))'), 'MySQL relevance scoring should safely combine exact-match, bounded frequency, and recency signals.');
