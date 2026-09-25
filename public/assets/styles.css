@@ -672,6 +672,7 @@ html, body { background: var(--paper); color: var(--ink); }
 .values-grid h3,
 .benefit-grid h3,
 .legal-copy h2 { color: var(--ink); }
+.legal-grid aside strong { color: var(--ink); }
 .text-link { border-color: var(--ink); color: var(--ink); }
 .hero-visual { background: var(--cream); }
 .signal-core { background: var(--ink); color: var(--navy); }
@@ -1077,6 +1078,7 @@ button, a, input, select, textarea { -webkit-tap-highlight-color: transparent; }
 /* Pickupsheet admin control panel */
 .pickup-admin-workspace { min-height: 100vh; padding: 34px 0 96px; background: #0b0b0c; color: #f5f5f3; }
 .pickup-admin-workspace .pickup-wordmark,
+.pickup-admin-workspace .pickup-back,
 .pickup-admin-workspace .pickup-session-user,
 .pickup-admin-workspace .pickup-link-button { color: #f5f5f3; }
 .pickup-admin-header { border-color: rgba(255, 255, 255, 0.16); }
@@ -1342,7 +1344,9 @@ button, a, input, select, textarea { -webkit-tap-highlight-color: transparent; }
 
 @media (max-width: 960px) {
     .pickup-login-shell { grid-template-columns: 1fr; }
-    .pickup-login-aside { min-height: 420px; }
+    .pickup-login-shell { min-height: 0; }
+    .pickup-login-panel { justify-content: flex-start; }
+    .pickup-login-aside { min-height: 0; justify-content: flex-start; gap: 40px; }
     .pickup-admin-actions,
     .pickup-kpi-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); }
     .pickup-admin-actions a { border-bottom: 1px solid #333; }
@@ -1405,7 +1409,9 @@ button, a, input, select, textarea { -webkit-tap-highlight-color: transparent; }
     .pickup-login-panel,
     .pickup-login-aside { padding: 34px 22px; }
     .pickup-login-copy { margin-block: 52px 28px; }
-    .pickup-login-aside { min-height: 330px; }
+    .pickup-login-aside { gap: 28px; }
+    .pickup-login-aside strong,
+    .pickup-mfa-aside strong { font-size: clamp(2.6rem, 13vw, 3.6rem); }
     .pickup-admin-shell { padding-top: 42px; }
     .pickup-dashboard-shell { --dashboard-card-padding-block: 17px; --dashboard-card-padding-inline: 17px; padding-top: 34px; }
     .pickup-admin-heading { align-items: flex-start; flex-direction: column; }
@@ -1652,6 +1658,7 @@ button, a, input, select, textarea { -webkit-tap-highlight-color: transparent; }
     .values-grid article,
     .benefit-grid article { border-left: 1px solid var(--line); }
     .values-grid article { min-height: 0; }
+    .values-grid h3 { margin-top: 20px; }
 
     .inline-cta { padding: 40px 0; }
     .inline-cta p { font-size: 1.02rem; }
@@ -1670,7 +1677,8 @@ button, a, input, select, textarea { -webkit-tap-highlight-color: transparent; }
     .button-submit { width: 100%; justify-content: space-between; min-height: 52px; }
 
     .pickup-hero-grid { padding-top: 40px; }
-    .pickup-back { width: 100%; min-height: 44px; align-items: center; justify-content: space-between; }
+    .pickup-back { flex: 1 1 calc(50% - 7px); min-width: 0; min-height: 44px; align-items: center; justify-content: space-between; gap: 10px; }
+    .pickup-header-links .pickup-session-user { flex-basis: 100%; }
     .product-brand-large img { width: 110px; }
     .pickup-dashboard { padding: 14px; }
     .dashboard-metrics article { padding: 12px; }
@@ -2103,6 +2111,8 @@ button, a, input, select, textarea { -webkit-tap-highlight-color: transparent; }
 .pickup-add-row:hover,
 .shipment-row-action button:hover { border-color: var(--dhl-red); color: var(--dhl-red); }
 .shipment-scroll-hint { display: none; }
+.shipment-editor-note { margin: 0 0 10px; color: #655000; font-size: 0.72rem; line-height: 1.55; }
+.shipment-editor-note + .shipment-table-wrap { margin-top: 16px; }
 .shipment-table-wrap {
     width: 100%;
     margin-inline: auto;
@@ -2272,6 +2282,9 @@ button, a, input, select, textarea { -webkit-tap-highlight-color: transparent; }
 }
 .pickup-consent span { color: #493800; }
 .pickup-consent a { color: #241b00; font-weight: 800; }
+.pickup-form .pickup-consent { display: grid; grid-template-columns: 20px minmax(0, 1fr); align-items: start; gap: 12px; }
+.pickup-form .pickup-consent input { width: 18px; height: 18px; min-height: 18px; margin: 2px 0 0; padding: 0; accent-color: var(--dhl-red); }
+.pickup-form .pickup-consent span { font-size: 0.76rem; font-weight: 600; letter-spacing: 0; line-height: 1.6; text-transform: none; }
 .pickup-submit-row {
     display: flex;
     align-items: center;
@@ -2878,14 +2891,12 @@ button, a, input, select, textarea { -webkit-tap-highlight-color: transparent; }
     .pickup-customer-shell { width: min(100% - 28px, 1220px); padding-top: 38px; }
     .pickup-crm-heading { align-items: flex-start; flex-direction: column; }
     .pickup-crm-add { width: 100%; }
-    .pickup-crm-kpis,
-    .pickup-customer-metrics,
     .pickup-crm-filter,
     .pickup-customer-form fieldset { grid-template-columns: 1fr; }
     .pickup-crm-kpis article,
-    .pickup-customer-metrics article { min-height: 120px; border-right: 0; border-bottom: 1px solid rgba(69, 50, 0, 0.22); }
-    .pickup-crm-kpis article:last-child,
-    .pickup-customer-metrics article:last-child { border-bottom: 0; }
+    .pickup-customer-metrics article { min-height: 0; padding: 16px; }
+    .pickup-crm-kpis strong,
+    .pickup-customer-metrics strong { margin: 12px 0 4px; font-size: clamp(1.35rem, 7vw, 1.9rem); }
     .pickup-customer-form { padding: 22px 16px; }
     .pickup-crm-directory-content > .pickup-card-heading,
     .pickup-customer-history-content > .pickup-card-heading { padding: 16px; }
@@ -2896,7 +2907,8 @@ button, a, input, select, textarea { -webkit-tap-highlight-color: transparent; }
     .pickup-customer-form-actions .button { width: 100%; }
     .pickup-reward-summary,
     .pickup-reward-form { grid-template-columns: 1fr; }
-    .pickup-reward-summary article { min-height: 110px; border-right: 0; border-bottom: 1px solid rgba(69, 50, 0, 0.18); }
+    .pickup-reward-summary article { min-height: 0; padding: 16px 18px; border-right: 0; border-bottom: 1px solid rgba(69, 50, 0, 0.18); }
+    .pickup-reward-summary strong { margin: 10px 0 4px; }
     .pickup-reward-summary article:last-child { border-bottom: 0; }
     .pickup-reward-form > div,
     .pickup-reward-reason { grid-column: auto; }

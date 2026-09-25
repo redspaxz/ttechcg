@@ -100,8 +100,8 @@ $renderShipmentRow = static function (int|string $index, mixed $row = []) use ($
                     <button class="pickup-add-row" type="button" data-add-shipment>+ Add shipment</button>
                 </div>
                 <p class="shipment-scroll-hint">On a small screen, each shipment appears as a separate entry card.</p>
-                <p id="consignor-suggestion-help">Start typing the beginning of a consignor name. Existing matches prioritize exact, frequent, and recent senders; you can still enter a new name.</p>
-                <p>Time collected is recorded automatically when this pickup sheet is submitted.</p>
+                <p class="shipment-editor-note" id="consignor-suggestion-help">Start typing the beginning of a consignor name. Existing matches prioritize exact, frequent, and recent senders; you can still enter a new name.</p>
+                <p class="shipment-editor-note">Time collected is recorded automatically when this pickup sheet is submitted.</p>
                 <div class="shipment-table-wrap">
                     <table class="shipment-table">
                         <thead>
