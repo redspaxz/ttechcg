@@ -219,9 +219,10 @@ final class CustomerController
         $_SESSION['_crm_old'] = $input;
 
         try {
-            $previousDisplayName = $canEditNames && preg_match('/^[a-f0-9]{64}$/', $key) === 1
-                ? $this->service->find($key)?->displayName
+            $previousProfile = $canEditNames && preg_match('/^[a-f0-9]{64}$/', $key) === 1
+                ? $this->service->find($key)
                 : null;
+            $previousDisplayName = $previousProfile?->displayName;
             $saved = $canEditNames
                 ? $this->service->save($key === '' ? null : $key, $input, $this->actorId($principal))
                 : $this->service->updateDetailsWithoutNames($key, $input, $this->actorId($principal));
@@ -229,7 +230,12 @@ final class CustomerController
                 && trim($previousDisplayName) !== trim($saved->displayName);
             unset($_SESSION['_crm_old'], $_SESSION['_crm_errors']);
             $_SESSION['_crm_flash'] = $nameChanged
-                ? 'Customer profile and existing pickup-sheet consignor names updated.'
+                ? sprintf(
+                    'Customer profile saved. %s now appears as the consignor on %s existing pickup-sheet shipment%s.',
+                    $saved->displayName,
+                    number_format($previousProfile?->shipmentCount ?? 0),
+                    ($previousProfile?->shipmentCount ?? 0) === 1 ? '' : 's',
+                )
                 : 'Customer profile saved.';
             $this->log($request, $principal, 'pickupsheet.crm_customer_save', 'accepted', [
                 'resource_id' => substr($saved->customerKey, 0, 24),

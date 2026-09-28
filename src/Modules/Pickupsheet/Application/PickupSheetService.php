@@ -249,7 +249,8 @@ final class PickupSheetService
             }
 
             $values = [
-                'consignor' => $this->stringValue($row['consignor'] ?? ''),
+                // Collapse repeated spaces so one sender is not split into several CRM customers.
+                'consignor' => preg_replace('/\s+/u', ' ', $this->stringValue($row['consignor'] ?? '')) ?? '',
                 'awb_number' => preg_replace('/\s+/', '', $this->stringValue($row['awb_number'] ?? '')) ?? '',
                 'destination' => strtoupper($this->stringValue($row['destination'] ?? '')),
                 'amount' => str_replace([',', ' '], '', $this->stringValue($row['amount'] ?? '')),

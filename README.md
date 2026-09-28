@@ -281,6 +281,8 @@ One organization should have one customer profile. The CRM enforces this in four
 
 **Shipment synchronization.** Consignors are grouped with the same collation, so spelling variants on sheets become one profile. Profile keys come from the first name a profile was created with. A renamed profile keeps its key, so a new sender who later uses the old name gets a random key instead of colliding. Autocomplete requests do not synchronize; the CRM pages and the add form do that when they open.
 
+**Renaming.** Renaming a customer updates the consignor on every existing shipment for that customer, on open, paid and deleted sheets. Matching ignores case, accents and surrounding spaces, and the confirmation says how many shipments changed. New sheets collapse repeated spaces in consignor names, and migration 020 collapses them on existing shipments and profiles, folding profiles that differed only by spacing. A spelling that differs in any other way, such as added punctuation, is a separate customer: merge it first so a rename covers its sheets too.
+
 **Reviewed merges.** Administrators see "Possible duplicate customers" on the CRM page:
 
 - every profile is checked. Names are compared only within groups sharing their first or last three letters, after folding accents and expanding `co`, `corp`, `intl` and `ltd`

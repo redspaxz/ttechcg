@@ -1165,6 +1165,27 @@ $multibyteNotes = CustomerMergePolicy::merge(
 )['notes'];
 $assert(strlen($multibyteNotes) <= CustomerMergePolicy::NOTES_MAX_BYTES && preg_match('//u', $multibyteNotes) === 1, 'Merged notes should be truncated to the notes limit without splitting a UTF-8 character.');
 
+$spacedSheet = $renamePickupService->submit([
+    'agent_name' => 'CRM Spacing Test Agent',
+    'collection_date' => '2026-09-03',
+    'privacy_consent' => '1',
+    'shipments' => [[
+        'consignor' => "  Spaced   Out \t Sender ",
+        'awb_number' => '1234567892',
+        'destination' => 'DLA',
+        'amount' => '3000',
+        'pieces' => '1',
+        'weight_kg' => '1',
+        'checked_by' => 'CRM Spacing Checker',
+    ]],
+]);
+$assert($spacedSheet->shipments[0]->consignor === 'Spaced Out Sender', 'Pickup sheets should collapse repeated spaces in consignor names so one sender maps to one CRM customer.');
+$renamePickupService->markPaid($spacedSheet->referenceNumber, 'RCPT-SPACED-1', str_repeat('a', 24));
+$renameCustomerService->synchronize();
+$spacedCustomer = $renameCustomerService->existingCustomer('Spaced Out Sender')['customer'];
+$renameCustomerService->save($spacedCustomer->customerKey, ['display_name' => 'Spaced Out Sender SARL', 'status' => 'active'], str_repeat('a', 24));
+$assert($renamePickupService->findByReference($spacedSheet->referenceNumber)?->shipments[0]->consignor === 'Spaced Out Sender SARL', 'Renaming a customer should also update consignors on paid pickup sheets.');
+
 $_SESSION = [];
 $leaderboardPickupRepository = new DemoPickupSheetRepository();
 $leaderboardPickupService = new PickupSheetService($leaderboardPickupRepository);
@@ -1912,6 +1933,25 @@ $saveCustomer = $customerController->save(new Request('POST', '/dhl/pickupsheet/
     'next_follow_up_on' => '2026-08-30',
 ]));
 $assert($saveCustomer->status() === 303 && str_contains((string) ($saveCustomer->headers()['Location'] ?? ''), $customerKey), 'An administrator should save an enriched CRM customer profile.');
+$renameControllerCustomer = static fn (string $name): Response => $customerController->save(new Request('POST', '/dhl/pickupsheet/customers/save', [], [
+    '_token' => $pickupCsrf->token(),
+    'customer_key' => $customerKey,
+    'display_name' => $name,
+    'contact_name' => 'Camille Customer',
+    'email' => 'camille@example.com',
+    'phone' => '670 000 000',
+    'address' => 'Commercial Avenue',
+    'city' => 'Bamenda',
+    'country_code' => 'CM',
+    'status' => 'attention',
+    'notes' => 'Confirm the next collection schedule.',
+    'next_follow_up_on' => '2026-08-30',
+]));
+$renameControllerCustomer('Controller Client Group');
+$renamedControllerProfile = $customerController->edit(new Request('GET', '/dhl/pickupsheet/customers/edit', ['customer' => $customerKey]));
+$assert(str_contains($renamedControllerProfile->body(), 'Controller Client Group now appears as the consignor on 1 existing pickup-sheet shipment.'), 'A customer rename should confirm how many existing pickup-sheet shipments now show the new name.');
+$renameControllerCustomer('Controller Client');
+$customerController->edit(new Request('GET', '/dhl/pickupsheet/customers/edit', ['customer' => $customerKey]));
 $updatedCustomerProfile = $customerController->edit(new Request('GET', '/dhl/pickupsheet/customers/edit', ['customer' => $customerKey]));
 $assert(str_contains($updatedCustomerProfile->body(), 'Camille Customer') && str_contains($updatedCustomerProfile->body(), 'camille@example.com') && str_contains($updatedCustomerProfile->body(), '670 000 000'), 'Saved CRM contact details should persist.');
 $assert(str_contains($updatedCustomerProfile->body(), 'class="pickup-customer-details"') && !str_contains($updatedCustomerProfile->body(), 'class="pickup-customer-form"') && !str_contains($updatedCustomerProfile->body(), 'name="email"'), 'A customer profile should open with read-only details instead of editable fields.');
@@ -2821,6 +2861,9 @@ $assert(is_string($customerAssignmentMigration) && str_contains($customerAssignm
 $customerDuplicateMigration = file_get_contents(dirname(__DIR__) . '/database/migrations/018_prevent_duplicate_crm_customers.sql');
 $assert(is_string($customerDuplicateMigration) && str_contains($customerDuplicateMigration, 'UNIQUE INDEX pickup_customers_name_unique_idx (display_name)'), 'CRM organization names should be protected by a database uniqueness constraint.');
 $assert(is_string($customerDuplicateMigration) && strpos($customerDuplicateMigration, 'DELETE duplicate_customer') < strpos($customerDuplicateMigration, 'ADD UNIQUE INDEX') && str_contains($customerDuplicateMigration, 'UPDATE pickup_customer_reward_adjustments'), 'Migration 018 should fold collation-equal duplicate profiles and their rewards before adding the unique index.');
+$customerSpacingMigration = file_get_contents(dirname(__DIR__) . '/database/migrations/020_collapse_customer_name_spacing.sql');
+$assert(is_string($customerSpacingMigration) && str_contains($customerSpacingMigration, "UPDATE pickup_shipments
+SET consignor = TRIM(REGEXP_REPLACE(consignor, '[[:space:]]+', ' '))") && strpos($customerSpacingMigration, 'DELETE duplicate_customer') < strpos($customerSpacingMigration, 'SET display_name = TRIM(REGEXP_REPLACE'), 'Migration 020 should collapse consignor spacing and fold spacing-variant customers before collapsing profile names.');
 $customerMergeHistoryMigration = file_get_contents(dirname(__DIR__) . '/database/migrations/019_create_pickup_customer_merge_history.sql');
 $assert(is_string($customerMergeHistoryMigration) && str_contains($customerMergeHistoryMigration, 'CREATE TABLE IF NOT EXISTS pickup_customer_aliases') && str_contains($customerMergeHistoryMigration, 'CREATE TABLE IF NOT EXISTS pickup_customer_merges'), 'Migration 019 should create CRM alias and merge-history tables idempotently.');
 $customerRepositorySource = file_get_contents(dirname(__DIR__) . '/src/Modules/CRM/Infrastructure/MysqlCustomerRepository.php');
