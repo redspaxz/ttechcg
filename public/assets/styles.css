@@ -2765,6 +2765,14 @@ button, a, input, select, textarea { -webkit-tap-highlight-color: transparent; }
 .pickup-crm-duplicate-actions form { margin: 0; }
 .pickup-crm-duplicate-actions button { width: 100%; min-height: 34px; padding: 7px 10px; border: 1px solid #493800; background: #fff; color: #352900; cursor: pointer; font: inherit; font-size: 0.64rem; font-weight: 850; text-align: left; }
 .pickup-crm-duplicate-actions button:hover, .pickup-crm-duplicate-actions button:focus { border-color: var(--dhl-red); color: var(--dhl-red); outline: 2px solid rgba(212, 5, 17, 0.12); }
+.pickup-crm-merge-list { display: grid; }
+.pickup-crm-merge-list article { display: flex; flex-wrap: wrap; gap: 12px 20px; align-items: center; justify-content: space-between; padding: 14px 20px; border-bottom: 1px solid rgba(69, 50, 0, 0.14); }
+.pickup-crm-merge-list article:last-child { border-bottom: 0; }
+.pickup-crm-merge-list form { margin: 0; }
+.pickup-crm-merge-list button { min-height: 34px; padding: 7px 14px; border: 1px solid #493800; background: #fff; color: #352900; cursor: pointer; font: inherit; font-size: 0.64rem; font-weight: 850; }
+.pickup-crm-merge-list button:hover, .pickup-crm-merge-list button:focus { border-color: var(--dhl-red); color: var(--dhl-red); outline: 2px solid rgba(212, 5, 17, 0.12); }
+.pickup-crm-existing-hint { color: #241b00; font-weight: 700; }
+.pickup-crm-existing-hint a, .pickup-crm-existing-link { color: var(--dhl-red); font-weight: 850; text-decoration: underline; }
 .pickup-crm-filter { display: grid; grid-template-columns: minmax(260px, 1.5fr) minmax(190px, 0.65fr) auto auto; gap: 14px; align-items: end; margin-bottom: 24px; padding: 20px; border: 1px solid rgba(69, 50, 0, 0.32); background: #fff7d1; }
 .pickup-crm-filter label,
 .pickup-customer-form label { display: grid; gap: 8px; }

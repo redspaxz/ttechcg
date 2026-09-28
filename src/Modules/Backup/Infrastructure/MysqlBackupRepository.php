@@ -28,6 +28,8 @@ final class MysqlBackupRepository implements BackupRepository
         'pickup_security_events',
         'pickup_customers',
         'pickup_customer_reward_adjustments',
+        'pickup_customer_aliases',
+        'pickup_customer_merges',
     ];
     /** These tables contain the primary Pickupsheet records and must exist in every backup. */
     private const REQUIRED_TABLES = [

@@ -206,6 +206,7 @@ Customer-facing operational recordkeeping and profile data:
 - organization and contact details
 - relationship history and follow-up state
 - shipment history and reward summaries
+- duplicate prevention, reviewed duplicate merges, and merge undo
 
 ### Backup
 
@@ -223,7 +224,7 @@ Encrypted application-data backup and restore with transactional safety checks.
 | Workflow control | open/paid/delete lifecycle and audit logging | Implemented |
 | Search and listings | paginated searchable submissions and AJAX fallback | Implemented |
 | Printing and export | A4 print view and native XLSX export | Implemented |
-| CRM | customer profiles, shipment history, follow-up tracking | Implemented |
+| CRM | customer profiles, shipment history, follow-up tracking, duplicate prevention, merge and undo | Implemented |
 | Loyalty | point balances, lifetime totals, tiers, adjustments | Implemented |
 | Dashboard | tabbed KPIs, market performance, operational metrics, user activity, security log | Implemented |
 | Reporting | printable A4 performance reports with selectable period and sections | Implemented |
@@ -270,6 +271,34 @@ The Reports tab builds a printable A4 report at `/dhl/pickupsheet/dashboard/repo
 
 Cash settlement always covers the last 3 months. Trend, destination, sender and repeat-sender figures always cover a rolling 12 months. The report labels these bases.
 
+### CRM duplicate customers
+
+One organization should have one customer profile. The CRM enforces this in four places.
+
+**Unique names.** `pickup_customers.display_name` has a unique index. MySQL compares names with `utf8mb4_unicode_ci`, so case, trailing spaces and accents are ignored: "Société Générale" and "societe generale" count as the same name. Migration 018 first folds any existing profiles that break this rule into the oldest one, moving their reward adjustments and filling empty contact fields. Then it adds the index.
+
+**Creating a customer.** On the add-customer form, the name field suggests existing profiles as you type. When the typed name matches an existing profile, or a name merged into one, the form links to that profile. The server also rejects the save and shows the same link.
+
+**Shipment synchronization.** Consignors are grouped with the same collation, so spelling variants on sheets become one profile. Profile keys come from the first name a profile was created with. A renamed profile keeps its key, so a new sender who later uses the old name gets a random key instead of colliding. Autocomplete requests do not synchronize; the CRM pages and the add form do that when they open.
+
+**Reviewed merges.** Administrators see "Possible duplicate customers" on the CRM page:
+
+- every profile is checked. Names are compared only within groups sharing their first or last three letters, after folding accents and expanding `co`, `corp`, `intl` and `ltd`
+- a pair needs a name-match score of at least 88. Names that differ in any number, such as "Douala Branch 1" and "Douala Branch 2", are never suggested or merged
+- a merge moves shipments, reward adjustments and aliases to the kept profile. Empty contact fields are filled from the other profile; conflicting values and notes are added to the kept profile's notes, cut to 2,000 bytes without splitting a character
+- the merged-away name becomes an alias of the kept profile. Shipments later entered under that name are moved to the kept profile at the next synchronization, and the name cannot be used for a new profile
+
+**Undo.** "Recent merges" lists merges that can still be undone. Undo:
+
+- recreates the merged profile with its original key and details
+- moves its reward adjustments and aliases back
+- hands back the shipments the merge moved, identified by sheet and line, if they still name the kept profile
+- restores fields on the kept profile that nobody has edited since the merge
+
+It will not undo when another profile now uses the original name, or when the kept profile has since been merged into another one; undo that later merge first. Shipments entered under the old name after the merge stay with the kept profile.
+
+Merge history is stored in `pickup_customer_merges`, with a JSON snapshot per merge, and aliases in `pickup_customer_aliases` (migration 019). Both tables are included in encrypted backups. Merges and undos are rate limited, need a CSRF token and the `crm` permission, and are recorded in the security log as `pickupsheet.crm_customer_merge` and `pickupsheet.crm_customer_merge_undo`.
+
 ## Security and operational expectations
 
 This project is designed with security controls built in:
@@ -294,7 +323,7 @@ Use this checklist before promoting the application to a production environment:
 5. Set `CONTACT_EMAIL` and `CONTACT_FROM_EMAIL` to approved production addresses.
 6. Configure local login, MFA, and storage keys only if the environment is ready for the required security controls.
 7. Configure JumpCloud OIDC and/or Cloudflare Access only after confirming issuer, callback, and RBAC settings.
-8. Set `RUN_MIGRATIONS` only for intentional schema updates; keep it disabled for normal production operation.
+8. Set `RUN_MIGRATIONS` only for intentional schema updates; keep it disabled for normal production operation. Back up the database before migration 018, which merges existing CRM profiles whose names are equal under the database collation.
 9. Validate writable permissions for `storage/sessions` and `storage/security`.
 10. Confirm the deployment is using HTTPS and secure cookies/session settings.
 11. Test backup creation and restore with a safe dataset before production use.
@@ -354,6 +383,7 @@ php tests/run.php
 
 - set `RUN_MIGRATIONS=true` for local or explicit schema changes
 - keep the database in a consistent dev state before testing features that depend on schema changes
+- to preview which CRM profiles migration 018 will fold together, run `SELECT display_name, COUNT(*) FROM pickup_customers GROUP BY display_name HAVING COUNT(*) > 1;` before migrating
 
 ### Authentication and SSO issues
 

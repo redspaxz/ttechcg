@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 namespace App\Modules\CRM\Infrastructure;
 
+use App\Modules\CRM\Domain\CustomerMergePolicy;
 use App\Modules\CRM\Domain\CustomerProfile;
 use App\Modules\CRM\Domain\CustomerRepository;
 use InvalidArgumentException;
@@ -27,21 +28,45 @@ final class MysqlCustomerRepository implements CustomerRepository
             return;
         }
         $this->ensureSchema();
+        $this->resolveShipmentAliases();
+        // Group by the column collation (case- and accent-insensitive) so spelling variants that the
+        // unique display-name index treats as equal become one profile. A name-derived key that is
+        // still held by a renamed profile falls back to a random key instead of dropping the sender.
         $this->connection->exec(
             "INSERT INTO pickup_customers
                 (customer_key, display_name, country_code, status, source, assigned_role, created_at, updated_at)
-             SELECT SHA2(LOWER(TRIM(ps.consignor)), 256), MIN(TRIM(ps.consignor)), 'CM', 'active', 'shipment', 'admin', UTC_TIMESTAMP(), UTC_TIMESTAMP()
-             FROM pickup_shipments ps
-             INNER JOIN pickup_sheets p ON p.id = ps.pickup_sheet_id
-             LEFT JOIN pickup_customers existing_customer
-               ON LOWER(TRIM(existing_customer.display_name)) = LOWER(TRIM(ps.consignor))
-             WHERE p.deleted_at IS NULL
-               AND TRIM(ps.consignor) <> ''
-               AND existing_customer.id IS NULL
-             GROUP BY SHA2(LOWER(TRIM(ps.consignor)), 256)
-             ON DUPLICATE KEY UPDATE customer_key = VALUES(customer_key)",
+             SELECT CASE WHEN key_owner.id IS NULL THEN candidates.name_key
+                         ELSE SHA2(CONCAT(candidates.name_key, ':', UUID()), 256) END,
+                    candidates.display_name, 'CM', 'active', 'shipment', 'admin', UTC_TIMESTAMP(), UTC_TIMESTAMP()
+             FROM (
+                 SELECT SHA2(LOWER(MIN(TRIM(ps.consignor))), 256) AS name_key, MIN(TRIM(ps.consignor)) AS display_name
+                 FROM pickup_shipments ps
+                 INNER JOIN pickup_sheets p ON p.id = ps.pickup_sheet_id
+                 LEFT JOIN pickup_customers existing_customer
+                   ON LOWER(TRIM(existing_customer.display_name)) = LOWER(TRIM(ps.consignor))
+                 WHERE p.deleted_at IS NULL
+                   AND TRIM(ps.consignor) <> ''
+                   AND existing_customer.id IS NULL
+                 GROUP BY LOWER(TRIM(ps.consignor))
+             ) candidates
+             LEFT JOIN pickup_customers key_owner ON key_owner.customer_key = candidates.name_key
+             ON DUPLICATE KEY UPDATE pickup_customers.id = pickup_customers.id",
         );
         $this->synchronized = true;
+    }
+
+    /** Points shipments still typed with a merged-away name at the profile that absorbed it. */
+    private function resolveShipmentAliases(): void
+    {
+        if ($this->connection->query('SELECT 1 FROM pickup_customer_aliases LIMIT 1')->fetchColumn() === false) {
+            return;
+        }
+        $this->connection->exec(
+            'UPDATE pickup_shipments ps
+             INNER JOIN pickup_customer_aliases alias_map ON alias_map.alias_name = TRIM(ps.consignor)
+             INNER JOIN pickup_customers c ON c.customer_key = alias_map.customer_key
+             SET ps.consignor = c.display_name',
+        );
     }
 
     public function paginated(string $search, string $status, int $limit, int $offset): array
@@ -137,15 +162,16 @@ final class MysqlCustomerRepository implements CustomerRepository
         ), static fn (string $name): bool => $name !== ''));
     }
 
-    public function duplicateReviewProfiles(int $limit): array
+    public function duplicateReviewNames(int $limit): array
     {
         $this->ensureSchema();
-        $statement = $this->connection->prepare(
-            $this->customerSelect() . ' ORDER BY LOWER(c.display_name), c.display_name LIMIT :limit',
-        );
-        $statement->bindValue(':limit', max(1, min($limit, 200)), PDO::PARAM_INT);
+        $statement = $this->connection->prepare('SELECT customer_key, display_name FROM pickup_customers ORDER BY id LIMIT :limit');
+        $statement->bindValue(':limit', max(1, $limit), PDO::PARAM_INT);
         $statement->execute();
-        return array_map(fn (array $row): CustomerProfile => $this->profile($row), $statement->fetchAll());
+        return array_map(static fn (array $row): array => [
+            'customerKey' => (string) $row['customer_key'],
+            'displayName' => (string) $row['display_name'],
+        ], $statement->fetchAll());
     }
 
     public function find(string $customerKey): ?CustomerProfile
@@ -155,6 +181,35 @@ final class MysqlCustomerRepository implements CustomerRepository
         $statement->execute(['customer_key' => $customerKey]);
         $row = $statement->fetch();
         return is_array($row) ? $this->profile($row) : null;
+    }
+
+    public function findByName(string $name): ?array
+    {
+        $this->ensureSchema();
+        $name = trim($name);
+        if ($name === '') {
+            return null;
+        }
+        $statement = $this->connection->prepare(
+            'SELECT customer_key FROM pickup_customers WHERE LOWER(TRIM(display_name)) = LOWER(:display_name) LIMIT 1',
+        );
+        $statement->execute(['display_name' => $name]);
+        $customerKey = $statement->fetchColumn();
+        $alias = null;
+        if (!is_string($customerKey)) {
+            $aliasStatement = $this->connection->prepare(
+                'SELECT customer_key, alias_name FROM pickup_customer_aliases WHERE alias_name = :alias_name LIMIT 1',
+            );
+            $aliasStatement->execute(['alias_name' => $name]);
+            $aliasRow = $aliasStatement->fetch();
+            if (!is_array($aliasRow)) {
+                return null;
+            }
+            $customerKey = (string) $aliasRow['customer_key'];
+            $alias = (string) $aliasRow['alias_name'];
+        }
+        $customer = $this->find($customerKey);
+        return $customer === null ? null : ['customer' => $customer, 'alias' => $alias];
     }
 
     public function recentShipments(string $customerKey, int $limit, int $offset = 0): array
@@ -229,6 +284,21 @@ final class MysqlCustomerRepository implements CustomerRepository
                 throw new InvalidArgumentException('A customer profile already uses this organization name.');
             }
 
+            $aliasStatement = $this->connection->prepare(
+                'SELECT customer_key FROM pickup_customer_aliases WHERE alias_name = TRIM(:display_name) LIMIT 1 FOR UPDATE',
+            );
+            $aliasStatement->execute(['display_name' => $customer->displayName]);
+            $aliasOwner = $aliasStatement->fetchColumn();
+            if (is_string($aliasOwner) && $aliasOwner !== $customer->customerKey) {
+                throw new InvalidArgumentException('This organization name was merged into another customer profile.');
+            }
+            if (is_string($aliasOwner)) {
+                // Renaming a profile back to one of its own merged-away names retires that alias.
+                $this->connection->prepare(
+                    'DELETE FROM pickup_customer_aliases WHERE alias_name = TRIM(:display_name) AND customer_key = :customer_key',
+                )->execute(['display_name' => $customer->displayName, 'customer_key' => $customer->customerKey]);
+            }
+
             if (is_string($previousDisplayName) && trim($previousDisplayName) !== trim($customer->displayName)) {
                 $renameStatement = $this->connection->prepare(
                     'UPDATE pickup_shipments
@@ -300,7 +370,7 @@ final class MysqlCustomerRepository implements CustomerRepository
         try {
             $profileStatement = $this->connection->prepare(
                 'SELECT customer_key, display_name, contact_name, email, phone, address, city, country_code,
-                        status, notes, next_follow_up_on, source
+                        status, notes, next_follow_up_on, source, assigned_role, created_by, updated_by, created_at, updated_at
                  FROM pickup_customers
                  WHERE customer_key IN (:target_key, :source_key)
                  ORDER BY customer_key
@@ -317,6 +387,19 @@ final class MysqlCustomerRepository implements CustomerRepository
                 throw new InvalidArgumentException('One of the customer profiles no longer exists.');
             }
 
+            $shipmentSnapshotStatement = $this->connection->prepare(
+                'SELECT pickup_sheet_id, line_number, consignor
+                 FROM pickup_shipments
+                 WHERE LOWER(TRIM(consignor)) = LOWER(TRIM(:source_name))
+                 FOR UPDATE',
+            );
+            $shipmentSnapshotStatement->execute(['source_name' => (string) $source['display_name']]);
+            $shipments = array_map(static fn (array $row): array => [
+                (int) $row['pickup_sheet_id'],
+                (int) $row['line_number'],
+                (string) $row['consignor'],
+            ], $shipmentSnapshotStatement->fetchAll());
+
             $shipmentStatement = $this->connection->prepare(
                 'UPDATE pickup_shipments
                  SET consignor = :target_name
@@ -327,44 +410,54 @@ final class MysqlCustomerRepository implements CustomerRepository
                 'source_name' => (string) $source['display_name'],
             ]);
 
-            $rewardStatement = $this->connection->prepare(
-                'UPDATE pickup_customer_reward_adjustments
-                 SET customer_key = :target_key
-                 WHERE customer_key = :source_key',
-            );
-            $rewardStatement->execute(['target_key' => $targetCustomerKey, 'source_key' => $sourceCustomerKey]);
+            $rewardIds = $this->idsWhere('pickup_customer_reward_adjustments', $sourceCustomerKey);
+            $this->connection->prepare(
+                'UPDATE pickup_customer_reward_adjustments SET customer_key = :target_key WHERE customer_key = :source_key',
+            )->execute(['target_key' => $targetCustomerKey, 'source_key' => $sourceCustomerKey]);
 
-            foreach (['contact_name', 'email', 'phone', 'address', 'city'] as $field) {
-                if (trim((string) ($target[$field] ?? '')) === '') {
-                    $target[$field] = (string) ($source[$field] ?? '');
-                }
-            }
-            $target['status'] = $this->mergedStatus((string) $target['status'], (string) $source['status']);
-            $target['next_follow_up_on'] = $this->earliestDate($target['next_follow_up_on'] ?? null, $source['next_follow_up_on'] ?? null);
-            $target['notes'] = $this->mergedDatabaseNotes($target, $source);
+            $aliasIds = $this->idsWhere('pickup_customer_aliases', $sourceCustomerKey);
+            $this->connection->prepare(
+                'UPDATE pickup_customer_aliases SET customer_key = :target_key WHERE customer_key = :source_key',
+            )->execute(['target_key' => $targetCustomerKey, 'source_key' => $sourceCustomerKey]);
 
-            $updateStatement = $this->connection->prepare(
-                'UPDATE pickup_customers
-                 SET contact_name = :contact_name, email = :email, phone = :phone, address = :address,
-                     city = :city, status = :status, notes = :notes, next_follow_up_on = :next_follow_up_on,
-                     updated_by = :updated_by, updated_at = UTC_TIMESTAMP()
-                 WHERE customer_key = :customer_key',
+            $targetBefore = $this->mergeFields($target);
+            $targetAfter = CustomerMergePolicy::merge(
+                $targetBefore,
+                $this->mergeFields($source) + ['displayName' => (string) $source['display_name']],
             );
-            $updateStatement->execute([
-                'contact_name' => $this->nullable((string) ($target['contact_name'] ?? '')),
-                'email' => $this->nullable((string) ($target['email'] ?? '')),
-                'phone' => $this->nullable((string) ($target['phone'] ?? '')),
-                'address' => $this->nullable((string) ($target['address'] ?? '')),
-                'city' => $this->nullable((string) ($target['city'] ?? '')),
-                'status' => $target['status'],
-                'notes' => $this->nullable((string) $target['notes']),
-                'next_follow_up_on' => $target['next_follow_up_on'],
-                'updated_by' => $actorId,
+            $this->writeMergeFields($targetCustomerKey, $targetAfter, $actorId);
+
+            $this->connection->prepare('DELETE FROM pickup_customers WHERE customer_key = :source_key')
+                ->execute(['source_key' => $sourceCustomerKey]);
+            $this->connection->prepare(
+                'INSERT INTO pickup_customer_aliases (customer_key, alias_name, created_by, created_at)
+                 VALUES (:customer_key, :alias_name, :created_by, UTC_TIMESTAMP())
+                 ON DUPLICATE KEY UPDATE customer_key = VALUES(customer_key)',
+            )->execute([
                 'customer_key' => $targetCustomerKey,
+                'alias_name' => trim((string) $source['display_name']),
+                'created_by' => $actorId,
             ]);
 
-            $deleteStatement = $this->connection->prepare('DELETE FROM pickup_customers WHERE customer_key = :source_key');
-            $deleteStatement->execute(['source_key' => $sourceCustomerKey]);
+            $this->connection->prepare(
+                'INSERT INTO pickup_customer_merges
+                    (target_customer_key, source_customer_key, target_display_name, source_display_name, snapshot, merged_by, merged_at)
+                 VALUES (:target_key, :source_key, :target_name, :source_name, :snapshot, :merged_by, UTC_TIMESTAMP())',
+            )->execute([
+                'target_key' => $targetCustomerKey,
+                'source_key' => $sourceCustomerKey,
+                'target_name' => (string) $target['display_name'],
+                'source_name' => (string) $source['display_name'],
+                'snapshot' => json_encode([
+                    'source' => $source,
+                    'targetBefore' => $targetBefore,
+                    'targetAfter' => $targetAfter,
+                    'shipments' => $shipments,
+                    'rewardIds' => $rewardIds,
+                    'aliasIds' => $aliasIds,
+                ], JSON_THROW_ON_ERROR | JSON_UNESCAPED_UNICODE),
+                'merged_by' => $actorId,
+            ]);
             $this->connection->commit();
         } catch (Throwable $exception) {
             if ($this->connection->inTransaction()) {
@@ -374,6 +467,149 @@ final class MysqlCustomerRepository implements CustomerRepository
         }
 
         return $this->find($targetCustomerKey) ?? throw new RuntimeException('Merged customer profile could not be loaded.');
+    }
+
+    public function recentMerges(int $limit): array
+    {
+        $this->ensureSchema();
+        $statement = $this->connection->prepare(
+            'SELECT m.id, m.target_customer_key, c.display_name AS target_name, m.source_display_name, m.merged_at
+             FROM pickup_customer_merges m
+             INNER JOIN pickup_customers c ON c.customer_key = m.target_customer_key
+             WHERE m.undone_at IS NULL
+             ORDER BY m.merged_at DESC, m.id DESC
+             LIMIT :limit',
+        );
+        $statement->bindValue(':limit', max(1, min($limit, 20)), PDO::PARAM_INT);
+        $statement->execute();
+        return array_map(static fn (array $row): array => [
+            'id' => (int) $row['id'],
+            'targetCustomerKey' => (string) $row['target_customer_key'],
+            'targetName' => (string) $row['target_name'],
+            'sourceName' => (string) $row['source_display_name'],
+            'mergedAt' => (string) $row['merged_at'],
+        ], $statement->fetchAll());
+    }
+
+    public function undoMerge(int $mergeId, string $actorId): CustomerProfile
+    {
+        $this->ensureSchema();
+        $this->connection->beginTransaction();
+        try {
+            $mergeStatement = $this->connection->prepare(
+                'SELECT target_customer_key, source_customer_key, snapshot
+                 FROM pickup_customer_merges
+                 WHERE id = :id AND undone_at IS NULL
+                 FOR UPDATE',
+            );
+            $mergeStatement->execute(['id' => $mergeId]);
+            $merge = $mergeStatement->fetch();
+            if (!is_array($merge)) {
+                throw new InvalidArgumentException('This merge has already been undone or no longer exists.');
+            }
+            $targetKey = (string) $merge['target_customer_key'];
+            $sourceKey = (string) $merge['source_customer_key'];
+            $snapshot = json_decode((string) $merge['snapshot'], true, 16, JSON_THROW_ON_ERROR);
+            $source = is_array($snapshot['source'] ?? null) ? $snapshot['source'] : null;
+            if ($source === null) {
+                throw new RuntimeException('The merge snapshot is incomplete.');
+            }
+
+            $targetStatement = $this->connection->prepare(
+                'SELECT customer_key, display_name, contact_name, email, phone, address, city, status, notes, next_follow_up_on
+                 FROM pickup_customers WHERE customer_key = :customer_key FOR UPDATE',
+            );
+            $targetStatement->execute(['customer_key' => $targetKey]);
+            $target = $targetStatement->fetch();
+            if (!is_array($target)) {
+                throw new InvalidArgumentException('The retained profile was merged again or removed. Undo that later merge first.');
+            }
+            $sourceName = (string) $source['display_name'];
+            $conflictStatement = $this->connection->prepare(
+                'SELECT customer_key FROM pickup_customers
+                 WHERE customer_key = :customer_key OR LOWER(TRIM(display_name)) = LOWER(TRIM(:display_name))
+                 LIMIT 1',
+            );
+            $conflictStatement->execute(['customer_key' => $sourceKey, 'display_name' => $sourceName]);
+            if ($conflictStatement->fetchColumn() !== false) {
+                throw new InvalidArgumentException(sprintf('Another customer profile now uses the name %s. Rename it before undoing this merge.', $sourceName));
+            }
+
+            $this->connection->prepare(
+                'DELETE FROM pickup_customer_aliases WHERE alias_name = TRIM(:alias_name) AND customer_key = :customer_key',
+            )->execute(['alias_name' => $sourceName, 'customer_key' => $targetKey]);
+
+            $columns = ['customer_key', 'display_name', 'contact_name', 'email', 'phone', 'address', 'city', 'country_code',
+                'status', 'notes', 'next_follow_up_on', 'source', 'assigned_role', 'created_by', 'updated_by', 'created_at'];
+            $this->connection->prepare(
+                'INSERT INTO pickup_customers (' . implode(', ', $columns) . ', updated_at)
+                 VALUES (:' . implode(', :', $columns) . ', UTC_TIMESTAMP())',
+            )->execute(array_combine($columns, array_map(
+                static fn (string $column): mixed => $column === 'updated_by' ? $actorId : ($source[$column] ?? null),
+                $columns,
+            )));
+
+            $aliasStatement = $this->connection->prepare(
+                'UPDATE pickup_customer_aliases SET customer_key = :source_key WHERE id = :id AND customer_key = :target_key',
+            );
+            foreach (is_array($snapshot['aliasIds'] ?? null) ? $snapshot['aliasIds'] : [] as $aliasId) {
+                $aliasStatement->execute(['source_key' => $sourceKey, 'id' => (int) $aliasId, 'target_key' => $targetKey]);
+            }
+            $rewardStatement = $this->connection->prepare(
+                'UPDATE pickup_customer_reward_adjustments SET customer_key = :source_key WHERE id = :id AND customer_key = :target_key',
+            );
+            foreach (is_array($snapshot['rewardIds'] ?? null) ? $snapshot['rewardIds'] : [] as $rewardId) {
+                $rewardStatement->execute(['source_key' => $sourceKey, 'id' => (int) $rewardId, 'target_key' => $targetKey]);
+            }
+            // Only shipments still attributed to the retained profile are handed back; rows edited to
+            // another sender since the merge are left alone.
+            $shipmentStatement = $this->connection->prepare(
+                'UPDATE pickup_shipments
+                 SET consignor = :previous_consignor
+                 WHERE pickup_sheet_id = :pickup_sheet_id AND line_number = :line_number
+                   AND LOWER(TRIM(consignor)) = LOWER(TRIM(:target_name))',
+            );
+            foreach (is_array($snapshot['shipments'] ?? null) ? $snapshot['shipments'] : [] as $shipment) {
+                if (!is_array($shipment) || count($shipment) !== 3) {
+                    continue;
+                }
+                $shipmentStatement->execute([
+                    'previous_consignor' => (string) $shipment[2],
+                    'pickup_sheet_id' => (int) $shipment[0],
+                    'line_number' => (int) $shipment[1],
+                    'target_name' => (string) $target['display_name'],
+                ]);
+            }
+
+            // Restore target fields only where nobody has edited them since the merge.
+            $current = $this->mergeFields($target);
+            $before = is_array($snapshot['targetBefore'] ?? null) ? $snapshot['targetBefore'] : [];
+            $after = is_array($snapshot['targetAfter'] ?? null) ? $snapshot['targetAfter'] : [];
+            $restored = $current;
+            foreach (CustomerMergePolicy::MERGED_FIELDS as $field) {
+                if (array_key_exists($field, $before) && (string) ($current[$field] ?? '') === (string) ($after[$field] ?? '')) {
+                    $restored[$field] = $before[$field];
+                }
+            }
+            if ($restored !== $current) {
+                $this->writeMergeFields($targetKey, $restored, $actorId);
+            }
+
+            $this->connection->prepare(
+                'UPDATE pickup_customer_merges SET undone_by = :actor_id, undone_at = UTC_TIMESTAMP() WHERE id = :id',
+            )->execute(['actor_id' => $actorId, 'id' => $mergeId]);
+            $this->connection->commit();
+        } catch (Throwable $exception) {
+            if ($this->connection->inTransaction()) {
+                $this->connection->rollBack();
+            }
+            if ($exception instanceof PDOException && (int) ($exception->errorInfo[1] ?? 0) === 1062) {
+                throw new InvalidArgumentException('The original profile name is in use again. Rename that profile before undoing this merge.', 0, $exception);
+            }
+            throw $exception;
+        }
+
+        return $this->find($sourceKey) ?? throw new RuntimeException('Restored customer profile could not be loaded.');
     }
 
     public function rewardAdjustments(string $customerKey, int $limit): array
@@ -625,6 +861,35 @@ final class MysqlCustomerRepository implements CustomerRepository
                     FOREIGN KEY (customer_key) REFERENCES pickup_customers(customer_key) ON DELETE CASCADE
             ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci',
         );
+        $this->connection->exec(
+            'CREATE TABLE IF NOT EXISTS pickup_customer_aliases (
+                id BIGINT UNSIGNED NOT NULL AUTO_INCREMENT PRIMARY KEY,
+                customer_key CHAR(64) NOT NULL,
+                alias_name VARCHAR(160) NOT NULL,
+                created_by CHAR(24) NULL,
+                created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+                UNIQUE INDEX pickup_customer_aliases_name_idx (alias_name),
+                INDEX pickup_customer_aliases_customer_idx (customer_key),
+                CONSTRAINT pickup_customer_aliases_customer_fk
+                    FOREIGN KEY (customer_key) REFERENCES pickup_customers(customer_key) ON DELETE CASCADE
+            ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci',
+        );
+        $this->connection->exec(
+            'CREATE TABLE IF NOT EXISTS pickup_customer_merges (
+                id BIGINT UNSIGNED NOT NULL AUTO_INCREMENT PRIMARY KEY,
+                target_customer_key CHAR(64) NOT NULL,
+                source_customer_key CHAR(64) NOT NULL,
+                target_display_name VARCHAR(160) NOT NULL,
+                source_display_name VARCHAR(160) NOT NULL,
+                snapshot MEDIUMTEXT NOT NULL,
+                merged_by CHAR(24) NOT NULL,
+                merged_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+                undone_by CHAR(24) NULL,
+                undone_at DATETIME NULL,
+                INDEX pickup_customer_merges_open_idx (undone_at, merged_at),
+                INDEX pickup_customer_merges_target_idx (target_customer_key)
+            ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci',
+        );
         try {
             $this->connection->query('SELECT assigned_role FROM pickup_customers LIMIT 1');
         } catch (PDOException $exception) {
@@ -646,34 +911,52 @@ final class MysqlCustomerRepository implements CustomerRepository
         return $value === '' ? null : $value;
     }
 
-    private function mergedStatus(string $target, string $source): string
+    /**
+     * @param array<string, mixed> $row
+     * @return array{contactName: string, email: string, phone: string, address: string, city: string, status: string, nextFollowUpOn: ?string, notes: string}
+     */
+    private function mergeFields(array $row): array
     {
-        $priority = ['inactive' => 0, 'lead' => 1, 'active' => 2, 'attention' => 3];
-        return ($priority[$source] ?? 0) > ($priority[$target] ?? 0) ? $source : $target;
+        return [
+            'contactName' => (string) ($row['contact_name'] ?? ''),
+            'email' => (string) ($row['email'] ?? ''),
+            'phone' => (string) ($row['phone'] ?? ''),
+            'address' => (string) ($row['address'] ?? ''),
+            'city' => (string) ($row['city'] ?? ''),
+            'status' => (string) ($row['status'] ?? 'active'),
+            'nextFollowUpOn' => isset($row['next_follow_up_on']) && $row['next_follow_up_on'] !== '' ? (string) $row['next_follow_up_on'] : null,
+            'notes' => (string) ($row['notes'] ?? ''),
+        ];
     }
 
-    private function earliestDate(mixed $target, mixed $source): ?string
+    /** @param array<string, mixed> $fields */
+    private function writeMergeFields(string $customerKey, array $fields, string $actorId): void
     {
-        $dates = array_values(array_filter([$target, $source], static fn (mixed $date): bool => is_string($date) && $date !== ''));
-        return $dates === [] ? null : min($dates);
+        $this->connection->prepare(
+            'UPDATE pickup_customers
+             SET contact_name = :contact_name, email = :email, phone = :phone, address = :address,
+                 city = :city, status = :status, notes = :notes, next_follow_up_on = :next_follow_up_on,
+                 updated_by = :updated_by, updated_at = UTC_TIMESTAMP()
+             WHERE customer_key = :customer_key',
+        )->execute([
+            'contact_name' => $this->nullable((string) ($fields['contactName'] ?? '')),
+            'email' => $this->nullable((string) ($fields['email'] ?? '')),
+            'phone' => $this->nullable((string) ($fields['phone'] ?? '')),
+            'address' => $this->nullable((string) ($fields['address'] ?? '')),
+            'city' => $this->nullable((string) ($fields['city'] ?? '')),
+            'status' => (string) ($fields['status'] ?? 'active'),
+            'notes' => $this->nullable((string) ($fields['notes'] ?? '')),
+            'next_follow_up_on' => is_string($fields['nextFollowUpOn'] ?? null) && $fields['nextFollowUpOn'] !== '' ? $fields['nextFollowUpOn'] : null,
+            'updated_by' => $actorId,
+            'customer_key' => $customerKey,
+        ]);
     }
 
-    /** @param array<string, mixed> $target @param array<string, mixed> $source */
-    private function mergedDatabaseNotes(array $target, array $source): string
+    /** @return list<int> */
+    private function idsWhere(string $table, string $customerKey): array
     {
-        $notes = trim((string) ($target['notes'] ?? ''));
-        $sourceNotes = trim((string) ($source['notes'] ?? ''));
-        $details = [];
-        foreach (['contact_name' => 'Contact', 'email' => 'Email', 'phone' => 'Phone', 'address' => 'Address', 'city' => 'City'] as $field => $label) {
-            $sourceValue = trim((string) ($source[$field] ?? ''));
-            if ($sourceValue !== '' && $sourceValue !== trim((string) ($target[$field] ?? ''))) {
-                $details[] = $label . ': ' . $sourceValue;
-            }
-        }
-        $mergedContext = trim(implode('; ', $details) . ($sourceNotes !== '' ? ($details === [] ? '' : '; ') . 'Notes: ' . $sourceNotes : ''));
-        if ($mergedContext !== '') {
-            $notes .= ($notes === '' ? '' : "\n\n") . 'Merged from ' . (string) $source['display_name'] . ': ' . $mergedContext;
-        }
-        return substr($notes, 0, 2000);
+        $statement = $this->connection->prepare('SELECT id FROM ' . $table . ' WHERE customer_key = :customer_key ORDER BY id FOR UPDATE');
+        $statement->execute(['customer_key' => $customerKey]);
+        return array_map('intval', $statement->fetchAll(PDO::FETCH_COLUMN));
     }
 }

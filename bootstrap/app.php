@@ -328,6 +328,7 @@ $router->get('/dhl/pickupsheet/customers/shipments/page', fn (Request $request):
 $router->get('/dhl/pickupsheet/customers/redemptions/page', fn (Request $request): Response => $customerController->redemptionPage($request));
 $router->post('/dhl/pickupsheet/customers/save', fn (Request $request): Response => $customerController->save($request));
 $router->post('/dhl/pickupsheet/customers/merge', fn (Request $request): Response => $customerController->merge($request));
+$router->post('/dhl/pickupsheet/customers/merge/undo', fn (Request $request): Response => $customerController->undoMerge($request));
 $router->post('/dhl/pickupsheet/customers/rewards', fn (Request $request): Response => $customerController->adjustRewards($request));
 $router->get('/dhl/pickupsheet', fn (Request $request): Response => $pickupsheetController->index($request));
 $router->get('/dhl/pickupsheet/consignors/search', fn (Request $request): Response => $pickupsheetController->searchConsignors($request));

@@ -12,6 +12,8 @@ use App\Modules\Contact\Infrastructure\DemoInquiryRepository;
 use App\Modules\Contact\Infrastructure\UnavailableInquiryRepository;
 use App\Modules\Contact\UI\ContactController;
 use App\Modules\CRM\Application\CustomerService;
+use App\Modules\CRM\Application\DuplicateCustomerException;
+use App\Modules\CRM\Domain\CustomerMergePolicy;
 use App\Modules\CRM\Domain\CustomerProfile;
 use App\Modules\CRM\Infrastructure\DemoCustomerRepository;
 use App\Modules\CRM\UI\CustomerController;
@@ -1082,6 +1084,87 @@ $assert($renameCustomerService->find($nearDuplicate->customerKey) === null, 'Mer
 $assert($mergedCustomer->displayName === 'Renamed Customer Company' && $mergedCustomer->email === 'duplicate@example.com' && $mergedCustomer->status === 'attention', 'A CRM merge should retain the selected name and preserve useful fields from the duplicate.');
 $assert($mergedCustomer->shipmentCount === 1 && $mergedCustomer->rewardBalance() === 32, 'A CRM merge should preserve shipment history and transfer reward adjustments to the retained profile.');
 
+$renamePickupService->submit([
+    'agent_name' => 'CRM Alias Test Agent',
+    'collection_date' => '2026-09-02',
+    'privacy_consent' => '1',
+    'shipments' => [[
+        'consignor' => 'Renamed Customer Compny',
+        'awb_number' => '1234567891',
+        'destination' => 'DLA',
+        'amount' => '5000',
+        'pieces' => '1',
+        'weight_kg' => '1',
+        'checked_by' => 'CRM Alias Checker',
+    ]],
+]);
+$renameCustomerService->synchronize();
+$assert($renameCustomerService->find($nearDuplicate->customerKey) === null && $renameCustomerService->find($renameCustomerKey)?->shipmentCount === 2, 'Shipments entered under a merged-away name should resolve to the retained profile instead of recreating the duplicate.');
+$aliasOwner = $renameCustomerService->existingCustomer('renamed customer compny');
+$assert(($aliasOwner['alias'] ?? null) === 'Renamed Customer Compny' && ($aliasOwner['customer'] ?? null)?->customerKey === $renameCustomerKey, 'CRM should report which profile absorbed a merged-away name.');
+$aliasRejected = null;
+try {
+    $renameCustomerService->save(null, ['display_name' => 'Renamed Customer Compny', 'status' => 'lead'], str_repeat('b', 24));
+} catch (DuplicateCustomerException $exception) {
+    $aliasRejected = $exception;
+}
+$assert($aliasRejected?->existing->customerKey === $renameCustomerKey && str_contains($aliasRejected->getMessage(), 'was merged into Renamed Customer Company'), 'A merged-away name should not be reusable for a new profile and should point to the retained profile.');
+
+$recentMerges = $renameCustomerService->recentMerges();
+$assert(count($recentMerges) === 1 && $recentMerges[0]['sourceName'] === 'Renamed Customer Compny' && $recentMerges[0]['targetName'] === 'Renamed Customer Company', 'CRM should list recent merges that can still be undone.');
+$restoredDuplicate = $renameCustomerService->undoMerge((string) $recentMerges[0]['id'], str_repeat('a', 24));
+$restoredTarget = $renameCustomerService->find($renameCustomerKey);
+$assert($restoredDuplicate->customerKey === $nearDuplicate->customerKey && $restoredDuplicate->email === 'duplicate@example.com' && $restoredDuplicate->rewardBalance() === 7, 'Undoing a merge should restore the separate profile with its reward adjustments.');
+$assert($restoredDuplicate->shipmentCount === 0 && $restoredTarget?->shipmentCount === 2, 'Undo should only hand back shipments that were moved by the merge itself.');
+$assert($restoredTarget?->email === '' && $restoredTarget->status === 'active' && !str_contains($restoredTarget->notes, 'Merged from'), 'Undo should restore retained-profile fields that nobody edited after the merge.');
+$assert(($renameCustomerService->existingCustomer('Renamed Customer Compny')['customer'] ?? null)?->customerKey === $nearDuplicate->customerKey && $renameCustomerService->recentMerges() === [], 'Undo should retire the alias and remove the merge from the undo list.');
+$undoRepeated = false;
+try {
+    $renameCustomerService->undoMerge((string) $recentMerges[0]['id'], str_repeat('a', 24));
+} catch (InvalidArgumentException $exception) {
+    $undoRepeated = str_contains($exception->getMessage(), 'already been undone');
+}
+$assert($undoRepeated, 'A merge should not be undone twice.');
+
+$reusedOriginalName = $renameCustomerService->save(null, ['display_name' => 'Original Customer Name', 'status' => 'lead'], str_repeat('b', 24));
+$assert($reusedOriginalName->customerKey !== $renameCustomerKey && $renameCustomerService->find($renameCustomerKey)?->displayName === 'Renamed Customer Company', 'A new customer may take a renamed profile\'s former name without colliding with its original key.');
+
+$renameCustomerService->save(null, ['display_name' => 'Douala Branch 1', 'status' => 'active'], str_repeat('b', 24));
+$renameCustomerService->save(null, ['display_name' => 'Douala Branch 2', 'status' => 'active'], str_repeat('b', 24));
+$renameCustomerService->save(null, ['display_name' => 'Société Générale Cameroun', 'status' => 'active'], str_repeat('b', 24));
+$renameCustomerService->save(null, ['display_name' => 'Societe Generale Cameroun', 'status' => 'active'], str_repeat('b', 24));
+for ($fillerIndex = 0; $fillerIndex < 240; $fillerIndex++) {
+    $renameCustomerService->save(null, [
+        'display_name' => 'Filler ' . strtr(substr(md5((string) $fillerIndex), 0, 12), '0123456789', 'ghijklmnop'),
+        'status' => 'lead',
+    ], str_repeat('b', 24));
+}
+$renameCustomerService->save(null, ['display_name' => 'Zzyzx Freight Logistics', 'status' => 'lead'], str_repeat('b', 24));
+$renameCustomerService->save(null, ['display_name' => 'Zzyzx Freight Logistic', 'status' => 'lead'], str_repeat('b', 24));
+$scaledSuggestions = array_map(
+    static fn (array $suggestion): array => [$suggestion['primary']->displayName, $suggestion['duplicate']->displayName],
+    $renameCustomerService->duplicateSuggestions(20),
+);
+$suggestedNames = array_merge(...$scaledSuggestions);
+$assert(in_array('Zzyzx Freight Logistic', $suggestedNames, true) && in_array('Renamed Customer Compny', $suggestedNames, true), 'Duplicate review should cover every profile, not only the first 200 names.');
+$assert(in_array('Societe Generale Cameroun', $suggestedNames, true) && in_array('Société Générale Cameroun', $suggestedNames, true), 'Duplicate review should treat accented and unaccented spellings as likely duplicates.');
+$assert(!in_array('Douala Branch 1', $suggestedNames, true), 'Names that differ only by a branch or site number should not be suggested as duplicates.');
+$numberedMergeRejected = false;
+try {
+    $douala = $renameCustomerService->existingCustomer('Douala Branch 1')['customer'];
+    $doualaTwo = $renameCustomerService->existingCustomer('Douala Branch 2')['customer'];
+    $renameCustomerService->merge($douala->customerKey, $doualaTwo->customerKey, str_repeat('a', 24));
+} catch (InvalidArgumentException $exception) {
+    $numberedMergeRejected = str_contains($exception->getMessage(), 'not similar enough');
+}
+$assert($numberedMergeRejected, 'The merge endpoint should refuse to combine numbered branches.');
+
+$multibyteNotes = CustomerMergePolicy::merge(
+    ['notes' => str_repeat('é', 990)],
+    ['displayName' => 'Duplicate', 'notes' => str_repeat('ü', 40)],
+)['notes'];
+$assert(strlen($multibyteNotes) <= CustomerMergePolicy::NOTES_MAX_BYTES && preg_match('//u', $multibyteNotes) === 1, 'Merged notes should be truncated to the notes limit without splitting a UTF-8 character.');
+
 $_SESSION = [];
 $leaderboardPickupRepository = new DemoPickupSheetRepository();
 $leaderboardPickupService = new PickupSheetService($leaderboardPickupRepository);
@@ -1850,6 +1933,39 @@ $mergeCustomer = $customerController->merge(new Request('POST', '/dhl/pickupshee
     'source_customer_key' => $controllerDuplicate->customerKey,
 ]));
 $assert($mergeCustomer->status() === 303 && $customerService->find($controllerDuplicate->customerKey) === null, 'An administrator should be able to merge a suggested duplicate into the selected CRM profile.');
+$customerDirectoryAfterMerge = $customerController->index(new Request('GET', '/dhl/pickupsheet/customers'));
+$assert(str_contains($customerDirectoryAfterMerge->body(), 'Recent merges') && str_contains($customerDirectoryAfterMerge->body(), 'data-crm-undo-merge-form') && str_contains($customerDirectoryAfterMerge->body(), 'Controller Clien &rarr; Controller Client'), 'Administrators should see recent merges with an undo control.');
+$controllerMergeId = (string) ($customerService->recentMerges()[0]['id'] ?? '');
+$invalidUndoCsrf = $customerController->undoMerge(new Request('POST', '/dhl/pickupsheet/customers/merge/undo', [], [
+    '_token' => 'invalid-token',
+    'merge_id' => $controllerMergeId,
+]));
+$assert($invalidUndoCsrf->status() === 419, 'Undoing a CRM merge should require a valid CSRF token.');
+$undoCustomerMerge = $customerController->undoMerge(new Request('POST', '/dhl/pickupsheet/customers/merge/undo', [], [
+    '_token' => $pickupCsrf->token(),
+    'merge_id' => $controllerMergeId,
+]));
+$assert($undoCustomerMerge->status() === 303 && $customerService->find($controllerDuplicate->customerKey)?->contactName === 'Duplicate Controller Contact', 'An administrator should be able to undo a CRM merge.');
+$customerController->merge(new Request('POST', '/dhl/pickupsheet/customers/merge', [], [
+    '_token' => $pickupCsrf->token(),
+    'target_customer_key' => $customerKey,
+    'source_customer_key' => $controllerDuplicate->customerKey,
+]));
+$assert($customerService->find($controllerDuplicate->customerKey) === null, 'A previously undone merge should be repeatable.');
+$existingCustomerSearch = json_decode($customerController->search(new Request('GET', '/dhl/pickupsheet/customers/search', ['q' => 'controller client'], [], '', $recordsServer))->body(), true);
+$assert(($existingCustomerSearch['existing']['name'] ?? '') === 'Controller Client' && ($existingCustomerSearch['existing']['url'] ?? '') === '/dhl/pickupsheet/customers/edit?customer=' . $customerKey, 'CRM autocomplete should link an exactly matching name to its existing profile.');
+$aliasCustomerSearch = json_decode($customerController->search(new Request('GET', '/dhl/pickupsheet/customers/search', ['q' => 'Controller Clien'], [], '', $recordsServer))->body(), true);
+$assert(($aliasCustomerSearch['existing']['alias'] ?? '') === 'Controller Clien' && ($aliasCustomerSearch['existing']['name'] ?? '') === 'Controller Client', 'CRM autocomplete should explain that a merged-away name belongs to the retained profile.');
+$duplicateCustomerSave = $customerController->save(new Request('POST', '/dhl/pickupsheet/customers/save', [], [
+    '_token' => $pickupCsrf->token(),
+    'customer_key' => '',
+    'display_name' => 'controller client',
+    'status' => 'lead',
+    'country_code' => 'CM',
+]));
+$duplicateCustomerForm = $customerController->create(new Request('GET', '/dhl/pickupsheet/customers/new'));
+$assert($duplicateCustomerSave->status() === 303 && str_contains($duplicateCustomerForm->body(), 'already uses this organization name') && str_contains($duplicateCustomerForm->body(), 'class="pickup-crm-existing-link" href="/dhl/pickupsheet/customers/edit?customer=' . $customerKey . '">Open Controller Client</a>'), 'A rejected duplicate customer should link to the existing profile.');
+$assert(str_contains($duplicateCustomerForm->body(), 'data-existing-customer-hint'), 'The add-customer form should reserve a live region for existing-profile matches.');
 $customerSearch = $customerController->search(new Request('GET', '/dhl/pickupsheet/customers/search', ['q' => 'controller'], [], '', $recordsServer));
 $customerSearchPayload = json_decode($customerSearch->body(), true);
 $assert($customerSearch->status() === 200 && ($customerSearchPayload['suggestions'] ?? []) === ['Controller Client'], 'Authenticated CRM autocomplete should return matching customer names.');
@@ -1896,7 +2012,7 @@ $overdrawRewardProfile = $customerController->edit(new Request('GET', '/dhl/pick
 $assert($overdrawReward->status() === 303 && str_contains($overdrawRewardProfile->body(), 'cannot exceed the available reward balance'), 'Reward redemptions must not make a customer balance negative.');
 $crmAuditDashboard = $pickupController->dashboard(new Request('GET', '/dhl/pickupsheet/dashboard'));
 $crmAuditMarkup = $crmAuditDashboard->body();
-for ($auditPage = 2; $auditPage <= 10 && (!str_contains($crmAuditMarkup, 'pickupsheet.crm_customer_save') || !str_contains($crmAuditMarkup, 'Reward balance: 31')); $auditPage++) {
+for ($auditPage = 2; $auditPage <= 10 && (!str_contains($crmAuditMarkup, 'pickupsheet.crm_customer_save') || !str_contains($crmAuditMarkup, 'Customer status: attention') || !str_contains($crmAuditMarkup, 'Reward balance: 31')); $auditPage++) {
     $crmAuditMarkup .= $pickupController->dashboardAuditLogPage(new Request('GET', '/dhl/pickupsheet/dashboard/audit-logs/page', ['log_page' => (string) $auditPage]))->body();
 }
 $assert(str_contains($crmAuditMarkup, 'pickupsheet.crm_customer_save') && str_contains($crmAuditMarkup, 'Customer status: attention'), 'CRM customer changes should appear in the paginated detailed administrator audit log.');
@@ -2565,7 +2681,7 @@ $assert(is_string($script) && str_contains($script, 'numberFormatter.format(tota
 $assert(is_string($script) && str_contains($script, "[data-field]:not([data-identity-field])"), 'Account-populated checker fields should not make an otherwise blank shipment count as complete.');
 $assert(is_string($script) && str_contains($script, "document.querySelectorAll('[data-ajax-pager]')"), 'The browser should initialize every qualified AJAX-paginated table.');
 $assert(is_string($script) && str_contains($script, "document.querySelectorAll('[data-ajax-pager-form]')"), 'The browser should submit qualified table filters without a full refresh.');
-$assert(is_string($script) && str_contains($script, "event.target.matches('[data-crm-merge-form]')") && str_contains($script, 'profile will be removed after its data is transferred'), 'CRM merges should require an explicit browser confirmation that describes the destructive result.');
+$assert(is_string($script) && str_contains($script, "event.target.matches('[data-crm-merge-form]')") && str_contains($script, 'profile will be removed after its data is transferred') && str_contains($script, "event.target.matches('[data-crm-undo-merge-form]')") && str_contains($script, "'consignor-search-results'"), 'CRM merges should require an explicit browser confirmation that describes the destructive result.');
 $assert(is_string($script) && str_contains($script, 'await fetch(pageEndpoint'), 'Pagination should load table fragments asynchronously.');
 $assert(is_string($script) && str_contains($script, "spinner.hidden = !loading"), 'AJAX pagination should toggle its loading spinner.');
 $assert(is_string($script) && str_contains($script, "window.history.pushState"), 'AJAX pagination should preserve browser history.');
@@ -2690,8 +2806,13 @@ $customerAssignmentMigration = file_get_contents(dirname(__DIR__) . '/database/m
 $assert(is_string($customerAssignmentMigration) && str_contains($customerAssignmentMigration, 'assigned_role VARCHAR(20)') && str_contains($customerAssignmentMigration, "SET country_code = 'CM', assigned_role = 'admin'") && str_contains($customerAssignmentMigration, "DEFAULT 'CM'"), 'CRM migration 016 should assign every customer to administrators and enforce Cameroon as the default country.');
 $customerDuplicateMigration = file_get_contents(dirname(__DIR__) . '/database/migrations/018_prevent_duplicate_crm_customers.sql');
 $assert(is_string($customerDuplicateMigration) && str_contains($customerDuplicateMigration, 'UNIQUE INDEX pickup_customers_name_unique_idx (display_name)'), 'CRM organization names should be protected by a database uniqueness constraint.');
+$assert(is_string($customerDuplicateMigration) && strpos($customerDuplicateMigration, 'DELETE duplicate_customer') < strpos($customerDuplicateMigration, 'ADD UNIQUE INDEX') && str_contains($customerDuplicateMigration, 'UPDATE pickup_customer_reward_adjustments'), 'Migration 018 should fold collation-equal duplicate profiles and their rewards before adding the unique index.');
+$customerMergeHistoryMigration = file_get_contents(dirname(__DIR__) . '/database/migrations/019_create_pickup_customer_merge_history.sql');
+$assert(is_string($customerMergeHistoryMigration) && str_contains($customerMergeHistoryMigration, 'CREATE TABLE IF NOT EXISTS pickup_customer_aliases') && str_contains($customerMergeHistoryMigration, 'CREATE TABLE IF NOT EXISTS pickup_customer_merges'), 'Migration 019 should create CRM alias and merge-history tables idempotently.');
 $customerRepositorySource = file_get_contents(dirname(__DIR__) . '/src/Modules/CRM/Infrastructure/MysqlCustomerRepository.php');
-$assert(is_string($customerRepositorySource) && str_contains($customerRepositorySource, 'SHA2(LOWER(TRIM(ps.consignor)), 256)'), 'CRM should connect normalized shipment consignors to customer profiles.');
+$assert(is_string($customerRepositorySource) && str_contains($customerRepositorySource, 'SHA2(LOWER(MIN(TRIM(ps.consignor))), 256)'), 'CRM should connect normalized shipment consignors to customer profiles.');
+$assert(is_string($customerRepositorySource) && str_contains($customerRepositorySource, 'GROUP BY LOWER(TRIM(ps.consignor))') && str_contains($customerRepositorySource, 'SHA2(CONCAT(candidates.name_key') && str_contains($customerRepositorySource, 'ON DUPLICATE KEY UPDATE pickup_customers.id = pickup_customers.id'), 'CRM synchronization should group consignors by collation and never rewrite an existing profile key.');
+$assert(is_string($customerRepositorySource) && str_contains($customerRepositorySource, 'INNER JOIN pickup_customer_aliases alias_map') && str_contains($customerRepositorySource, 'INSERT INTO pickup_customer_merges') && str_contains($customerRepositorySource, 'public function undoMerge('), 'MySQL CRM merges should record aliases and an undo snapshot.');
 $assert(is_string($customerRepositorySource) && str_contains($customerRepositorySource, 'UPDATE pickup_shipments') && str_contains($customerRepositorySource, 'SET consignor = :display_name') && str_contains($customerRepositorySource, 'beginTransaction()'), 'MySQL CRM name changes should update existing shipment consignors inside a transaction.');
 $assert(is_string($customerRepositorySource) && str_contains($customerRepositorySource, 'metrics.customer_name = LOWER(TRIM(c.display_name))') && str_contains($customerRepositorySource, 'existing_customer.display_name'), 'CRM metrics and synchronization should continue resolving a stable customer profile after its name changes.');
 $assert(is_string($customerRepositorySource) && str_contains($customerRepositorySource, "SET country_code = 'CM'") && str_contains($customerRepositorySource, "'CM', 'active', 'shipment'"), 'Existing and shipment-synchronized CRM profiles should be assigned to Cameroon automatically.');
@@ -2763,7 +2884,7 @@ $backupRepositorySource = file_get_contents(dirname(__DIR__) . '/src/Modules/Bac
 $backupControllerSource = file_get_contents(dirname(__DIR__) . '/src/Modules/Backup/UI/BackupController.php');
 $assert(is_string($backupServiceSource) && str_contains($backupServiceSource, "'aes-256-gcm'") && str_contains($backupServiceSource, "hash_pbkdf2('sha256'") && str_contains($backupServiceSource, 'KDF_ITERATIONS = 210000'), 'Backups should use authenticated AES-256-GCM encryption with a hardened PBKDF2-SHA256 key.');
 $assert(is_string($backupServiceSource) && !str_contains($backupServiceSource, 'getenv('), 'Backup encryption must never derive its passphrase from stored environment configuration.');
-$assert(is_string($backupRepositorySource) && str_contains($backupRepositorySource, "'pickup_sheets'") && str_contains($backupRepositorySource, "'pickup_customer_reward_adjustments'") && str_contains($backupRepositorySource, "'pickup_auth_settings'") && str_contains($backupRepositorySource, "'pickup_local_mfa'"), 'The MySQL backup allowlist should include operational, CRM reward, authentication preference, and encrypted 2FA data.');
+$assert(is_string($backupRepositorySource) && str_contains($backupRepositorySource, "'pickup_sheets'") && str_contains($backupRepositorySource, "'pickup_customer_reward_adjustments'") && str_contains($backupRepositorySource, "'pickup_customer_aliases'") && str_contains($backupRepositorySource, "'pickup_customer_merges'") && str_contains($backupRepositorySource, "'pickup_auth_settings'") && str_contains($backupRepositorySource, "'pickup_local_mfa'"), 'The MySQL backup allowlist should include operational, CRM reward, authentication preference, and encrypted 2FA data.');
 $assert(is_string($backupRepositorySource) && str_contains($backupRepositorySource, 'private const REQUIRED_TABLES') && str_contains($backupRepositorySource, 'columnsIfExists') && str_contains($backupRepositorySource, 'Core backup table is unavailable:'), 'Backup export should tolerate absent optional-module tables while requiring the core pickup-sheet data set.');
 $assert(is_string($backupRepositorySource) && str_contains($backupRepositorySource, "if (!array_key_exists(\$table, \$tables))") && str_contains($backupRepositorySource, "\$rows = \$validated[\$table]['rows'] ?? [];"), 'Backup restore should validate supplied allowlisted tables and treat omitted optional modules as empty.');
 $assert(is_string($backupRepositorySource) && !str_contains($backupRepositorySource, 'schema_migrations') && !str_contains($backupRepositorySource, '.env'), 'Backups should exclude schema bookkeeping and environment secrets.');
@@ -2808,7 +2929,7 @@ $assert(is_string($bootstrap) && str_contains($bootstrap, "'/dhl/pickupsheet/log
 $assert(is_string($bootstrap) && str_contains($bootstrap, "'/dhl/pickupsheet/settings'") && str_contains($bootstrap, "'/dhl/pickupsheet/settings/2fa/enroll'") && str_contains($bootstrap, "'/dhl/pickupsheet/settings/2fa/reset'") && str_contains($bootstrap, "'/dhl/pickupsheet/settings/2fa/recovery-codes'"), 'Pickupsheet should expose signed-in user settings and protected self-service 2FA routes.');
 $assert(is_string($bootstrap) && str_contains($bootstrap, "'/dhl/pickupsheet/logout'"), 'Pickupsheet should expose a CSRF-protected logout route.');
 $assert(is_string($bootstrap) && str_contains($bootstrap, "'/dhl/pickupsheet/consignors/search'"), 'Pickupsheet should expose its protected consignor autocomplete route.');
-$assert(is_string($bootstrap) && str_contains($bootstrap, "'/dhl/pickupsheet/customers/merge'"), 'CRM should expose an administrator-protected duplicate merge route.');
+$assert(is_string($bootstrap) && str_contains($bootstrap, "'/dhl/pickupsheet/customers/merge'") && str_contains($bootstrap, "'/dhl/pickupsheet/customers/merge/undo'"), 'CRM should expose administrator-protected duplicate merge and undo routes.');
 $cloudflareTrustSource = file_get_contents(dirname(__DIR__) . '/src/Shared/Security/CloudflareRequestTrust.php');
 $requestSource = file_get_contents(dirname(__DIR__) . '/src/Shared/Http/Request.php');
 $securityHeadersSource = file_get_contents(dirname(__DIR__) . '/src/Shared/Security/SecurityHeaders.php');

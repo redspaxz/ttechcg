@@ -8,12 +8,15 @@ use App\Modules\CRM\Domain\CustomerProfile;
 use App\Modules\CRM\Domain\CustomerRepository;
 use DateTimeImmutable;
 use InvalidArgumentException;
+use Normalizer;
 
 final class CustomerService
 {
     private const STATUSES = ['lead', 'active', 'attention', 'inactive'];
     private const DEFAULT_COUNTRY_CODE = 'CM';
     private const COUNTRY_CALLING_CODES = ['CM' => '+237'];
+    private const DUPLICATE_CONFIDENCE_THRESHOLD = 88;
+    private const DUPLICATE_REVIEW_MAX_PROFILES = 20000;
 
     public function __construct(private readonly CustomerRepository $repository)
     {
@@ -57,37 +60,104 @@ final class CustomerService
         return $this->repository->topByRewardPoints(max(1, min($limit, 10)));
     }
 
-    /** @return list<string> */
+    public function synchronize(): void
+    {
+        $this->repository->synchronizeFromShipments();
+    }
+
+    /**
+     * Autocomplete reads existing profiles only; pages that open the form synchronize first, so
+     * keystrokes never trigger a full shipment scan.
+     *
+     * @return list<string>
+     */
     public function suggestions(string $query, int $limit = 12): array
     {
         $query = $this->text($query, 100);
         if ($query === '') {
             return [];
         }
-        $this->repository->synchronizeFromShipments();
         return $this->repository->suggestions($query, max(1, min($limit, 20)));
+    }
+
+    /** @return array{customer: CustomerProfile, alias: ?string}|null */
+    public function existingCustomer(string $name): ?array
+    {
+        $name = $this->collapsedName($this->text($name, 160));
+        return strlen($name) < 2 ? null : $this->repository->findByName($name);
     }
 
     /** @return list<array{primary: CustomerProfile, duplicate: CustomerProfile, confidence: int}> */
     public function duplicateSuggestions(int $limit = 8): array
     {
         $this->repository->synchronizeFromShipments();
-        $profiles = $this->repository->duplicateReviewProfiles(200);
-        $matches = [];
-        $profileCount = count($profiles);
-        for ($leftIndex = 0; $leftIndex < $profileCount; $leftIndex++) {
-            for ($rightIndex = $leftIndex + 1; $rightIndex < $profileCount; $rightIndex++) {
-                $confidence = $this->duplicateConfidence($profiles[$leftIndex]->displayName, $profiles[$rightIndex]->displayName);
-                if ($confidence < 88) {
-                    continue;
-                }
-                [$primary, $duplicate] = $this->preferredProfile($profiles[$leftIndex], $profiles[$rightIndex]);
-                $matches[] = compact('primary', 'duplicate', 'confidence');
+        $entries = [];
+        foreach ($this->repository->duplicateReviewNames(self::DUPLICATE_REVIEW_MAX_PROFILES) as $row) {
+            $normalized = $this->normalizedDuplicateName($row['displayName']);
+            if ($normalized !== '') {
+                $entries[] = ['key' => $row['customerKey'], 'name' => $row['displayName'], 'normalized' => $normalized];
             }
         }
+
+        // Compare only names that share their first or last three characters. A small edit leaves
+        // at least one end intact, so this keeps recall while avoiding an all-pairs comparison.
+        $blocks = [];
+        foreach ($entries as $index => $entry) {
+            $blocks['p' . substr($entry['normalized'], 0, 3)][] = $index;
+            $blocks['s' . substr($entry['normalized'], -3)][] = $index;
+        }
+        $candidates = [];
+        foreach ($blocks as $members) {
+            $memberCount = count($members);
+            if ($memberCount < 2) {
+                continue;
+            }
+            usort($members, static fn (int $left, int $right): int => strlen($entries[$left]['normalized']) <=> strlen($entries[$right]['normalized']));
+            for ($leftIndex = 0; $leftIndex < $memberCount; $leftIndex++) {
+                $left = $entries[$members[$leftIndex]];
+                for ($rightIndex = $leftIndex + 1; $rightIndex < $memberCount; $rightIndex++) {
+                    $right = $entries[$members[$rightIndex]];
+                    $rightLength = strlen($right['normalized']);
+                    // Scores at the threshold need a length ratio of roughly 0.8 or at most three edits.
+                    if ($rightLength - strlen($left['normalized']) > max(3, (int) ceil($rightLength * 0.2))) {
+                        break;
+                    }
+                    $pairKey = strcmp($left['key'], $right['key']) < 0 ? $left['key'] . $right['key'] : $right['key'] . $left['key'];
+                    if (isset($candidates[$pairKey])) {
+                        continue;
+                    }
+                    $confidence = $this->normalizedDuplicateConfidence($left['normalized'], $right['normalized']);
+                    $candidates[$pairKey] = $confidence >= self::DUPLICATE_CONFIDENCE_THRESHOLD
+                        ? ['left' => $left, 'right' => $right, 'confidence' => $confidence]
+                        : null;
+                }
+            }
+        }
+        $matches = array_values(array_filter($candidates));
         usort($matches, static fn (array $left, array $right): int => ($right['confidence'] <=> $left['confidence'])
-            ?: strcasecmp($left['primary']->displayName, $right['primary']->displayName));
-        return array_slice($matches, 0, max(1, min($limit, 20)));
+            ?: strcasecmp($left['left']['name'], $right['left']['name']));
+
+        $profiles = [];
+        $suggestions = [];
+        foreach ($matches as $match) {
+            $leftProfile = $profiles[$match['left']['key']] ??= $this->repository->find($match['left']['key']);
+            $rightProfile = $profiles[$match['right']['key']] ??= $this->repository->find($match['right']['key']);
+            if ($leftProfile === null || $rightProfile === null) {
+                continue;
+            }
+            [$primary, $duplicate] = $this->preferredProfile($leftProfile, $rightProfile);
+            $suggestions[] = ['primary' => $primary, 'duplicate' => $duplicate, 'confidence' => $match['confidence']];
+            if (count($suggestions) >= max(1, min($limit, 20))) {
+                break;
+            }
+        }
+        return $suggestions;
+    }
+
+    /** @return list<array{id: int, targetCustomerKey: string, targetName: string, sourceName: string, mergedAt: string}> */
+    public function recentMerges(int $limit = 5): array
+    {
+        return $this->repository->recentMerges(max(1, min($limit, 20)));
     }
 
     public function find(string $customerKey): ?CustomerProfile
@@ -223,7 +293,11 @@ final class CustomerService
         if (strlen($displayName) < 2 || $this->containsControlCharacters($displayName)) {
             throw new InvalidArgumentException('Provide a customer or organization name.');
         }
-        $displayName = preg_replace('/[\t ]+/', ' ', $displayName) ?? $displayName;
+        $displayName = $this->collapsedName($displayName);
+        $nameOwner = $this->repository->findByName($displayName);
+        if ($nameOwner !== null && $nameOwner['customer']->customerKey !== $existing?->customerKey) {
+            throw new DuplicateCustomerException($nameOwner['customer'], $nameOwner['alias']);
+        }
         $contactName = $this->text($input['contact_name'] ?? '', 100);
         $email = strtolower($this->text($input['email'] ?? '', 254));
         $phone = $this->text($input['phone'] ?? '', 32);
@@ -249,7 +323,7 @@ final class CustomerService
             throw new InvalidArgumentException('Select a valid customer status.');
         }
 
-        $key = $existing?->customerKey ?? hash('sha256', strtolower(trim($displayName)));
+        $key = $existing?->customerKey ?? $this->newCustomerKey($displayName);
         $customer = new CustomerProfile(
             $existing?->id,
             $key,
@@ -293,10 +367,21 @@ final class CustomerService
         if ($target === null || $source === null) {
             throw new InvalidArgumentException('One of the customer profiles no longer exists.');
         }
-        if ($this->duplicateConfidence($target->displayName, $source->displayName) < 88) {
+        if ($this->duplicateConfidence($target->displayName, $source->displayName) < self::DUPLICATE_CONFIDENCE_THRESHOLD) {
             throw new InvalidArgumentException('These customer names are not similar enough for the duplicate merge workflow.');
         }
         return $this->repository->merge($targetCustomerKey, $sourceCustomerKey, $actorId);
+    }
+
+    public function undoMerge(string $mergeId, string $actorId): CustomerProfile
+    {
+        if (preg_match('/^[a-f0-9]{24}$/', $actorId) !== 1) {
+            throw new InvalidArgumentException('The customer-data actor is invalid.');
+        }
+        if (preg_match('/^[1-9][0-9]{0,17}$/', $mergeId) !== 1) {
+            throw new InvalidArgumentException('Select a valid merge to undo.');
+        }
+        return $this->repository->undoMerge((int) $mergeId, $actorId);
     }
 
     /** @param array<string, mixed> $input */
@@ -369,12 +454,39 @@ final class CustomerService
         return preg_match('/[\x00-\x1F\x7F]/', $value) === 1;
     }
 
+    private function collapsedName(string $name): string
+    {
+        return preg_replace('/[\t ]+/', ' ', $name) ?? $name;
+    }
+
+    /**
+     * Keys are derived from the name so shipment synchronization and manual entry agree, but a
+     * renamed profile keeps its original key; a new customer taking that old name gets a random key.
+     */
+    private function newCustomerKey(string $displayName): string
+    {
+        $key = hash('sha256', strtolower(trim($displayName)));
+        return $this->repository->find($key) === null ? $key : bin2hex(random_bytes(32));
+    }
+
     private function duplicateConfidence(string $left, string $right): int
     {
-        $left = $this->normalizedDuplicateName($left);
-        $right = $this->normalizedDuplicateName($right);
+        return $this->normalizedDuplicateConfidence(
+            $this->normalizedDuplicateName($left),
+            $this->normalizedDuplicateName($right),
+        );
+    }
+
+    private function normalizedDuplicateConfidence(string $left, string $right): int
+    {
         if ($left === '' || $right === '' || $left === $right) {
             return $left !== '' && $left === $right ? 100 : 0;
+        }
+        // Names that differ in any number are treated as distinct branches or sites, e.g. "Douala 1" and "Douala 2".
+        preg_match_all('/\d+/', $left, $leftNumbers);
+        preg_match_all('/\d+/', $right, $rightNumbers);
+        if ($leftNumbers[0] !== $rightNumbers[0]) {
+            return 0;
         }
         $maximumLength = max(strlen($left), strlen($right));
         if ($maximumLength < 5) {
@@ -391,7 +503,20 @@ final class CustomerService
 
     private function normalizedDuplicateName(string $name): string
     {
-        $name = strtolower(trim($name));
+        $name = trim($name);
+        // Fold accents the way the database collation does, so "Société" and "Societe" compare as equal.
+        if (class_exists(\Normalizer::class)) {
+            $name = preg_replace('/\p{Mn}+/u', '', (string) \Normalizer::normalize($name, \Normalizer::FORM_D)) ?? $name;
+        } else {
+            $name = strtr($name, [
+                'à' => 'a', 'á' => 'a', 'â' => 'a', 'ä' => 'a', 'ã' => 'a', 'À' => 'A', 'Á' => 'A', 'Â' => 'A', 'Ä' => 'A',
+                'ç' => 'c', 'Ç' => 'C', 'é' => 'e', 'è' => 'e', 'ê' => 'e', 'ë' => 'e', 'É' => 'E', 'È' => 'E', 'Ê' => 'E', 'Ë' => 'E',
+                'í' => 'i', 'î' => 'i', 'ï' => 'i', 'Î' => 'I', 'Ï' => 'I', 'ó' => 'o', 'ô' => 'o', 'ö' => 'o', 'Ô' => 'O', 'Ö' => 'O',
+                'ú' => 'u', 'ù' => 'u', 'û' => 'u', 'ü' => 'u', 'Ù' => 'U', 'Û' => 'U', 'Ü' => 'U', 'ÿ' => 'y', 'ñ' => 'n', 'Ñ' => 'N',
+            ]);
+        }
+        $name = strtolower($name);
+        $name = str_replace(['œ', 'Œ', 'æ', 'Æ'], ['oe', 'oe', 'ae', 'ae'], $name);
         $name = str_replace('&', ' and ', $name);
         $name = preg_replace('/[^a-z0-9]+/', ' ', $name) ?? $name;
         $tokens = array_values(array_filter(explode(' ', trim($name))));

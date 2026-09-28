@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 namespace App\Modules\CRM\Infrastructure;
 
+use App\Modules\CRM\Domain\CustomerMergePolicy;
 use App\Modules\CRM\Domain\CustomerProfile;
 use App\Modules\CRM\Domain\CustomerRepository;
 use App\Modules\Pickupsheet\Domain\PickupSheet;
@@ -16,6 +17,8 @@ final class DemoCustomerRepository implements CustomerRepository
 {
     private const SESSION_KEY = '_demo_pickup_customers';
     private const REWARDS_SESSION_KEY = '_demo_pickup_customer_rewards';
+    private const ALIASES_SESSION_KEY = '_demo_pickup_customer_aliases';
+    private const MERGES_SESSION_KEY = '_demo_pickup_customer_merges';
 
     public function __construct(private readonly PickupSheetRepository $pickupSheets)
     {
@@ -23,6 +26,7 @@ final class DemoCustomerRepository implements CustomerRepository
 
     public function synchronizeFromShipments(): void
     {
+        $this->resolveShipmentAliases();
         $profiles = $this->profiles();
         $profileNames = [];
         foreach ($profiles as $profileKey => $profile) {
@@ -143,16 +147,12 @@ final class DemoCustomerRepository implements CustomerRepository
         return array_slice($names, 0, max(1, min($limit, 20)));
     }
 
-    public function duplicateReviewProfiles(int $limit): array
+    public function duplicateReviewNames(int $limit): array
     {
-        $metrics = $this->metrics();
-        return array_map(
-            fn (array $profile): CustomerProfile => $this->profile(
-                $profile,
-                $metrics[$this->key((string) ($profile['displayName'] ?? ''))] ?? [],
-            ),
-            array_slice(array_values($this->profiles()), 0, max(1, min($limit, 200))),
-        );
+        return array_map(static fn (array $profile): array => [
+            'customerKey' => (string) $profile['customerKey'],
+            'displayName' => (string) ($profile['displayName'] ?? ''),
+        ], array_slice(array_values($this->profiles()), 0, max(1, $limit)));
     }
 
     public function find(string $customerKey): ?CustomerProfile
@@ -161,6 +161,23 @@ final class DemoCustomerRepository implements CustomerRepository
         return is_array($profile)
             ? $this->profile($profile, $this->metrics()[$this->key((string) ($profile['displayName'] ?? ''))] ?? [])
             : null;
+    }
+
+    public function findByName(string $name): ?array
+    {
+        $nameKey = $this->key($name);
+        foreach ($this->profiles() as $profile) {
+            if (is_array($profile) && $this->key((string) ($profile['displayName'] ?? '')) === $nameKey) {
+                $customer = $this->find((string) $profile['customerKey']);
+                return $customer === null ? null : ['customer' => $customer, 'alias' => null];
+            }
+        }
+        $alias = $this->aliases()[$nameKey] ?? null;
+        if (!is_array($alias)) {
+            return null;
+        }
+        $customer = $this->find((string) $alias['customerKey']);
+        return $customer === null ? null : ['customer' => $customer, 'alias' => (string) $alias['aliasName']];
     }
 
     public function recentShipments(string $customerKey, int $limit, int $offset = 0): array
@@ -209,6 +226,15 @@ final class DemoCustomerRepository implements CustomerRepository
                 throw new InvalidArgumentException('A customer profile already uses this organization name.');
             }
         }
+        $aliases = $this->aliases();
+        $aliasOwner = $aliases[$this->key($customer->displayName)]['customerKey'] ?? null;
+        if (is_string($aliasOwner) && $aliasOwner !== $customer->customerKey) {
+            throw new InvalidArgumentException('This organization name was merged into another customer profile.');
+        }
+        if (is_string($aliasOwner)) {
+            unset($aliases[$this->key($customer->displayName)]);
+            $_SESSION[self::ALIASES_SESSION_KEY] = $aliases;
+        }
         if (is_array($existing)
             && trim((string) ($existing['displayName'] ?? '')) !== trim($customer->displayName)) {
             $this->renameExistingShipments(
@@ -248,37 +274,185 @@ final class DemoCustomerRepository implements CustomerRepository
             throw new InvalidArgumentException('One of the customer profiles no longer exists.');
         }
 
-        $this->renameExistingShipments((string) $source['displayName'], (string) $target['displayName'], $actorId);
-        foreach (['contactName', 'email', 'phone', 'address', 'city'] as $field) {
-            if (trim((string) ($target[$field] ?? '')) === '') {
-                $target[$field] = (string) ($source[$field] ?? '');
+        $sourceNameKey = $this->key((string) $source['displayName']);
+        $shipments = [];
+        $this->rewriteShipments(function (PickupSheet $sheet, PickupShipment $shipment) use ($sourceNameKey, $target, &$shipments): ?string {
+            if ($this->key($shipment->consignor) !== $sourceNameKey) {
+                return null;
             }
-        }
-        $target['status'] = $this->mergedStatus((string) ($target['status'] ?? 'active'), (string) ($source['status'] ?? 'active'));
-        $target['nextFollowUpOn'] = $this->earliestDate($target['nextFollowUpOn'] ?? null, $source['nextFollowUpOn'] ?? null);
-        $target['notes'] = $this->mergedNotes($target, $source);
-        $target['updatedAt'] = gmdate('Y-m-d H:i:s');
-        $profiles[$targetCustomerKey] = $target;
+            $shipments[] = [$sheet->id, $shipment->lineNumber, $shipment->consignor];
+            return (string) $target['displayName'];
+        }, $actorId);
+
+        $targetBefore = $this->mergeFields($target);
+        $targetAfter = CustomerMergePolicy::merge($targetBefore, $this->mergeFields($source) + ['displayName' => (string) $source['displayName']]);
+        $profiles[$targetCustomerKey] = $targetAfter + $target;
+        $profiles[$targetCustomerKey]['updatedAt'] = gmdate('Y-m-d H:i:s');
         unset($profiles[$sourceCustomerKey]);
         $_SESSION[self::SESSION_KEY] = $profiles;
 
+        $rewardIndexes = [];
         $adjustments = $_SESSION[self::REWARDS_SESSION_KEY] ?? [];
         if (is_array($adjustments)) {
-            foreach ($adjustments as &$adjustment) {
+            foreach ($adjustments as $index => $adjustment) {
                 if (is_array($adjustment) && ($adjustment['customerKey'] ?? '') === $sourceCustomerKey) {
-                    $adjustment['customerKey'] = $targetCustomerKey;
+                    $adjustments[$index]['customerKey'] = $targetCustomerKey;
+                    $rewardIndexes[] = $index;
                 }
             }
-            unset($adjustment);
             $_SESSION[self::REWARDS_SESSION_KEY] = $adjustments;
         }
 
+        $aliases = $this->aliases();
+        $movedAliases = [];
+        foreach ($aliases as $aliasKey => $alias) {
+            if (($alias['customerKey'] ?? '') === $sourceCustomerKey) {
+                $aliases[$aliasKey]['customerKey'] = $targetCustomerKey;
+                $movedAliases[] = $aliasKey;
+            }
+        }
+        $aliases[$sourceNameKey] = ['aliasName' => trim((string) $source['displayName']), 'customerKey' => $targetCustomerKey];
+        $_SESSION[self::ALIASES_SESSION_KEY] = $aliases;
+
+        $merges = $this->merges();
+        $merges[] = [
+            'id' => count($merges) + 1,
+            'targetCustomerKey' => $targetCustomerKey,
+            'sourceCustomerKey' => $sourceCustomerKey,
+            'sourceName' => (string) $source['displayName'],
+            'mergedAt' => gmdate('Y-m-d H:i:s'),
+            'undoneAt' => null,
+            'snapshot' => [
+                'source' => $source,
+                'targetBefore' => $targetBefore,
+                'targetAfter' => $targetAfter,
+                'shipments' => $shipments,
+                'rewardIndexes' => $rewardIndexes,
+                'aliasKeys' => $movedAliases,
+            ],
+        ];
+        $_SESSION[self::MERGES_SESSION_KEY] = $merges;
+
         return $this->find($targetCustomerKey) ?? throw new RuntimeException('Merged customer profile could not be loaded.');
+    }
+
+    public function recentMerges(int $limit): array
+    {
+        $profiles = $this->profiles();
+        $recent = [];
+        foreach (array_reverse($this->merges()) as $merge) {
+            $target = $profiles[$merge['targetCustomerKey'] ?? ''] ?? null;
+            if (($merge['undoneAt'] ?? null) !== null || !is_array($target)) {
+                continue;
+            }
+            $recent[] = [
+                'id' => (int) $merge['id'],
+                'targetCustomerKey' => (string) $merge['targetCustomerKey'],
+                'targetName' => (string) $target['displayName'],
+                'sourceName' => (string) $merge['sourceName'],
+                'mergedAt' => (string) $merge['mergedAt'],
+            ];
+        }
+        return array_slice($recent, 0, max(1, min($limit, 20)));
+    }
+
+    public function undoMerge(int $mergeId, string $actorId): CustomerProfile
+    {
+        $merges = $this->merges();
+        $index = $mergeId - 1;
+        $merge = $merges[$index] ?? null;
+        if (!is_array($merge) || ($merge['undoneAt'] ?? null) !== null) {
+            throw new InvalidArgumentException('This merge has already been undone or no longer exists.');
+        }
+        $profiles = $this->profiles();
+        $targetKey = (string) $merge['targetCustomerKey'];
+        $sourceKey = (string) $merge['sourceCustomerKey'];
+        $snapshot = $merge['snapshot'];
+        $source = $snapshot['source'];
+        $target = $profiles[$targetKey] ?? null;
+        if (!is_array($target)) {
+            throw new InvalidArgumentException('The retained profile was merged again or removed. Undo that later merge first.');
+        }
+        $sourceNameKey = $this->key((string) $source['displayName']);
+        foreach ($profiles as $key => $profile) {
+            if ($key === $sourceKey || $this->key((string) ($profile['displayName'] ?? '')) === $sourceNameKey) {
+                throw new InvalidArgumentException(sprintf('Another customer profile now uses the name %s. Rename it before undoing this merge.', (string) $source['displayName']));
+            }
+        }
+
+        $aliases = $this->aliases();
+        if (($aliases[$sourceNameKey]['customerKey'] ?? null) === $targetKey) {
+            unset($aliases[$sourceNameKey]);
+        }
+        foreach ($snapshot['aliasKeys'] as $aliasKey) {
+            if (($aliases[$aliasKey]['customerKey'] ?? null) === $targetKey) {
+                $aliases[$aliasKey]['customerKey'] = $sourceKey;
+            }
+        }
+        $_SESSION[self::ALIASES_SESSION_KEY] = $aliases;
+
+        $adjustments = $_SESSION[self::REWARDS_SESSION_KEY] ?? [];
+        foreach ($snapshot['rewardIndexes'] as $rewardIndex) {
+            if (($adjustments[$rewardIndex]['customerKey'] ?? null) === $targetKey) {
+                $adjustments[$rewardIndex]['customerKey'] = $sourceKey;
+            }
+        }
+        $_SESSION[self::REWARDS_SESSION_KEY] = $adjustments;
+
+        // Only shipments still attributed to the retained profile are handed back.
+        $restoredShipments = [];
+        foreach ($snapshot['shipments'] as [$sheetId, $lineNumber, $consignor]) {
+            $restoredShipments[$sheetId . ':' . $lineNumber] = $consignor;
+        }
+        $targetNameKey = $this->key((string) $target['displayName']);
+        $this->rewriteShipments(fn (PickupSheet $sheet, PickupShipment $shipment): ?string => $this->key($shipment->consignor) === $targetNameKey
+            ? ($restoredShipments[$sheet->id . ':' . $shipment->lineNumber] ?? null)
+            : null, $actorId);
+
+        // Restore target fields only where nobody has edited them since the merge.
+        $current = $this->mergeFields($target);
+        foreach (CustomerMergePolicy::MERGED_FIELDS as $field) {
+            if ((string) ($current[$field] ?? '') === (string) ($snapshot['targetAfter'][$field] ?? '')) {
+                $target[$field] = $snapshot['targetBefore'][$field] ?? $target[$field] ?? null;
+            }
+        }
+        $profiles = $this->profiles();
+        $profiles[$targetKey] = $target;
+        $profiles[$sourceKey] = $source;
+        $_SESSION[self::SESSION_KEY] = $profiles;
+
+        $merges[$index]['undoneAt'] = gmdate('Y-m-d H:i:s');
+        $_SESSION[self::MERGES_SESSION_KEY] = $merges;
+
+        return $this->find($sourceKey) ?? throw new RuntimeException('Restored customer profile could not be loaded.');
+    }
+
+    /** Points shipments still typed with a merged-away name at the profile that absorbed it. */
+    private function resolveShipmentAliases(): void
+    {
+        $aliases = $this->aliases();
+        if ($aliases === []) {
+            return;
+        }
+        $profiles = $this->profiles();
+        $this->rewriteShipments(function (PickupSheet $sheet, PickupShipment $shipment) use ($aliases, $profiles): ?string {
+            $owner = $aliases[$this->key($shipment->consignor)]['customerKey'] ?? null;
+            return is_string($owner) && is_array($profiles[$owner] ?? null) ? (string) $profiles[$owner]['displayName'] : null;
+        }, str_repeat('0', 24));
     }
 
     private function renameExistingShipments(string $previousName, string $newName, string $actorId): void
     {
         $previousKey = $this->key($previousName);
+        $this->rewriteShipments(
+            fn (PickupSheet $sheet, PickupShipment $shipment): ?string => $this->key($shipment->consignor) === $previousKey ? $newName : null,
+            $actorId,
+        );
+    }
+
+    /** @param callable(PickupSheet, PickupShipment): ?string $consignorFor returns a replacement consignor, or null to keep the current one */
+    private function rewriteShipments(callable $consignorFor, string $actorId): void
+    {
         foreach ($this->pickupSheets->recent(PHP_INT_MAX) as $sheet) {
             if (!$sheet instanceof PickupSheet) {
                 continue;
@@ -286,14 +460,15 @@ final class DemoCustomerRepository implements CustomerRepository
             $changed = false;
             $shipments = [];
             foreach ($sheet->shipments as $shipment) {
-                if ($this->key($shipment->consignor) !== $previousKey) {
+                $consignor = $consignorFor($sheet, $shipment);
+                if ($consignor === null || $consignor === $shipment->consignor) {
                     $shipments[] = $shipment;
                     continue;
                 }
                 $changed = true;
                 $shipments[] = new PickupShipment(
                     $shipment->lineNumber,
-                    $newName,
+                    $consignor,
                     $shipment->awbNumber,
                     $shipment->destination,
                     $shipment->amountXaf,
@@ -492,35 +667,36 @@ final class DemoCustomerRepository implements CustomerRepository
         return ((int) $matches[1] * 1000) + (int) $fraction;
     }
 
-    private function mergedStatus(string $target, string $source): string
+    /**
+     * @param array<string, mixed> $profile
+     * @return array{contactName: string, email: string, phone: string, address: string, city: string, status: string, nextFollowUpOn: ?string, notes: string}
+     */
+    private function mergeFields(array $profile): array
     {
-        $priority = ['inactive' => 0, 'lead' => 1, 'active' => 2, 'attention' => 3];
-        return ($priority[$source] ?? 0) > ($priority[$target] ?? 0) ? $source : $target;
+        return [
+            'contactName' => (string) ($profile['contactName'] ?? ''),
+            'email' => (string) ($profile['email'] ?? ''),
+            'phone' => (string) ($profile['phone'] ?? ''),
+            'address' => (string) ($profile['address'] ?? ''),
+            'city' => (string) ($profile['city'] ?? ''),
+            'status' => (string) ($profile['status'] ?? 'active'),
+            'nextFollowUpOn' => is_string($profile['nextFollowUpOn'] ?? null) && $profile['nextFollowUpOn'] !== '' ? $profile['nextFollowUpOn'] : null,
+            'notes' => (string) ($profile['notes'] ?? ''),
+        ];
     }
 
-    private function earliestDate(mixed $target, mixed $source): ?string
+    /** @return array<string, array{aliasName: string, customerKey: string}> */
+    private function aliases(): array
     {
-        $dates = array_values(array_filter([$target, $source], static fn (mixed $date): bool => is_string($date) && $date !== ''));
-        return $dates === [] ? null : min($dates);
+        $aliases = $_SESSION[self::ALIASES_SESSION_KEY] ?? [];
+        return is_array($aliases) ? $aliases : [];
     }
 
-    /** @param array<string, mixed> $target @param array<string, mixed> $source */
-    private function mergedNotes(array $target, array $source): string
+    /** @return list<array<string, mixed>> */
+    private function merges(): array
     {
-        $notes = trim((string) ($target['notes'] ?? ''));
-        $sourceNotes = trim((string) ($source['notes'] ?? ''));
-        $details = [];
-        foreach (['contactName' => 'Contact', 'email' => 'Email', 'phone' => 'Phone', 'address' => 'Address', 'city' => 'City'] as $field => $label) {
-            $sourceValue = trim((string) ($source[$field] ?? ''));
-            if ($sourceValue !== '' && $sourceValue !== trim((string) ($target[$field] ?? ''))) {
-                $details[] = $label . ': ' . $sourceValue;
-            }
-        }
-        $mergedContext = trim(implode('; ', $details) . ($sourceNotes !== '' ? ($details === [] ? '' : '; ') . 'Notes: ' . $sourceNotes : ''));
-        if ($mergedContext !== '') {
-            $notes .= ($notes === '' ? '' : "\n\n") . 'Merged from ' . (string) ($source['displayName'] ?? 'duplicate profile') . ': ' . $mergedContext;
-        }
-        return substr($notes, 0, 2000);
+        $merges = $_SESSION[self::MERGES_SESSION_KEY] ?? [];
+        return is_array($merges) ? array_values($merges) : [];
     }
 
     private function key(string $name): string

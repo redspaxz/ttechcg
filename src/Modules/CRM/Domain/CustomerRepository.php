@@ -20,10 +20,21 @@ interface CustomerRepository
     /** @return list<string> */
     public function suggestions(string $query, int $limit): array;
 
-    /** @return list<CustomerProfile> */
-    public function duplicateReviewProfiles(int $limit): array;
+    /**
+     * Lightweight name index for duplicate detection across every profile.
+     *
+     * @return list<array{customerKey: string, displayName: string}>
+     */
+    public function duplicateReviewNames(int $limit): array;
 
     public function find(string $customerKey): ?CustomerProfile;
+
+    /**
+     * Finds the profile that owns a name, either as its display name or as a merged-away alias.
+     *
+     * @return array{customer: CustomerProfile, alias: ?string}|null
+     */
+    public function findByName(string $name): ?array;
 
     /**
      * @return list<array{
@@ -41,7 +52,25 @@ interface CustomerRepository
 
     public function save(CustomerProfile $customer, string $actorId): CustomerProfile;
 
+    /**
+     * Folds the source profile into the target, records the source name as an alias of the
+     * target, and stores an undo snapshot.
+     */
     public function merge(string $targetCustomerKey, string $sourceCustomerKey, string $actorId): CustomerProfile;
+
+    /**
+     * @return list<array{
+     *     id: int,
+     *     targetCustomerKey: string,
+     *     targetName: string,
+     *     sourceName: string,
+     *     mergedAt: string
+     * }>
+     */
+    public function recentMerges(int $limit): array;
+
+    /** Restores the merged-away profile and returns it. */
+    public function undoMerge(int $mergeId, string $actorId): CustomerProfile;
 
     /**
      * @return list<array{

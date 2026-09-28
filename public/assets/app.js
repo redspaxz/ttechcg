@@ -325,6 +325,7 @@ if (pickupForm) {
                     : [];
                 if (searchGeneration === consignorSearchGeneration && activeConsignorInput === input && input.value.trim() === query) {
                     showConsignorSuggestions(input, suggestions, true);
+                    input.dispatchEvent(new CustomEvent('consignor-search-results', { detail: { query, payload } }));
                 }
             } catch (error) {
                 if (error?.name !== 'AbortError') {
@@ -818,11 +819,44 @@ document.querySelector('[data-copy-recovery-codes]')?.addEventListener('click', 
 
 document.querySelector('[data-print-recovery-codes]')?.addEventListener('click', () => window.print());
 
+const existingCustomerHint = document.querySelector('[data-customer-autocomplete-form] [data-existing-customer-hint]');
+const existingCustomerInput = document.querySelector('[data-customer-autocomplete-form] [data-consignor-input]');
+if (existingCustomerHint && existingCustomerInput) {
+    const hideExistingCustomer = () => {
+        existingCustomerHint.hidden = true;
+        existingCustomerHint.replaceChildren();
+    };
+    existingCustomerInput.addEventListener('input', hideExistingCustomer);
+    existingCustomerInput.addEventListener('consignor-search-results', (event) => {
+        const existing = event.detail?.payload?.existing;
+        if (!existing || typeof existing.name !== 'string' || typeof existing.url !== 'string' || !existing.url.startsWith('/') || existing.url.startsWith('//')) {
+            hideExistingCustomer();
+            return;
+        }
+        const link = document.createElement('a');
+        link.href = existing.url;
+        link.textContent = 'Open ' + existing.name;
+        const message = typeof existing.alias === 'string'
+            ? existing.alias + ' was merged into ' + existing.name + '. '
+            : existing.name + ' already has a CRM profile. ';
+        existingCustomerHint.replaceChildren(document.createTextNode(message), link);
+        existingCustomerHint.hidden = false;
+    });
+}
+
 document.addEventListener('submit', (event) => {
+    if (event.target.matches('[data-crm-undo-merge-form]')) {
+        const mergeName = event.target.dataset.mergeName || 'the merged customer';
+        const keepName = event.target.dataset.keepName || 'the retained customer';
+        if (!window.confirm(`Undo the merge of ${mergeName} into ${keepName}? ${mergeName} will become a separate profile again with its original shipments and rewards.`)) {
+            event.preventDefault();
+            return;
+        }
+    }
     if (event.target.matches('[data-crm-merge-form]')) {
         const keepName = event.target.dataset.keepName || 'the selected customer';
         const mergeName = event.target.dataset.mergeName || 'the duplicate customer';
-        if (!window.confirm(`Merge ${mergeName} into ${keepName}? The ${mergeName} profile will be removed after its data is transferred.`)) {
+        if (!window.confirm(`Merge ${mergeName} into ${keepName}? The ${mergeName} profile will be removed after its data is transferred; you can undo this from Recent merges.`)) {
             event.preventDefault();
             return;
         }

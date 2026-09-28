@@ -5,6 +5,7 @@ declare(strict_types=1);
 $e = static fn (mixed $value): string => htmlspecialchars((string) $value, ENT_QUOTES, 'UTF-8');
 $summary = is_array($summary ?? null) ? $summary : [];
 $duplicateSuggestions = is_array($duplicateSuggestions ?? null) ? $duplicateSuggestions : [];
+$recentMerges = is_array($recentMerges ?? null) ? $recentMerges : [];
 ?>
 <section class="pickup-view-workspace pickup-crm-workspace">
     <div class="container pickup-workspace-header">
@@ -49,6 +50,21 @@ $duplicateSuggestions = is_array($duplicateSuggestions ?? null) ? $duplicateSugg
                                 <form method="post" action="<?= $e($basePath) ?>/dhl/pickupsheet/customers/merge" data-crm-merge-form data-keep-name="<?= $e($primary->displayName) ?>" data-merge-name="<?= $e($duplicate->displayName) ?>"><input type="hidden" name="_token" value="<?= $e($csrfToken) ?>"><input type="hidden" name="target_customer_key" value="<?= $e($primary->customerKey) ?>"><input type="hidden" name="source_customer_key" value="<?= $e($duplicate->customerKey) ?>"><button type="submit">Keep <?= $e($primary->displayName) ?></button></form>
                                 <form method="post" action="<?= $e($basePath) ?>/dhl/pickupsheet/customers/merge" data-crm-merge-form data-keep-name="<?= $e($duplicate->displayName) ?>" data-merge-name="<?= $e($primary->displayName) ?>"><input type="hidden" name="_token" value="<?= $e($csrfToken) ?>"><input type="hidden" name="target_customer_key" value="<?= $e($duplicate->customerKey) ?>"><input type="hidden" name="source_customer_key" value="<?= $e($primary->customerKey) ?>"><button type="submit">Keep <?= $e($duplicate->displayName) ?></button></form>
                             </div>
+                        </article>
+                    <?php endforeach; ?>
+                </div>
+            </section>
+        <?php endif; ?>
+
+        <?php if ($recentMerges !== []): ?>
+            <section class="pickup-crm-duplicates pickup-crm-merge-history" aria-labelledby="crm-merge-history-title">
+                <div class="pickup-card-heading"><div><span>Data quality</span><h2 id="crm-merge-history-title">Recent merges</h2></div><small>Undo restores the separate profile</small></div>
+                <p class="pickup-crm-duplicates-intro">Undo moves the merged profile's shipments, rewards, and aliases back and restores any retained-profile fields nobody has edited since. Shipments later entered under the old name stay with the retained profile.</p>
+                <div class="pickup-crm-merge-list">
+                    <?php foreach ($recentMerges as $merge): ?>
+                        <article>
+                            <div class="pickup-crm-duplicate-profile"><strong><?= $e($merge['sourceName']) ?> &rarr; <?= $e($merge['targetName']) ?></strong><small>Merged <?= $e($merge['mergedAt']) ?> UTC</small></div>
+                            <form method="post" action="<?= $e($basePath) ?>/dhl/pickupsheet/customers/merge/undo" data-crm-undo-merge-form data-merge-name="<?= $e($merge['sourceName']) ?>" data-keep-name="<?= $e($merge['targetName']) ?>"><input type="hidden" name="_token" value="<?= $e($csrfToken) ?>"><input type="hidden" name="merge_id" value="<?= $e($merge['id']) ?>"><button type="submit">Undo merge</button></form>
                         </article>
                     <?php endforeach; ?>
                 </div>
