@@ -1954,6 +1954,7 @@ $renameControllerCustomer('Controller Client');
 $customerController->edit(new Request('GET', '/dhl/pickupsheet/customers/edit', ['customer' => $customerKey]));
 $updatedCustomerProfile = $customerController->edit(new Request('GET', '/dhl/pickupsheet/customers/edit', ['customer' => $customerKey]));
 $assert(str_contains($updatedCustomerProfile->body(), 'Camille Customer') && str_contains($updatedCustomerProfile->body(), 'camille@example.com') && str_contains($updatedCustomerProfile->body(), '670 000 000'), 'Saved CRM contact details should persist.');
+$assert(str_contains($updatedCustomerProfile->body(), '<a class="pickup-customer-return" href="/dhl/pickupsheet/customers"><span aria-hidden="true">&larr;</span> Back to customer directory</a>'), 'A customer profile should offer a return button to the customer directory.');
 $assert(str_contains($updatedCustomerProfile->body(), 'class="pickup-customer-details"') && !str_contains($updatedCustomerProfile->body(), 'class="pickup-customer-form"') && !str_contains($updatedCustomerProfile->body(), 'name="email"'), 'A customer profile should open with read-only details instead of editable fields.');
 $assert(str_contains($updatedCustomerProfile->body(), '<a class="button" href="/dhl/pickupsheet/customers/edit?customer=' . $customerKey . '&amp;mode=edit">Edit details</a>'), 'The read-only customer details should offer an Edit details button.');
 $updatedCustomerProfile = $customerController->edit(new Request('GET', '/dhl/pickupsheet/customers/edit', ['customer' => $customerKey, 'mode' => 'edit']));

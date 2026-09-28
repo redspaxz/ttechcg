@@ -2830,6 +2830,8 @@ button, a, input, select, textarea { -webkit-tap-highlight-color: transparent; }
 .pickup-customer-form label small { color: #806d24; font-size: 0.68rem; }
 .pickup-customer-form-actions { display: flex; align-items: center; justify-content: flex-end; gap: 18px; }
 .pickup-customer-form-actions > a { color: #493800; font-size: 0.74rem; font-weight: 850; }
+.pickup-customer-return { display: inline-flex; align-items: center; gap: 8px; min-height: 40px; margin-bottom: 18px; padding: 8px 16px; border: 1px solid #493800; background: #fff; color: #352900; font-size: 0.74rem; font-weight: 850; text-decoration: none; }
+.pickup-customer-return:hover, .pickup-customer-return:focus-visible { border-color: var(--dhl-red); color: var(--dhl-red); outline: 2px solid rgba(212, 5, 17, 0.12); }
 .pickup-customer-details { padding: 28px; border: 1px solid rgba(69, 50, 0, 0.32); background: #fff; }
 .pickup-customer-details-heading { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 12px 18px; margin-bottom: 22px; }
 .pickup-customer-details-heading h2 { margin: 0; font-size: 1.35rem; }
