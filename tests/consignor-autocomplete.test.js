@@ -171,7 +171,11 @@ assert.equal(downEvent.defaultPrevented, true);
 assert.equal(consignorInput.getAttribute('aria-activedescendant'), 'consignor-suggestion-0');
 assert.equal(popup.children[0].getAttribute('aria-selected'), 'true');
 
+const dispatchedEvents = [];
+const originalDispatch = consignorInput.dispatchEvent.bind(consignorInput);
+consignorInput.dispatchEvent = (event) => { dispatchedEvents.push(event.type); return originalDispatch(event); };
 const enterEvent = consignorInput.emit('keydown', { key: 'Enter' });
+assert.deepEqual(dispatchedEvents, ['change', 'consignor-suggestion-selected'], 'choosing a suggestion should announce the selection so search boxes can run immediately');
 assert.equal(enterEvent.defaultPrevented, true);
 assert.equal(consignorInput.value, 'beta Logistics');
 assert.equal(consignorInput.getAttribute('aria-expanded'), 'false');

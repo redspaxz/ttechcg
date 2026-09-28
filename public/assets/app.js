@@ -207,6 +207,7 @@ if (pickupForm) {
         closeConsignorSuggestions();
         updateSummary();
         input.dispatchEvent(new Event('change', { bubbles: true }));
+        input.dispatchEvent(new Event('consignor-suggestion-selected', { bubbles: true }));
         input.focus({ preventScroll: true });
     };
 
@@ -819,6 +820,11 @@ document.querySelector('[data-copy-recovery-codes]')?.addEventListener('click', 
 });
 
 document.querySelector('[data-print-recovery-codes]')?.addEventListener('click', () => window.print());
+
+// Picking a suggested customer name in a search box runs the search straight away.
+document.querySelectorAll('[data-submit-on-suggestion]').forEach((input) => {
+    input.addEventListener('consignor-suggestion-selected', () => input.form?.requestSubmit());
+});
 
 const existingCustomerHint = document.querySelector('[data-customer-autocomplete-form] [data-existing-customer-hint]');
 const existingCustomerInput = document.querySelector('[data-customer-autocomplete-form] [data-consignor-input]');
