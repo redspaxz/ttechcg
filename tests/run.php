@@ -11,6 +11,7 @@ use App\Modules\Contact\Domain\InquiryNotifier;
 use App\Modules\Contact\Infrastructure\DemoInquiryRepository;
 use App\Modules\Contact\Infrastructure\UnavailableInquiryRepository;
 use App\Modules\Contact\UI\ContactController;
+use App\Modules\CRM\Application\CustomerConsignorDirectory;
 use App\Modules\CRM\Application\CustomerService;
 use App\Modules\CRM\Application\DuplicateCustomerException;
 use App\Modules\CRM\Domain\CustomerMergePolicy;
@@ -1186,6 +1187,102 @@ $spacedCustomer = $renameCustomerService->existingCustomer('Spaced Out Sender')[
 $renameCustomerService->save($spacedCustomer->customerKey, ['display_name' => 'Spaced Out Sender SARL', 'status' => 'active'], str_repeat('a', 24));
 $assert($renamePickupService->findByReference($spacedSheet->referenceNumber)?->shipments[0]->consignor === 'Spaced Out Sender SARL', 'Renaming a customer should also update consignors on paid pickup sheets.');
 
+$rewardSheet = $renamePickupService->submit([
+    'agent_name' => 'CRM Reward Shortfall Agent',
+    'collection_date' => '2026-09-04',
+    'privacy_consent' => '1',
+    'shipments' => [[
+        'consignor' => 'Shortfall Traders',
+        'awb_number' => '1234567893',
+        'destination' => 'DLA',
+        'amount' => '4000',
+        'pieces' => '1',
+        'weight_kg' => '5',
+        'checked_by' => 'CRM Reward Checker',
+    ]],
+]);
+$renameCustomerService->synchronize();
+$shortfallCustomer = $renameCustomerService->existingCustomer('Shortfall Traders')['customer'];
+$renameCustomerService->adjustRewards($shortfallCustomer->customerKey, 'redeem', '50', 'Redeemed all points', str_repeat('a', 24));
+$renamePickupService->delete($rewardSheet->referenceNumber, str_repeat('a', 24));
+$shortfallCustomer = $renameCustomerService->find($shortfallCustomer->customerKey);
+$assert($shortfallCustomer?->rewardBalance() === 0 && $shortfallCustomer->rewardShortfall() === 50, 'Deleting a sheet after its points were redeemed should leave a visible points shortfall instead of a negative balance.');
+$shortfallBonus = $renameCustomerService->adjustRewards($shortfallCustomer->customerKey, 'bonus', '20', 'Service recovery bonus', str_repeat('a', 24));
+$assert($shortfallBonus->rewardShortfall() === 30 && $shortfallBonus->rewardBalance() === 0, 'A bonus should always be accepted and first reduce any points shortfall.');
+$shortfallRedemptionRejected = false;
+try {
+    $renameCustomerService->adjustRewards($shortfallCustomer->customerKey, 'redeem', '1', 'Should fail', str_repeat('a', 24));
+} catch (InvalidArgumentException $exception) {
+    $shortfallRedemptionRejected = str_contains($exception->getMessage(), 'cannot exceed the available reward balance');
+}
+$assert($shortfallRedemptionRejected, 'A redemption should still be refused when no points are available.');
+
+$activityCustomer = $renameCustomerService->save(null, ['display_name' => 'Activity Logistics', 'status' => 'lead', 'next_follow_up_on' => '2026-01-10'], str_repeat('a', 24));
+$activityProfile = $renameCustomerService->addActivity($activityCustomer->customerKey, [
+    'activity_type' => 'call',
+    'occurred_on' => '2026-01-10',
+    'summary' => "Called about weekly pickups.\nAgreed to a trial.",
+    'next_follow_up_on' => '',
+], str_repeat('a', 24), 'Records Administrator');
+$loggedActivities = $renameCustomerService->activities($activityCustomer->customerKey);
+$assert($activityProfile->nextFollowUpOn === null && count($loggedActivities) === 1 && $loggedActivities[0]['type'] === 'call' && $loggedActivities[0]['actorName'] === 'Records Administrator', 'Logging an activity should record it and let an empty next follow-up close the follow-up.');
+$futureActivityRejected = false;
+try {
+    $renameCustomerService->addActivity($activityCustomer->customerKey, ['activity_type' => 'visit', 'occurred_on' => '2999-01-01', 'summary' => 'Future visit'], str_repeat('a', 24), 'Records Administrator');
+} catch (InvalidArgumentException $exception) {
+    $futureActivityRejected = str_contains($exception->getMessage(), 'cannot be in the future');
+}
+$assert($futureActivityRejected, 'Activities should not be dated in the future.');
+$renameCustomerService->addActivity($activityCustomer->customerKey, ['activity_type' => 'visit', 'occurred_on' => '2026-01-11', 'summary' => 'Site visit', 'next_follow_up_on' => '2026-01-20'], str_repeat('a', 24), 'Records Administrator');
+
+$staleSaveRejected = false;
+try {
+    $renameCustomerService->save($activityCustomer->customerKey, ['display_name' => 'Activity Logistics', 'status' => 'active', 'expected_updated_at' => '2000-01-01 00:00:00'], str_repeat('a', 24));
+} catch (InvalidArgumentException $exception) {
+    $staleSaveRejected = str_contains($exception->getMessage(), 'changed by someone else');
+}
+$assert($staleSaveRejected, 'Saving over a profile that changed since the form was opened should be refused.');
+
+$ownedCustomer = $renameCustomerService->save($activityCustomer->customerKey, [
+    'display_name' => 'Activity Logistics',
+    'status' => 'active',
+    'next_follow_up_on' => '2026-01-20',
+    'owner_actor_id' => str_repeat('c', 24),
+    'owner_name' => 'Owner Person',
+], str_repeat('a', 24));
+$keptOwner = $renameCustomerService->updateDetailsWithoutNames($activityCustomer->customerKey, ['status' => 'attention', 'next_follow_up_on' => '2026-01-20'], str_repeat('b', 24));
+$assert($ownedCustomer->assignedName === 'Owner Person' && $keptOwner->assignedActorId === str_repeat('c', 24), 'Customers should keep an owner that operator edits do not clear.');
+
+$filtered = static fn (array $filters): array => array_map(static fn ($customer): string => $customer->displayName, $renameCustomerService->paginated($filters, 1, 50)['items']);
+$assert(in_array('Activity Logistics', $filtered(['follow_up' => 'due']), true) && !in_array('Activity Logistics', $filtered(['follow_up' => 'none']), true), 'The directory should filter customers whose follow-up is due.');
+$assert($filtered(['owner' => str_repeat('c', 24)]) === ['Activity Logistics'] && !in_array('Activity Logistics', $filtered(['owner' => 'unassigned']), true), 'The directory should filter customers by owner.');
+$assert($filtered(['search' => '%']) === [], 'Search should treat % literally instead of matching every customer.');
+$sortedNames = $filtered(['sort' => 'name']);
+$sortedCopy = $sortedNames;
+usort($sortedCopy, 'strcasecmp');
+$assert($sortedNames === $sortedCopy, 'The directory should sort by customer name on request.');
+
+$phoneLeft = $renameCustomerService->save(null, ['display_name' => 'Kribi Fisheries', 'phone' => '677 123 456', 'status' => 'active'], str_repeat('a', 24));
+$phoneRight = $renameCustomerService->save(null, ['display_name' => 'KF Seafood Export', 'phone' => '+237 677123456', 'status' => 'active'], str_repeat('a', 24));
+$phoneSuggestion = array_values(array_filter(
+    $renameCustomerService->duplicateSuggestions(20),
+    static fn (array $suggestion): bool => in_array($suggestion['duplicate']->customerKey, [$phoneLeft->customerKey, $phoneRight->customerKey], true),
+))[0] ?? null;
+$assert(($phoneSuggestion['reason'] ?? '') === 'phone', 'Profiles with different names but the same phone number should be suggested as possible duplicates.');
+$phoneMerged = $renameCustomerService->merge($phoneLeft->customerKey, $phoneRight->customerKey, str_repeat('a', 24));
+$assert($phoneMerged->customerKey === $phoneLeft->customerKey && $renameCustomerService->find($phoneRight->customerKey) === null, 'Profiles sharing a phone number should be mergeable.');
+
+$renameCustomerService->delete($activityCustomer->customerKey, str_repeat('a', 24));
+$renameCustomerService->synchronize();
+$assert($renameCustomerService->find($activityCustomer->customerKey) === null && $renameCustomerService->activities($activityCustomer->customerKey) === [], 'Deleting a customer should erase the profile and its activity.');
+$renameCustomerService->delete($shortfallCustomer->customerKey, str_repeat('a', 24));
+$renameCustomerService->synchronize();
+$assert($renameCustomerService->existingCustomer('Shortfall Traders') === null, 'A deleted customer should not be recreated from sheets that already carry the name.');
+
+$leadDirectoryPickups = new PickupSheetService($renamePickupRepository, new CustomerConsignorDirectory(new DemoCustomerRepository($renamePickupRepository)));
+$renameCustomerService->save(null, ['display_name' => 'Brand New Lead Company', 'status' => 'lead'], str_repeat('a', 24));
+$assert(in_array('Brand New Lead Company', $leadDirectoryPickups->consignorSuggestions('Brand', 10), true), 'New pickup sheets should suggest CRM customers that have no sheets yet.');
+
 $_SESSION = [];
 $leaderboardPickupRepository = new DemoPickupSheetRepository();
 $leaderboardPickupService = new PickupSheetService($leaderboardPickupRepository);
@@ -2012,6 +2109,30 @@ $duplicateCustomerSave = $customerController->save(new Request('POST', '/dhl/pic
 $duplicateCustomerForm = $customerController->create(new Request('GET', '/dhl/pickupsheet/customers/new'));
 $assert($duplicateCustomerSave->status() === 303 && str_contains($duplicateCustomerForm->body(), 'already uses this organization name') && str_contains($duplicateCustomerForm->body(), 'class="pickup-crm-existing-link" href="/dhl/pickupsheet/customers/edit?customer=' . $customerKey . '">Open Controller Client</a>'), 'A rejected duplicate customer should link to the existing profile.');
 $assert(str_contains($duplicateCustomerForm->body(), 'data-existing-customer-hint'), 'The add-customer form should reserve a live region for existing-profile matches.');
+$invalidActivityCsrf = $customerController->addActivity(new Request('POST', '/dhl/pickupsheet/customers/activities', [], [
+    '_token' => 'invalid-token',
+    'customer_key' => $customerKey,
+    'activity_type' => 'call',
+    'summary' => 'Forged activity',
+]));
+$assert($invalidActivityCsrf->status() === 419, 'Logging a CRM activity should require a valid CSRF token.');
+$logActivity = $customerController->addActivity(new Request('POST', '/dhl/pickupsheet/customers/activities', [], [
+    '_token' => $pickupCsrf->token(),
+    'customer_key' => $customerKey,
+    'activity_type' => 'meeting',
+    'occurred_on' => gmdate('Y-m-d'),
+    'summary' => 'Quarterly review with the customer.',
+    'next_follow_up_on' => '2026-08-30',
+]));
+$activityProfilePage = $customerController->edit(new Request('GET', '/dhl/pickupsheet/customers/edit', ['customer' => $customerKey]));
+$assert($logActivity->status() === 303 && str_contains($activityProfilePage->body(), 'Quarterly review with the customer.') && str_contains($activityProfilePage->body(), 'Activity logged.'), 'Administrators should log contact activity from the customer profile.');
+$assert(str_contains($activityProfilePage->body(), 'data-crm-delete-form') && str_contains($activityProfilePage->body(), '/dhl/pickupsheet/customers/delete'), 'Administrators should be offered customer deletion with a confirmation hook.');
+$ownerEditForm = $customerController->edit(new Request('GET', '/dhl/pickupsheet/customers/edit', ['customer' => $customerKey, 'mode' => 'edit']));
+$assert(str_contains($ownerEditForm->body(), '<select name="owner">') && str_contains($ownerEditForm->body(), 'name="expected_updated_at"'), 'The administrator edit form should offer an owner and guard against overwriting newer changes.');
+$directoryFiltersPage = $customerController->index(new Request('GET', '/dhl/pickupsheet/customers', ['follow_up' => 'due', 'sort' => 'name']));
+$assert(str_contains($directoryFiltersPage->body(), 'name="follow_up"') && str_contains($directoryFiltersPage->body(), '<option value="due" selected>') && str_contains($directoryFiltersPage->body(), 'data-filter-params="q,status,follow_up,owner,sort"') && str_contains($directoryFiltersPage->body(), 'formaction="/dhl/pickupsheet/customers/export"'), 'The directory should offer follow-up, owner, and sort filters with an Excel export of the filtered list.');
+$customerExport = $customerController->export(new Request('GET', '/dhl/pickupsheet/customers/export', ['q' => 'Controller']));
+$assert($customerExport->status() === 200 && str_contains((string) ($customerExport->headers()['Content-Type'] ?? ''), 'spreadsheetml') && str_starts_with($customerExport->body(), 'PK'), 'The customer directory should export to Excel.');
 $customerSearch = $customerController->search(new Request('GET', '/dhl/pickupsheet/customers/search', ['q' => 'controller'], [], '', $recordsServer));
 $customerSearchPayload = json_decode($customerSearch->body(), true);
 $assert($customerSearch->status() === 200 && ($customerSearchPayload['suggestions'] ?? []) === ['Controller Client'], 'Authenticated CRM autocomplete should return matching customer names.');
@@ -2863,6 +2984,13 @@ $assert(is_string($customerAssignmentMigration) && str_contains($customerAssignm
 $customerDuplicateMigration = file_get_contents(dirname(__DIR__) . '/database/migrations/018_prevent_duplicate_crm_customers.sql');
 $assert(is_string($customerDuplicateMigration) && str_contains($customerDuplicateMigration, 'UNIQUE INDEX pickup_customers_name_unique_idx (display_name)'), 'CRM organization names should be protected by a database uniqueness constraint.');
 $assert(is_string($customerDuplicateMigration) && strpos($customerDuplicateMigration, 'DELETE duplicate_customer') < strpos($customerDuplicateMigration, 'ADD UNIQUE INDEX') && str_contains($customerDuplicateMigration, 'UPDATE pickup_customer_reward_adjustments'), 'Migration 018 should fold collation-equal duplicate profiles and their rewards before adding the unique index.');
+$customerActivityMigration = file_get_contents(dirname(__DIR__) . '/database/migrations/021_add_crm_activities_owners_and_sync.sql');
+$assert(is_string($customerActivityMigration) && str_contains($customerActivityMigration, 'CREATE TABLE IF NOT EXISTS pickup_customer_activities') && str_contains($customerActivityMigration, 'ADD COLUMN assigned_actor_id CHAR(24) NULL') && str_contains($customerActivityMigration, 'information_schema.COLUMNS') && str_contains($customerActivityMigration, 'CREATE TABLE IF NOT EXISTS pickup_crm_sync_state') && str_contains($customerActivityMigration, 'ADD INDEX pickup_shipments_consignor_idx (consignor)'), 'Migration 021 should add CRM activities, owners, the sync marker, and the consignor index.');
+$customerRepositorySource = file_get_contents(dirname(__DIR__) . '/src/Modules/CRM/Infrastructure/MysqlCustomerRepository.php');
+$assert(is_string($customerRepositorySource) && str_contains($customerRepositorySource, 'INSERT INTO pickup_sheet_edit_audit') && str_contains($customerRepositorySource, "'crm_customer_rename'") && str_contains($customerRepositorySource, "'crm_customer_merge'") && str_contains($customerRepositorySource, "'crm_customer_merge_undo'") && str_contains($customerRepositorySource, "'crm_alias_resolution'"), 'CRM-driven consignor changes should write pickup-sheet audit entries.');
+$assert(is_string($customerRepositorySource) && str_contains($customerRepositorySource, 'ps.id > :after_shipment_id AND ps.id <= :through_shipment_id') && str_contains($customerRepositorySource, 'pickup_crm_sync_state'), 'CRM synchronization should only read shipment rows added since the previous run.');
+$assert(is_string($customerRepositorySource) && str_contains($customerRepositorySource, "LIKE :search ESCAPE '!'") && str_contains($customerRepositorySource, 'search_alias.alias_name LIKE :search_alias'), 'Directory search should escape wildcards and include merged-away names.');
+$assert(is_string($customerRepositorySource) && str_contains($customerRepositorySource, 'WHERE customer_key = :rewards_customer_key') && str_contains($customerRepositorySource, 'metrics_customer.customer_key = :metrics_customer_key'), 'Single-profile lookups should aggregate totals for that customer only.');
 $customerSpacingMigration = file_get_contents(dirname(__DIR__) . '/database/migrations/020_collapse_customer_name_spacing.sql');
 $assert(is_string($customerSpacingMigration) && str_contains($customerSpacingMigration, "UPDATE pickup_shipments
 SET consignor = TRIM(REGEXP_REPLACE(consignor, '[[:space:]]+', ' '))") && strpos($customerSpacingMigration, 'DELETE duplicate_customer') < strpos($customerSpacingMigration, 'SET display_name = TRIM(REGEXP_REPLACE'), 'Migration 020 should collapse consignor spacing and fold spacing-variant customers before collapsing profile names.');
@@ -2885,7 +3013,7 @@ $assert(is_string($customerRepositorySource) && substr_count($customerRepository
 $customerRewardsMigration = file_get_contents(dirname(__DIR__) . '/database/migrations/013_create_pickup_customer_rewards.sql');
 $assert(is_string($customerRewardsMigration) && str_contains($customerRewardsMigration, 'CREATE TABLE IF NOT EXISTS pickup_customer_reward_adjustments'), 'MySQL should create the customer reward adjustment ledger idempotently.');
 $assert(is_string($customerRewardsMigration) && str_contains($customerRewardsMigration, 'points_delta INT NOT NULL') && str_contains($customerRewardsMigration, 'actor_id CHAR(24) NOT NULL'), 'Reward adjustments should store signed changes with pseudonymous administrator attribution.');
-$assert(is_string($customerRepositorySource) && str_contains($customerRepositorySource, 'FOR UPDATE') && str_contains($customerRepositorySource, '$balance + $pointsDelta < 0'), 'MySQL reward redemptions should lock the customer and prevent a negative balance atomically.');
+$assert(is_string($customerRepositorySource) && str_contains($customerRepositorySource, 'FOR UPDATE') && str_contains($customerRepositorySource, '$pointsDelta < 0 && $availableBalance + $pointsDelta < 0'), 'MySQL reward redemptions should lock the customer and prevent a negative balance atomically.');
 $pickupEditMigration = file_get_contents(dirname(__DIR__) . '/database/migrations/006_create_pickup_sheet_edit_audit.sql');
 $assert(is_string($pickupEditMigration) && str_contains($pickupEditMigration, 'CREATE TABLE IF NOT EXISTS pickup_sheet_edit_audit'), 'MySQL should provide an idempotent pickup-sheet edit audit migration.');
 $assert(is_string($pickupEditMigration) && str_contains($pickupEditMigration, 'before_snapshot LONGTEXT'), 'The edit audit should retain the prior record snapshot.');
@@ -2943,7 +3071,7 @@ $backupRepositorySource = file_get_contents(dirname(__DIR__) . '/src/Modules/Bac
 $backupControllerSource = file_get_contents(dirname(__DIR__) . '/src/Modules/Backup/UI/BackupController.php');
 $assert(is_string($backupServiceSource) && str_contains($backupServiceSource, "'aes-256-gcm'") && str_contains($backupServiceSource, "hash_pbkdf2('sha256'") && str_contains($backupServiceSource, 'KDF_ITERATIONS = 210000'), 'Backups should use authenticated AES-256-GCM encryption with a hardened PBKDF2-SHA256 key.');
 $assert(is_string($backupServiceSource) && !str_contains($backupServiceSource, 'getenv('), 'Backup encryption must never derive its passphrase from stored environment configuration.');
-$assert(is_string($backupRepositorySource) && str_contains($backupRepositorySource, "'pickup_sheets'") && str_contains($backupRepositorySource, "'pickup_customer_reward_adjustments'") && str_contains($backupRepositorySource, "'pickup_customer_aliases'") && str_contains($backupRepositorySource, "'pickup_customer_merges'") && str_contains($backupRepositorySource, "'pickup_auth_settings'") && str_contains($backupRepositorySource, "'pickup_local_mfa'"), 'The MySQL backup allowlist should include operational, CRM reward, authentication preference, and encrypted 2FA data.');
+$assert(is_string($backupRepositorySource) && str_contains($backupRepositorySource, "'pickup_sheets'") && str_contains($backupRepositorySource, "'pickup_customer_reward_adjustments'") && str_contains($backupRepositorySource, "'pickup_customer_aliases'") && str_contains($backupRepositorySource, "'pickup_customer_merges'") && str_contains($backupRepositorySource, "'pickup_customer_activities'") && str_contains($backupRepositorySource, "'pickup_crm_sync_state'") && str_contains($backupRepositorySource, "'pickup_auth_settings'") && str_contains($backupRepositorySource, "'pickup_local_mfa'"), 'The MySQL backup allowlist should include operational, CRM reward, authentication preference, and encrypted 2FA data.');
 $assert(is_string($backupRepositorySource) && str_contains($backupRepositorySource, 'private const REQUIRED_TABLES') && str_contains($backupRepositorySource, 'columnsIfExists') && str_contains($backupRepositorySource, 'Core backup table is unavailable:'), 'Backup export should tolerate absent optional-module tables while requiring the core pickup-sheet data set.');
 $assert(is_string($backupRepositorySource) && str_contains($backupRepositorySource, "if (!array_key_exists(\$table, \$tables))") && str_contains($backupRepositorySource, "\$rows = \$validated[\$table]['rows'] ?? [];"), 'Backup restore should validate supplied allowlisted tables and treat omitted optional modules as empty.');
 $assert(is_string($backupRepositorySource) && !str_contains($backupRepositorySource, 'schema_migrations') && !str_contains($backupRepositorySource, '.env'), 'Backups should exclude schema bookkeeping and environment secrets.');
@@ -2988,7 +3116,7 @@ $assert(is_string($bootstrap) && str_contains($bootstrap, "'/dhl/pickupsheet/log
 $assert(is_string($bootstrap) && str_contains($bootstrap, "'/dhl/pickupsheet/settings'") && str_contains($bootstrap, "'/dhl/pickupsheet/settings/2fa/enroll'") && str_contains($bootstrap, "'/dhl/pickupsheet/settings/2fa/reset'") && str_contains($bootstrap, "'/dhl/pickupsheet/settings/2fa/recovery-codes'"), 'Pickupsheet should expose signed-in user settings and protected self-service 2FA routes.');
 $assert(is_string($bootstrap) && str_contains($bootstrap, "'/dhl/pickupsheet/logout'"), 'Pickupsheet should expose a CSRF-protected logout route.');
 $assert(is_string($bootstrap) && str_contains($bootstrap, "'/dhl/pickupsheet/consignors/search'"), 'Pickupsheet should expose its protected consignor autocomplete route.');
-$assert(is_string($bootstrap) && str_contains($bootstrap, "'/dhl/pickupsheet/customers/merge'") && str_contains($bootstrap, "'/dhl/pickupsheet/customers/merge/undo'"), 'CRM should expose administrator-protected duplicate merge and undo routes.');
+$assert(is_string($bootstrap) && str_contains($bootstrap, "'/dhl/pickupsheet/customers/merge'") && str_contains($bootstrap, "'/dhl/pickupsheet/customers/merge/undo'") && str_contains($bootstrap, "'/dhl/pickupsheet/customers/activities'") && str_contains($bootstrap, "'/dhl/pickupsheet/customers/delete'") && str_contains($bootstrap, "'/dhl/pickupsheet/customers/export'"), 'CRM should expose administrator-protected duplicate merge and undo routes.');
 $cloudflareTrustSource = file_get_contents(dirname(__DIR__) . '/src/Shared/Security/CloudflareRequestTrust.php');
 $requestSource = file_get_contents(dirname(__DIR__) . '/src/Shared/Http/Request.php');
 $securityHeadersSource = file_get_contents(dirname(__DIR__) . '/src/Shared/Security/SecurityHeaders.php');

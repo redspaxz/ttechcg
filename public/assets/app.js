@@ -601,7 +601,8 @@ document.querySelectorAll('[data-ajax-pager]').forEach((pager) => {
 document.querySelectorAll('[data-ajax-pager-form]').forEach((form) => {
     form.addEventListener('submit', (event) => {
         const controller = ajaxPagerControllers.get(form.dataset.ajaxPagerForm);
-        if (!controller) return;
+        // Buttons with their own formaction (such as Export) submit normally.
+        if (!controller || event.submitter?.hasAttribute('formaction')) return;
         event.preventDefault();
         const browserUrl = new URL(form.action, window.location.href);
         new FormData(form).forEach((value, key) => {
@@ -845,6 +846,13 @@ if (existingCustomerHint && existingCustomerInput) {
 }
 
 document.addEventListener('submit', (event) => {
+    if (event.target.matches('[data-crm-delete-form]')) {
+        const customerName = event.target.dataset.customerName || 'this customer';
+        if (!window.confirm(`Permanently delete ${customerName}? Contact details, activity, reward adjustments, and merge records are removed and cannot be restored. Pickup sheets keep the consignor name.`)) {
+            event.preventDefault();
+            return;
+        }
+    }
     if (event.target.matches('[data-crm-undo-merge-form]')) {
         const mergeName = event.target.dataset.mergeName || 'the merged customer';
         const keepName = event.target.dataset.keepName || 'the retained customer';

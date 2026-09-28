@@ -31,6 +31,8 @@ final class CustomerProfile
         public readonly int $rewardAdjustmentPoints = 0,
         public readonly int $rewardEarnedAdjustmentPoints = 0,
         public readonly int $cargoWeightRewardPoints = 0,
+        public readonly ?string $assignedActorId = null,
+        public readonly string $assignedName = '',
     ) {
     }
 
@@ -54,6 +56,15 @@ final class CustomerProfile
     public function rewardBalance(): int
     {
         return max(0, $this->cargoRewardPoints() + $this->rewardAdjustmentPoints);
+    }
+
+    /**
+     * Points redeemed beyond what the customer now holds, e.g. after a sheet that earned them was
+     * deleted. Bonuses first cover this shortfall before the visible balance rises again.
+     */
+    public function rewardShortfall(): int
+    {
+        return max(0, -($this->cargoRewardPoints() + $this->rewardAdjustmentPoints));
     }
 
     public function lifetimeEarnedPoints(): int

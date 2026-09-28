@@ -19,6 +19,11 @@ $editing = $customer === null || (bool) ($editing ?? false);
 $canUpdateCustomer = (bool) ($canUpdateCustomer ?? false);
 $profileUrl = $customer === null ? '' : $basePath . '/dhl/pickupsheet/customers/edit?customer=' . rawurlencode($customer->customerKey);
 $statusLabels = ['lead' => 'Lead', 'active' => 'Active', 'attention' => 'Needs attention', 'inactive' => 'Inactive'];
+$activities = is_array($activities ?? null) ? $activities : [];
+$activityOld = is_array($activityOld ?? null) ? $activityOld : [];
+$activityTypes = is_array($activityTypes ?? null) ? $activityTypes : [];
+$ownerOptions = is_array($ownerOptions ?? null) ? $ownerOptions : [];
+$canDeleteCustomer = (bool) ($canDeleteCustomer ?? false);
 $detail = static fn (?string $text): string => $text === null || trim($text) === ''
     ? '<span class="pickup-customer-detail-empty">Not recorded</span>'
     : htmlspecialchars($text, ENT_QUOTES, 'UTF-8');
@@ -56,7 +61,7 @@ $detail = static fn (?string $text): string => $text === null || trim($text) ===
             <section class="pickup-customer-rewards" aria-labelledby="customer-rewards-title">
                 <div class="pickup-card-heading"><div><span>Customer loyalty</span><h2 id="customer-rewards-title">Reward points</h2></div><small>10 points per 1 kg shipped</small></div>
                 <div class="pickup-reward-summary">
-                    <article><span>Total Points Balance</span><strong><?= $e(number_format($customer->rewardBalance())) ?></strong><small>Available to redeem</small></article>
+                    <article><span>Total Points Balance</span><strong><?= $e(number_format($customer->rewardBalance())) ?></strong><small><?= $customer->rewardShortfall() > 0 ? $e(number_format($customer->rewardShortfall())) . ' points short: redeemed points exceed what the customer now holds, usually after a sheet was deleted. New bonuses cover this first.' : 'Available to redeem' ?></small></article>
                     <article><span>Lifetime Earned Points</span><strong><?= $e(number_format($customer->lifetimeEarnedPoints())) ?></strong><small>Cargo weight and bonus points</small></article>
                     <article><span>Loyalty Tier</span><strong><?= $e($customer->loyaltyTier()) ?></strong><small>Based on lifetime earned points</small></article>
                 </div>
@@ -107,6 +112,7 @@ $detail = static fn (?string $text): string => $text === null || trim($text) ===
                     <div><dt>Email</dt><dd><?= $detail($customer->email) ?></dd></div>
                     <div><dt>Phone</dt><dd><?= $detail($customer->phone) ?></dd></div>
                     <div><dt>Next follow-up</dt><dd><?= $detail($customer->nextFollowUpOn) ?></dd></div>
+                    <div><dt>Owner</dt><dd><?= $customer->assignedName !== '' ? $e($customer->assignedName) : '<span class="pickup-customer-detail-empty">Unassigned</span>' ?></dd></div>
                     <div class="pickup-field-wide"><dt>Internal notes</dt><dd class="pickup-customer-detail-notes"><?= $detail($customer->notes) ?></dd></div>
                 </dl>
             </section>
@@ -114,12 +120,21 @@ $detail = static fn (?string $text): string => $text === null || trim($text) ===
             <form class="pickup-customer-form" method="post" action="<?= $e($basePath) ?>/dhl/pickupsheet/customers/save" <?= $customer === null ? 'data-customer-autocomplete-form' : '' ?>>
                 <input type="hidden" name="_token" value="<?= $e($csrfToken) ?>">
                 <input type="hidden" name="customer_key" value="<?= $e($customer?->customerKey ?? '') ?>">
+                <input type="hidden" name="expected_updated_at" value="<?= $e($customer?->updatedAt ?? '') ?>">
                 <?php if ($customer === null): ?><datalist id="customer-name-suggestions" data-consignor-suggestions data-suggestion-label="Existing customer suggestions" data-search-endpoint="<?= $e($basePath) ?>/dhl/pickupsheet/customers/search"></datalist><?php endif; ?>
                 <fieldset><legend>Organization</legend>
                     <label class="pickup-field pickup-field-wide"><span>Customer or organization name</span><input name="display_name" value="<?= $e($value('display_name', $customer?->displayName ?? '')) ?>" maxlength="160" required autocomplete="organization" <?= $customer === null ? 'data-consignor-input list="customer-name-suggestions" aria-autocomplete="list" aria-describedby="customer-name-suggestion-help"' : '' ?> <?= $canEditCustomerNames ? '' : 'readonly aria-readonly="true"' ?>><?php if (!$canEditCustomerNames): ?><small>Customer names can only be changed by an administrator.</small><?php elseif ($customer !== null): ?><small>Changing this name also updates the consignor name on this customer's existing pickup sheets. Other spellings are separate customers; merge them from Possible duplicate customers first so they are renamed too.</small><?php else: ?><small id="customer-name-suggestion-help">Start typing to check whether this customer already exists.</small><small class="pickup-crm-existing-hint" data-existing-customer-hint role="status" aria-live="polite" hidden></small><?php endif; ?></label>
                     <label class="pickup-field"><span>Relationship status</span><select name="status" required><?php foreach (['lead' => 'Lead', 'active' => 'Active', 'attention' => 'Needs attention', 'inactive' => 'Inactive'] as $option => $label): ?><option value="<?= $e($option) ?>" <?= $status === $option ? 'selected' : '' ?>><?= $e($label) ?></option><?php endforeach; ?></select></label>
                     <label class="pickup-field"><span>Country</span><input value="Cameroon" readonly aria-readonly="true"><input type="hidden" name="country_code" value="CM"><small>Cameroon is the default customer country.</small></label>
                     <label class="pickup-field"><span>City</span><input name="city" value="<?= $e($value('city', $customer?->city ?? '')) ?>" maxlength="100" autocomplete="address-level2"></label>
+                    <?php if ($ownerOptions !== []): ?>
+                        <?php $currentOwner = (string) ($customer?->assignedActorId ?? ''); ?>
+                        <label class="pickup-field"><span>Owner</span><select name="owner">
+                            <option value="none" <?= $currentOwner === '' ? 'selected' : '' ?>>Unassigned</option>
+                            <?php if ($currentOwner !== '' && !isset($ownerOptions[$currentOwner])): ?><option value="" selected><?= $e($customer->assignedName) ?> (current)</option><?php endif; ?>
+                            <?php foreach ($ownerOptions as $ownerId => $ownerName): ?><option value="<?= $e($ownerId) ?>" <?= $currentOwner === $ownerId ? 'selected' : '' ?>><?= $e($ownerName) ?></option><?php endforeach; ?>
+                        </select><small>The person responsible for this relationship.</small></label>
+                    <?php endif; ?>
                     <label class="pickup-field pickup-field-wide"><span>Address</span><input name="address" value="<?= $e($value('address', $customer?->address ?? '')) ?>" maxlength="255" autocomplete="street-address"></label>
                 </fieldset>
                 <fieldset><legend>Primary contact</legend>
@@ -144,12 +159,43 @@ $detail = static fn (?string $text): string => $text === null || trim($text) ===
         </div>
 
         <?php if ($customer !== null): ?>
+            <section class="pickup-customer-activity" aria-labelledby="customer-activity-title">
+                <div class="pickup-card-heading"><div><span>Contact history</span><h2 id="customer-activity-title">Activity</h2></div><small><?= $e(count($activities)) ?> recent <?= count($activities) === 1 ? 'entry' : 'entries' ?></small></div>
+                <div class="pickup-customer-activity-layout<?= $canUpdateCustomer ? '' : ' is-read-only' ?>">
+                    <?php if ($canUpdateCustomer): ?>
+                    <form class="pickup-customer-activity-form" method="post" action="<?= $e($basePath) ?>/dhl/pickupsheet/customers/activities">
+                        <input type="hidden" name="_token" value="<?= $e($csrfToken) ?>">
+                        <input type="hidden" name="customer_key" value="<?= $e($customer->customerKey) ?>">
+                        <label><span>Type</span><select name="activity_type" required><?php foreach ($activityTypes as $typeValue => $typeLabel): ?><option value="<?= $e($typeValue) ?>" <?= ($activityOld['activity_type'] ?? 'call') === $typeValue ? 'selected' : '' ?>><?= $e($typeLabel) ?></option><?php endforeach; ?></select></label>
+                        <label><span>Date</span><input type="date" name="occurred_on" value="<?= $e($activityOld['occurred_on'] ?? gmdate('Y-m-d')) ?>" max="<?= $e(gmdate('Y-m-d')) ?>" required></label>
+                        <label class="pickup-field-wide"><span>What happened</span><textarea name="summary" rows="3" maxlength="1000" minlength="3" required placeholder="Outcome of the call, visit, or message"><?= $e($activityOld['summary'] ?? '') ?></textarea></label>
+                        <label class="pickup-field-wide"><span>Next follow-up</span><input type="date" name="next_follow_up_on" value="<?= $e($activityOld['next_follow_up_on'] ?? ($customer->nextFollowUpOn ?? '')) ?>"><small>Change the date to reschedule, or clear it to close the follow-up.</small></label>
+                        <button class="button" type="submit">Log activity</button>
+                    </form>
+                    <?php endif; ?>
+                    <div class="pickup-customer-activity-list">
+                        <?php if ($activities === []): ?><p>No calls, visits, or messages have been logged yet.</p><?php else: ?>
+                            <ol><?php foreach ($activities as $activity): ?>
+                                <li><span class="pickup-activity-type"><?= $e($activityTypes[$activity['type']] ?? ucfirst((string) $activity['type'])) ?></span><div><p><?= $e($activity['summary']) ?></p><small><?= $e($activity['occurredOn']) ?> &middot; <?= $e($activity['actorName']) ?></small></div></li>
+                            <?php endforeach; ?></ol>
+                        <?php endif; ?>
+                    </div>
+                </div>
+            </section>
+
             <section class="pickup-customer-history ajax-pager" aria-labelledby="customer-history-title" data-ajax-pager data-ajax-pager-id="customer-shipments" data-page-endpoint="<?= $e($basePath) ?>/dhl/pickupsheet/customers/shipments/page" data-page-param="shipment_page" data-page-size-param="shipment_per_page" data-current-page="<?= $e($shipments['page'] ?? 1) ?>" data-error-message="Shipment history could not be loaded. Please try again.">
                 <div class="ajax-pager-loading" data-ajax-pager-spinner role="status" hidden><span class="pickup-loading-spinner" aria-hidden="true"></span><span>Loading shipments...</span></div>
                 <div class="pickup-customer-history-content" data-ajax-pager-content aria-live="polite" aria-busy="false">
                     <?php require __DIR__ . '/_customer-shipments.php'; ?>
                 </div>
             </section>
+
+            <?php if ($canDeleteCustomer): ?>
+            <section class="pickup-customer-danger" aria-labelledby="customer-delete-title">
+                <div><h2 id="customer-delete-title">Delete customer</h2><p>Permanently removes this profile with its contact details, activity, reward adjustments, aliases, and merge records, for example to honour an erasure request. Pickup sheets keep the consignor name because they are operational records.</p></div>
+                <form method="post" action="<?= $e($basePath) ?>/dhl/pickupsheet/customers/delete" data-crm-delete-form data-customer-name="<?= $e($customer->displayName) ?>"><input type="hidden" name="_token" value="<?= $e($csrfToken) ?>"><input type="hidden" name="customer_key" value="<?= $e($customer->customerKey) ?>"><button type="submit">Delete customer</button></form>
+            </section>
+            <?php endif; ?>
         <?php endif; ?>
     </div>
 </section>

@@ -8,8 +8,15 @@ interface CustomerRepository
 {
     public function synchronizeFromShipments(): void;
 
-    /** @return array{items: list<CustomerProfile>, totalRecords: int} */
-    public function paginated(string $search, string $status, int $limit, int $offset): array;
+    /**
+     * Filters: search (name, alias, contact, email, phone, city), status, followUp ('' | due |
+     * scheduled | none), owner ('' | unassigned | a 24-character actor id), and sort (priority |
+     * name | last_shipment | value | points).
+     *
+     * @param array{search: string, status: string, followUp: string, owner: string, sort: string} $filters
+     * @return array{items: list<CustomerProfile>, totalRecords: int}
+     */
+    public function paginated(array $filters, int $limit, int $offset): array;
 
     /** @return array{customerCount: int, activeCount: int, attentionCount: int, followUpsDue: int} */
     public function summary(): array;
@@ -23,7 +30,7 @@ interface CustomerRepository
     /**
      * Lightweight name index for duplicate detection across every profile.
      *
-     * @return list<array{customerKey: string, displayName: string}>
+     * @return list<array{customerKey: string, displayName: string, email: string, phone: string}>
      */
     public function duplicateReviewNames(int $limit): array;
 
@@ -50,7 +57,33 @@ interface CustomerRepository
 
     public function shipmentCount(string $customerKey): int;
 
-    public function save(CustomerProfile $customer, string $actorId): CustomerProfile;
+    /**
+     * Rejects the save when $expectedUpdatedAt is given and the stored profile has changed since,
+     * so one editor cannot silently overwrite another.
+     */
+    public function save(CustomerProfile $customer, string $actorId, ?string $expectedUpdatedAt = null): CustomerProfile;
+
+    /**
+     * Erases the profile with its contact history, reward adjustments, aliases, and merge snapshots.
+     * Pickup sheets keep the consignor name as part of the operational record.
+     */
+    public function delete(string $customerKey, string $actorId): void;
+
+    /**
+     * @return list<array{type: string, occurredOn: string, summary: string, actorId: string, actorName: string, createdAt: string}>
+     */
+    public function activities(string $customerKey, int $limit): array;
+
+    /** Records a contact activity and sets (or clears) the next follow-up date in one step. */
+    public function addActivity(
+        string $customerKey,
+        string $type,
+        string $occurredOn,
+        string $summary,
+        ?string $nextFollowUpOn,
+        string $actorId,
+        string $actorName,
+    ): CustomerProfile;
 
     /**
      * Folds the source profile into the target, records the source name as an alias of the

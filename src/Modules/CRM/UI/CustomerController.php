@@ -14,7 +14,9 @@ use App\Shared\Security\RateLimiter;
 use App\Shared\Security\RecordsAccess;
 use App\Shared\Security\RecordsPrincipal;
 use App\Shared\Security\RecordsSession;
+use App\Shared\Security\RecordsUserService;
 use App\Shared\Security\SecurityLogger;
+use App\Shared\Spreadsheet\XlsxWriter;
 use App\Shared\View\View;
 use InvalidArgumentException;
 use RuntimeException;
@@ -29,6 +31,7 @@ final class CustomerController
         private readonly RecordsSession $recordsSession,
         private readonly RateLimiter $rateLimiter,
         private readonly SecurityLogger $securityLogger,
+        private readonly ?RecordsUserService $recordsUsers = null,
     ) {
     }
 
@@ -40,17 +43,13 @@ final class CustomerController
         }
 
         $summary = ['customerCount' => 0, 'activeCount' => 0, 'attentionCount' => 0, 'followUpsDue' => 0];
-        $directory = [
-            'customers' => $this->emptyPage(),
-            'search' => $request->queryString('q'),
-            'statusFilter' => $request->queryString('status'),
-        ];
+        $directory = ['customers' => $this->emptyPage()] + $this->directoryFilterValues($request);
         $duplicateSuggestions = [];
         $recentMerges = [];
         $error = null;
         try {
             $summary = $this->service->summary();
-            $directory = $this->customerDirectory($request);
+            $directory = $this->customerDirectory($request, $principal);
             if ($principal->can('crm')) {
                 $duplicateSuggestions = $this->service->duplicateSuggestions();
                 $recentMerges = $this->service->recentMerges();
@@ -69,14 +68,11 @@ final class CustomerController
         $body = $this->view->render('pickupsheet/customers', $this->common($request, $principal) + [
             'pageTitle' => 'Customer CRM',
             'summary' => $summary,
-            'customers' => $directory['customers'],
-            'search' => $directory['search'],
-            'statusFilter' => $directory['statusFilter'],
             'duplicateSuggestions' => $duplicateSuggestions,
             'recentMerges' => $recentMerges,
             'flash' => is_string($flash) ? $flash : null,
             'error' => $error,
-        ]);
+        ] + $directory);
         return Response::html($body, 200, $this->privateHeaders());
     }
 
@@ -89,7 +85,7 @@ final class CustomerController
 
         try {
             return Response::html(
-                $this->view->renderPartial('pickupsheet/_customer-directory', $this->common($request, $principal) + $this->customerDirectory($request)),
+                $this->view->renderPartial('pickupsheet/_customer-directory', $this->common($request, $principal) + $this->customerDirectory($request, $principal)),
                 200,
                 $this->privateHeaders(),
             );
@@ -211,6 +207,7 @@ final class CustomerController
             'status' => $request->input('status'),
             'notes' => $request->rawInput('notes'),
             'next_follow_up_on' => $request->input('next_follow_up_on'),
+            'expected_updated_at' => $request->input('expected_updated_at'),
         ];
         if ($canEditNames) {
             $input['display_name'] = $request->input('display_name');
@@ -219,6 +216,11 @@ final class CustomerController
         $_SESSION['_crm_old'] = $input;
 
         try {
+            $owner = $canEditNames ? $this->resolveOwner($request->input('owner'), $principal) : null;
+            if ($owner !== null) {
+                $input['owner_actor_id'] = $owner['actorId'];
+                $input['owner_name'] = $owner['name'];
+            }
             $previousProfile = $canEditNames && preg_match('/^[a-f0-9]{64}$/', $key) === 1
                 ? $this->service->find($key)
                 : null;
@@ -242,6 +244,7 @@ final class CustomerController
                 'customer_status' => $saved->status,
                 'source' => $saved->source,
                 'organization_name_changed' => $nameChanged,
+                'shipments_renamed' => $nameChanged ? ($previousProfile?->shipmentCount ?? 0) : 0,
             ]);
             return Response::redirect($request->basePath . '/dhl/pickupsheet/customers/edit?customer=' . rawurlencode($saved->customerKey));
         } catch (InvalidArgumentException $exception) {
@@ -358,6 +361,138 @@ final class CustomerController
         return Response::redirect($request->basePath . '/dhl/pickupsheet/customers');
     }
 
+    public function addActivity(Request $request): Response
+    {
+        $principal = $this->authorize($request, 'crm_update');
+        if ($principal instanceof Response) {
+            return $principal;
+        }
+        $guard = $this->guardWrite($request, $principal, 'pickupsheet.crm_customer_activity', 'pickup-crm-write', 60);
+        if ($guard !== null) {
+            return $guard;
+        }
+
+        $key = strtolower($request->input('customer_key'));
+        $input = [
+            'activity_type' => $request->input('activity_type'),
+            'occurred_on' => $request->input('occurred_on'),
+            'summary' => $request->rawInput('summary'),
+            'next_follow_up_on' => $request->input('next_follow_up_on'),
+        ];
+        try {
+            $this->service->addActivity($key, $input, $this->actorId($principal), $principal->fullName());
+            $_SESSION['_crm_flash'] = 'Activity logged.';
+            $this->log($request, $principal, 'pickupsheet.crm_customer_activity', 'accepted', ['resource_id' => substr($key, 0, 24)]);
+        } catch (InvalidArgumentException $exception) {
+            $_SESSION['_crm_activity_old'] = $input;
+            $_SESSION['_crm_errors'] = [$exception->getMessage()];
+            $this->log($request, $principal, 'pickupsheet.crm_customer_activity', 'denied', ['reason' => 'validation']);
+        } catch (RuntimeException $exception) {
+            error_log($exception->__toString());
+            $_SESSION['_crm_errors'] = ['The activity could not be saved. Check MySQL and try again.'];
+            $this->log($request, $principal, 'pickupsheet.crm_customer_activity', 'failed');
+        }
+        return Response::redirect(preg_match('/^[a-f0-9]{64}$/', $key) === 1
+            ? $this->profileUrl($request, $key)
+            : $request->basePath . '/dhl/pickupsheet/customers');
+    }
+
+    public function delete(Request $request): Response
+    {
+        $principal = $this->authorize($request, 'crm');
+        if ($principal instanceof Response) {
+            return $principal;
+        }
+        $guard = $this->guardWrite($request, $principal, 'pickupsheet.crm_customer_delete', 'pickup-crm-delete', 20);
+        if ($guard !== null) {
+            return $guard;
+        }
+
+        $key = strtolower($request->input('customer_key'));
+        try {
+            $customer = $this->service->find($key);
+            $this->service->delete($key, $this->actorId($principal));
+            $_SESSION['_crm_flash'] = sprintf(
+                'Customer profile %s and its contact history, rewards, and merge records were deleted. Pickup sheets keep the consignor name as part of the operational record.',
+                $customer?->displayName ?? '',
+            );
+            $this->log($request, $principal, 'pickupsheet.crm_customer_delete', 'accepted', ['resource_id' => substr($key, 0, 24)]);
+            return Response::redirect($request->basePath . '/dhl/pickupsheet/customers');
+        } catch (InvalidArgumentException $exception) {
+            $_SESSION['_crm_errors'] = [$exception->getMessage()];
+            $this->log($request, $principal, 'pickupsheet.crm_customer_delete', 'denied', ['reason' => 'validation']);
+        } catch (RuntimeException $exception) {
+            error_log($exception->__toString());
+            $_SESSION['_crm_errors'] = ['The customer profile could not be deleted. Check MySQL and try again.'];
+            $this->log($request, $principal, 'pickupsheet.crm_customer_delete', 'failed');
+        }
+        return Response::redirect(preg_match('/^[a-f0-9]{64}$/', $key) === 1
+            ? $this->profileUrl($request, $key)
+            : $request->basePath . '/dhl/pickupsheet/customers');
+    }
+
+    public function export(Request $request): Response
+    {
+        $principal = $this->authorize($request, 'crm_view');
+        if ($principal instanceof Response) {
+            return $principal;
+        }
+        if (!$principal->can('export')) {
+            $this->log($request, $principal, 'pickupsheet.crm_customer_export', 'denied', ['reason' => 'permission']);
+            return Response::html('You do not have permission to export customer data.', 403, $this->privateHeaders());
+        }
+        try {
+            $retryAfter = $this->rateLimiter->consume('pickup-crm-export', $request->clientIdentifier(), 10, 3600);
+        } catch (RuntimeException $exception) {
+            error_log($exception->__toString());
+            return Response::html('Customer export is temporarily unavailable.', 503, $this->privateHeaders());
+        }
+        if ($retryAfter > 0) {
+            $this->log($request, $principal, 'pickupsheet.crm_customer_export', 'rate_limited', ['retry_after' => $retryAfter]);
+            return Response::html('Too many customer exports. Please try again later.', 429, $this->privateHeaders() + ['Retry-After' => (string) $retryAfter]);
+        }
+
+        try {
+            $result = $this->service->exportRows($this->directoryFilters($request, $principal));
+        } catch (RuntimeException $exception) {
+            error_log($exception->__toString());
+            return Response::html('Customer data is temporarily unavailable.', 503, $this->privateHeaders());
+        }
+        $statusLabels = ['lead' => 'Lead', 'active' => 'Active', 'attention' => 'Needs attention', 'inactive' => 'Inactive'];
+        $rows = array_map(static fn (CustomerProfile $customer): array => [
+            $customer->displayName,
+            $statusLabels[$customer->status] ?? $customer->status,
+            $customer->contactName,
+            $customer->email,
+            $customer->phone,
+            $customer->city,
+            $customer->address,
+            $customer->assignedName,
+            $customer->shipmentCount,
+            $customer->totalCashXaf,
+            $customer->rewardBalance(),
+            $customer->lastShipmentOn ?? '',
+            $customer->nextFollowUpOn ?? '',
+        ], $result['items']);
+        $this->log($request, $principal, 'pickupsheet.crm_customer_export', 'accepted', [
+            'row_count' => count($rows),
+            'truncated' => $result['totalRecords'] > count($rows),
+        ]);
+
+        return Response::download(
+            (new XlsxWriter())->create(
+                ['Customer', 'Status', 'Contact', 'Email', 'Phone', 'City', 'Address', 'Owner', 'Shipments', 'Shipment value (XAF)', 'Reward points', 'Last shipment', 'Next follow-up'],
+                $rows,
+                'TOTAL SHIPMENT VALUE',
+                9,
+                array_sum(array_map(static fn (CustomerProfile $customer): int => $customer->totalCashXaf, $result['items'])),
+                [32, 16, 24, 28, 18, 16, 28, 22, 12, 20, 14, 16, 16],
+            ),
+            'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
+            'crm-customers-' . gmdate('Y-m-d') . '.xlsx',
+        );
+    }
+
     public function adjustRewards(Request $request): Response
     {
         $principal = $this->authorize($request, 'crm');
@@ -435,6 +570,9 @@ final class CustomerController
         // A rejected save returns with the submitted values, so reopen the form to show them.
         $editing = $editing || (is_array($old) && $old !== []);
         unset($_SESSION['_crm_old'], $_SESSION['_crm_errors'], $_SESSION['_crm_flash'], $_SESSION['_crm_existing_customer']);
+        $activityOld = $_SESSION['_crm_activity_old'] ?? [];
+        unset($_SESSION['_crm_activity_old']);
+        $activities = [];
         $shipments = $this->emptyPage();
         $rewardAdjustments = [];
         $rewardRedemptions = $this->emptyPage();
@@ -446,6 +584,7 @@ final class CustomerController
                     $this->pageSize($request, 'shipment_per_page'),
                 );
                 $rewardAdjustments = $this->service->rewardAdjustments($customer->customerKey, 20);
+                $activities = $this->service->activities($customer->customerKey, 30);
                 $rewardRedemptions = $this->service->paginatedRewardRedemptions(
                     $customer->customerKey,
                     $this->pageNumber($request, 'redemption_page'),
@@ -468,6 +607,11 @@ final class CustomerController
             'flash' => is_string($flash) ? $flash : null,
             'existingCustomer' => is_array($existingCustomer) ? $existingCustomer : null,
             'editing' => $editing && $principal->can('crm_update'),
+            'activities' => $activities,
+            'activityOld' => is_array($activityOld) ? $activityOld : [],
+            'activityTypes' => CustomerService::ACTIVITY_TYPES,
+            'ownerOptions' => $principal->can('crm') ? $this->ownerOptions($principal) : [],
+            'canDeleteCustomer' => $principal->can('crm'),
             'canUpdateCustomer' => $principal->can('crm_update'),
             'canCreateCustomers' => $principal->can('crm'),
             'canEditCustomerNames' => $principal->can('crm'),
@@ -526,6 +670,7 @@ final class CustomerController
             'canCreateCustomers' => $principal->can('crm'),
             'canEditCustomerNames' => $principal->can('crm'),
             'canAdjustRewards' => $principal->can('crm'),
+            'canExportCustomers' => $principal->can('export'),
         ];
     }
 
@@ -545,16 +690,105 @@ final class CustomerController
         return substr(hash('sha256', $principal->username), 0, 24);
     }
 
-    /** @return array{customers: array<string, mixed>, search: string, statusFilter: string} */
-    private function customerDirectory(Request $request): array
+    /** @return array<string, mixed> */
+    private function customerDirectory(Request $request, RecordsPrincipal $principal): array
     {
-        $search = $request->queryString('q');
-        $status = $request->queryString('status');
         return [
-            'customers' => $this->service->paginated($search, $status, $this->pageNumber($request), $this->pageSize($request)),
-            'search' => $search,
-            'statusFilter' => $status,
+            'customers' => $this->service->paginated($this->directoryFilters($request, $principal), $this->pageNumber($request), $this->pageSize($request)),
+        ] + $this->directoryFilterValues($request);
+    }
+
+    /** @return array<string, string> filter values as the service expects them */
+    private function directoryFilters(Request $request, RecordsPrincipal $principal): array
+    {
+        $values = $this->directoryFilterValues($request);
+        return [
+            'search' => $values['search'],
+            'status' => $values['statusFilter'],
+            'follow_up' => $values['followUpFilter'],
+            'owner' => $values['ownerFilter'] === 'me' ? $this->actorId($principal) : $values['ownerFilter'],
+            'sort' => $values['sortOrder'],
         ];
+    }
+
+    /** @return array{search: string, statusFilter: string, followUpFilter: string, ownerFilter: string, sortOrder: string, sortOptions: array<string, string>} */
+    private function directoryFilterValues(Request $request): array
+    {
+        $owner = $request->queryString('owner');
+        $sort = $request->queryString('sort');
+        return [
+            'search' => $request->queryString('q'),
+            'statusFilter' => $request->queryString('status'),
+            'followUpFilter' => in_array($request->queryString('follow_up'), ['due', 'scheduled', 'none'], true) ? $request->queryString('follow_up') : '',
+            'ownerFilter' => in_array($owner, ['me', 'unassigned'], true) ? $owner : '',
+            'sortOrder' => array_key_exists($sort, CustomerService::SORT_OPTIONS) && $sort !== 'priority' ? $sort : '',
+            'sortOptions' => CustomerService::SORT_OPTIONS,
+        ];
+    }
+
+    /**
+     * People a customer can be assigned to: the signed-in administrator and every active local
+     * operator or administrator account.
+     *
+     * @return array<string, string> actor id => display name
+     */
+    private function ownerOptions(RecordsPrincipal $principal): array
+    {
+        $options = [$this->actorId($principal) => $principal->fullName()];
+        if ($this->recordsUsers !== null) {
+            try {
+                foreach ($this->recordsUsers->accounts($principal) as $account) {
+                    if ($account->active && in_array($account->role, ['operator', 'admin'], true)) {
+                        $name = trim($account->firstName . ' ' . $account->lastName);
+                        $options[substr(hash('sha256', $account->username), 0, 24)] = $name !== '' ? $name : $account->username;
+                    }
+                }
+            } catch (RuntimeException|InvalidArgumentException $exception) {
+                error_log('CRM owner options could not be loaded: ' . $exception->getMessage());
+            }
+        }
+        asort($options, SORT_NATURAL | SORT_FLAG_CASE);
+        return $options;
+    }
+
+    /**
+     * @param string $selection an actor id, "none" to unassign, or empty when the form had no owner field
+     * @return array{actorId: string, name: string}|null null keeps the current owner
+     */
+    private function resolveOwner(string $selection, RecordsPrincipal $principal): ?array
+    {
+        if ($selection === '') {
+            return null;
+        }
+        if ($selection === 'none') {
+            return ['actorId' => '', 'name' => ''];
+        }
+        $options = $this->ownerOptions($principal);
+        if (!isset($options[$selection])) {
+            throw new InvalidArgumentException('Select a valid customer owner.');
+        }
+        return ['actorId' => $selection, 'name' => $options[$selection]];
+    }
+
+    /** Rate limit and CSRF checks shared by the CRM write actions. */
+    private function guardWrite(Request $request, RecordsPrincipal $principal, string $event, string $bucket, int $limit): ?Response
+    {
+        try {
+            $retryAfter = $this->rateLimiter->consume($bucket, $request->clientIdentifier(), $limit, 3600);
+        } catch (RuntimeException $exception) {
+            error_log($exception->__toString());
+            $this->log($request, $principal, $event, 'failed');
+            return Response::html('Customer updates are temporarily unavailable.', 503, $this->privateHeaders());
+        }
+        if ($retryAfter > 0) {
+            $this->log($request, $principal, $event, 'rate_limited', ['retry_after' => $retryAfter]);
+            return Response::html('Too many customer updates. Please try again later.', 429, $this->privateHeaders() + ['Retry-After' => (string) $retryAfter]);
+        }
+        if (!$this->csrf->validate($request->input('_token'))) {
+            $this->log($request, $principal, $event, 'denied', ['reason' => 'csrf']);
+            return Response::html('Invalid or expired form token.', 419, $this->privateHeaders());
+        }
+        return null;
     }
 
     private function customerTablePage(Request $request, string $table): Response

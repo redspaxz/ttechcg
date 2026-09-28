@@ -31,7 +31,7 @@ $recentMerges = is_array($recentMerges ?? null) ? $recentMerges : [];
             <article><span>Customers</span><strong><?= $e(number_format((int) ($summary['customerCount'] ?? 0))) ?></strong><small>Shipment and manual profiles</small></article>
             <article><span>Active</span><strong><?= $e(number_format((int) ($summary['activeCount'] ?? 0))) ?></strong><small>Current relationships</small></article>
             <article><span>Needs attention</span><strong><?= $e(number_format((int) ($summary['attentionCount'] ?? 0))) ?></strong><small>Flagged accounts</small></article>
-            <article><span>Follow-ups due</span><strong><?= $e(number_format((int) ($summary['followUpsDue'] ?? 0))) ?></strong><small>Due today or overdue</small></article>
+            <article><span>Follow-ups due</span><strong><?= $e(number_format((int) ($summary['followUpsDue'] ?? 0))) ?></strong><small><a href="<?= $e($basePath) ?>/dhl/pickupsheet/customers?follow_up=due">Show due or overdue</a></small></article>
         </section>
 
         <?php if ($duplicateSuggestions !== []): ?>
@@ -42,7 +42,7 @@ $recentMerges = is_array($recentMerges ?? null) ? $recentMerges : [];
                     <?php foreach ($duplicateSuggestions as $suggestion): ?>
                         <?php $primary = $suggestion['primary']; $duplicate = $suggestion['duplicate']; ?>
                         <article>
-                            <div class="pickup-crm-duplicate-score"><strong><?= $e((int) $suggestion['confidence']) ?>%</strong><span>Name match</span></div>
+                            <div class="pickup-crm-duplicate-score"><?php if (($suggestion['reason'] ?? 'name') === 'name'): ?><strong><?= $e((int) $suggestion['confidence']) ?>%</strong><span>Name match</span><?php else: ?><strong>Same</strong><span><?= ($suggestion['reason'] ?? '') === 'email' ? 'email address' : 'phone number' ?></span><?php endif; ?></div>
                             <div class="pickup-crm-duplicate-profile"><strong><?= $e($primary->displayName) ?></strong><small><?= $e(number_format($primary->shipmentCount)) ?> shipments &middot; <?= $e($primary->contactName !== '' ? $primary->contactName : 'No contact') ?></small></div>
                             <span class="pickup-crm-duplicate-separator" aria-hidden="true">&harr;</span>
                             <div class="pickup-crm-duplicate-profile"><strong><?= $e($duplicate->displayName) ?></strong><small><?= $e(number_format($duplicate->shipmentCount)) ?> shipments &middot; <?= $e($duplicate->contactName !== '' ? $duplicate->contactName : 'No contact') ?></small></div>
@@ -74,11 +74,17 @@ $recentMerges = is_array($recentMerges ?? null) ? $recentMerges : [];
         <form class="pickup-crm-filter" method="get" action="<?= $e($basePath) ?>/dhl/pickupsheet/customers" data-ajax-pager-form="customer-directory">
             <label><span>Search customers</span><input type="search" name="q" value="<?= $e($search ?? '') ?>" maxlength="100" placeholder="Name, contact, email, phone, or city"></label>
             <label><span>Relationship status</span><select name="status"><option value="">All statuses</option><?php foreach (['lead' => 'Lead', 'active' => 'Active', 'attention' => 'Needs attention', 'inactive' => 'Inactive'] as $value => $label): ?><option value="<?= $e($value) ?>" <?= ($statusFilter ?? '') === $value ? 'selected' : '' ?>><?= $e($label) ?></option><?php endforeach; ?></select></label>
-            <button class="button" type="submit">Filter</button>
-            <?php if (($search ?? '') !== '' || ($statusFilter ?? '') !== ''): ?><a href="<?= $e($basePath) ?>/dhl/pickupsheet/customers" data-ajax-pager-clear="customer-directory">Clear</a><?php endif; ?>
+            <label><span>Follow-up</span><select name="follow_up"><option value="">Any follow-up</option><?php foreach (['due' => 'Due or overdue', 'scheduled' => 'Scheduled later', 'none' => 'Not scheduled'] as $value => $label): ?><option value="<?= $e($value) ?>" <?= ($followUpFilter ?? '') === $value ? 'selected' : '' ?>><?= $e($label) ?></option><?php endforeach; ?></select></label>
+            <label><span>Owner</span><select name="owner"><option value="">Everyone</option><?php foreach (['me' => 'My customers', 'unassigned' => 'Unassigned'] as $value => $label): ?><option value="<?= $e($value) ?>" <?= ($ownerFilter ?? '') === $value ? 'selected' : '' ?>><?= $e($label) ?></option><?php endforeach; ?></select></label>
+            <label><span>Sort by</span><select name="sort"><?php foreach (($sortOptions ?? []) as $value => $label): ?><option value="<?= $e($value === 'priority' ? '' : $value) ?>" <?= ($sortOrder ?? '') === ($value === 'priority' ? '' : $value) ? 'selected' : '' ?>><?= $e($label) ?></option><?php endforeach; ?></select></label>
+            <div class="pickup-crm-filter-actions">
+                <button class="button" type="submit">Filter</button>
+                <?php if ((bool) ($canExportCustomers ?? false)): ?><button class="pickup-crm-export" type="submit" formaction="<?= $e($basePath) ?>/dhl/pickupsheet/customers/export" data-crm-export>Export to Excel</button><?php endif; ?>
+                <?php if (($search ?? '') !== '' || ($statusFilter ?? '') !== '' || ($followUpFilter ?? '') !== '' || ($ownerFilter ?? '') !== '' || ($sortOrder ?? '') !== ''): ?><a href="<?= $e($basePath) ?>/dhl/pickupsheet/customers" data-ajax-pager-clear="customer-directory">Clear</a><?php endif; ?>
+            </div>
         </form>
 
-        <section class="pickup-crm-directory ajax-pager" aria-labelledby="customer-directory-title" data-ajax-pager data-ajax-pager-id="customer-directory" data-page-endpoint="<?= $e($basePath) ?>/dhl/pickupsheet/customers/page" data-page-param="page" data-page-size-param="per_page" data-current-page="<?= $e($customers['page'] ?? 1) ?>" data-error-message="Customer profiles could not be loaded. Please try again.">
+        <section class="pickup-crm-directory ajax-pager" aria-labelledby="customer-directory-title" data-ajax-pager data-ajax-pager-id="customer-directory" data-filter-params="q,status,follow_up,owner,sort" data-page-endpoint="<?= $e($basePath) ?>/dhl/pickupsheet/customers/page" data-page-param="page" data-page-size-param="per_page" data-current-page="<?= $e($customers['page'] ?? 1) ?>" data-error-message="Customer profiles could not be loaded. Please try again.">
             <div class="ajax-pager-loading" data-ajax-pager-spinner role="status" hidden><span class="pickup-loading-spinner" aria-hidden="true"></span><span>Loading customers...</span></div>
             <div class="pickup-crm-directory-content" data-ajax-pager-content aria-live="polite" aria-busy="false">
                 <?php require __DIR__ . '/_customer-directory.php'; ?>

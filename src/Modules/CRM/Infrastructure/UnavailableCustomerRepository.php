@@ -15,7 +15,7 @@ final class UnavailableCustomerRepository implements CustomerRepository
         throw new RuntimeException('Customer storage is unavailable.');
     }
 
-    public function paginated(string $search, string $status, int $limit, int $offset): array
+    public function paginated(array $filters, int $limit, int $offset): array
     {
         throw new RuntimeException('Customer storage is unavailable.');
     }
@@ -60,7 +60,30 @@ final class UnavailableCustomerRepository implements CustomerRepository
         throw new RuntimeException('Customer storage is unavailable.');
     }
 
-    public function save(CustomerProfile $customer, string $actorId): CustomerProfile
+    public function save(CustomerProfile $customer, string $actorId, ?string $expectedUpdatedAt = null): CustomerProfile
+    {
+        throw new RuntimeException('Customer storage is unavailable.');
+    }
+
+    public function delete(string $customerKey, string $actorId): void
+    {
+        throw new RuntimeException('Customer storage is unavailable.');
+    }
+
+    public function activities(string $customerKey, int $limit): array
+    {
+        throw new RuntimeException('Customer storage is unavailable.');
+    }
+
+    public function addActivity(
+        string $customerKey,
+        string $type,
+        string $occurredOn,
+        string $summary,
+        ?string $nextFollowUpOn,
+        string $actorId,
+        string $actorName,
+    ): CustomerProfile
     {
         throw new RuntimeException('Customer storage is unavailable.');
     }

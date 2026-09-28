@@ -12,6 +12,7 @@ use App\Modules\Contact\Infrastructure\MysqlInquiryRepository;
 use App\Modules\Contact\Infrastructure\NativeMailInquiryNotifier;
 use App\Modules\Contact\Infrastructure\UnavailableInquiryRepository;
 use App\Modules\Contact\UI\ContactController;
+use App\Modules\CRM\Application\CustomerConsignorDirectory;
 use App\Modules\CRM\Application\CustomerService;
 use App\Modules\CRM\Infrastructure\DemoCustomerRepository;
 use App\Modules\CRM\Infrastructure\MysqlCustomerRepository;
@@ -256,7 +257,7 @@ $pickupsheetAuthController = new PickupsheetAuthController(
     $localMfa,
 );
 $pickupsheetController = new PickupsheetController(
-    new PickupSheetService($pickupSheetRepository),
+    new PickupSheetService($pickupSheetRepository, new CustomerConsignorDirectory($customerRepository)),
     $view,
     $csrf,
     $pickupCaptcha,
@@ -280,6 +281,7 @@ $customerController = new CustomerController(
     $recordsSession,
     $rateLimiter,
     $securityLogger,
+    $recordsUserService,
 );
 $backupController = new BackupController(
     new BackupService($backupRepository),
@@ -321,6 +323,7 @@ $router->post('/dhl/pickupsheet/admin/backup/download', fn (Request $request): R
 $router->post('/dhl/pickupsheet/admin/backup/restore', fn (Request $request): Response => $backupController->restore($request));
 $router->get('/dhl/pickupsheet/customers', fn (Request $request): Response => $customerController->index($request));
 $router->get('/dhl/pickupsheet/customers/page', fn (Request $request): Response => $customerController->page($request));
+$router->get('/dhl/pickupsheet/customers/export', fn (Request $request): Response => $customerController->export($request));
 $router->get('/dhl/pickupsheet/customers/new', fn (Request $request): Response => $customerController->create($request));
 $router->get('/dhl/pickupsheet/customers/search', fn (Request $request): Response => $customerController->search($request));
 $router->get('/dhl/pickupsheet/customers/edit', fn (Request $request): Response => $customerController->edit($request));
@@ -329,6 +332,8 @@ $router->get('/dhl/pickupsheet/customers/redemptions/page', fn (Request $request
 $router->post('/dhl/pickupsheet/customers/save', fn (Request $request): Response => $customerController->save($request));
 $router->post('/dhl/pickupsheet/customers/merge', fn (Request $request): Response => $customerController->merge($request));
 $router->post('/dhl/pickupsheet/customers/merge/undo', fn (Request $request): Response => $customerController->undoMerge($request));
+$router->post('/dhl/pickupsheet/customers/activities', fn (Request $request): Response => $customerController->addActivity($request));
+$router->post('/dhl/pickupsheet/customers/delete', fn (Request $request): Response => $customerController->delete($request));
 $router->post('/dhl/pickupsheet/customers/rewards', fn (Request $request): Response => $customerController->adjustRewards($request));
 $router->get('/dhl/pickupsheet', fn (Request $request): Response => $pickupsheetController->index($request));
 $router->get('/dhl/pickupsheet/consignors/search', fn (Request $request): Response => $pickupsheetController->searchConsignors($request));

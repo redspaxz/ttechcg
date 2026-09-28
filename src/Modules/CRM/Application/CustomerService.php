@@ -17,24 +17,37 @@ final class CustomerService
     private const COUNTRY_CALLING_CODES = ['CM' => '+237'];
     private const DUPLICATE_CONFIDENCE_THRESHOLD = 88;
     private const DUPLICATE_REVIEW_MAX_PROFILES = 20000;
+    /** A contact shared by more profiles than this is treated as a switchboard, not as a duplicate signal. */
+    private const SHARED_CONTACT_GROUP_LIMIT = 25;
+    public const ACTIVITY_TYPES = ['call' => 'Call', 'visit' => 'Visit', 'email' => 'Email', 'meeting' => 'Meeting', 'note' => 'Note'];
+    public const SORT_OPTIONS = [
+        'priority' => 'Priority',
+        'name' => 'Name A-Z',
+        'last_shipment' => 'Latest shipment',
+        'value' => 'Shipment value',
+        'points' => 'Reward points',
+    ];
+    public const EXPORT_ROW_LIMIT = 5000;
 
     public function __construct(private readonly CustomerRepository $repository)
     {
     }
 
-    /** @return array{items: list<CustomerProfile>, page: int, perPage: int, totalRecords: int, totalPages: int} */
-    public function paginated(string $search = '', string $status = '', int $page = 1, int $perPage = 10): array
+    /**
+     * @param array<string, mixed> $filters raw search, status, follow_up, owner, and sort values
+     * @return array{items: list<CustomerProfile>, page: int, perPage: int, totalRecords: int, totalPages: int}
+     */
+    public function paginated(array $filters = [], int $page = 1, int $perPage = 10): array
     {
         $this->repository->synchronizeFromShipments();
-        $search = substr(trim($search), 0, 100);
-        $status = in_array($status, self::STATUSES, true) ? $status : '';
+        $filters = $this->directoryFilters($filters);
         $perPage = max(1, min($perPage, 50));
         $page = max(1, $page);
-        $result = $this->repository->paginated($search, $status, $perPage, ($page - 1) * $perPage);
+        $result = $this->repository->paginated($filters, $perPage, ($page - 1) * $perPage);
         $totalPages = max(1, (int) ceil($result['totalRecords'] / $perPage));
         if ($page > $totalPages) {
             $page = $totalPages;
-            $result = $this->repository->paginated($search, $status, $perPage, ($page - 1) * $perPage);
+            $result = $this->repository->paginated($filters, $perPage, ($page - 1) * $perPage);
         }
 
         return [
@@ -43,6 +56,35 @@ final class CustomerService
             'perPage' => $perPage,
             'totalRecords' => $result['totalRecords'],
             'totalPages' => $totalPages,
+        ];
+    }
+
+    /**
+     * Every profile matching the directory filters, for spreadsheet export.
+     *
+     * @param array<string, mixed> $filters
+     * @return array{items: list<CustomerProfile>, totalRecords: int}
+     */
+    public function exportRows(array $filters): array
+    {
+        $this->repository->synchronizeFromShipments();
+        return $this->repository->paginated($this->directoryFilters($filters), self::EXPORT_ROW_LIMIT, 0);
+    }
+
+    /**
+     * @param array<string, mixed> $input
+     * @return array{search: string, status: string, followUp: string, owner: string, sort: string}
+     */
+    public function directoryFilters(array $input): array
+    {
+        $value = static fn (string $key): string => is_string($input[$key] ?? null) ? trim($input[$key]) : '';
+        $owner = strtolower($value('owner'));
+        return [
+            'search' => substr($value('search'), 0, 100),
+            'status' => in_array($value('status'), self::STATUSES, true) ? $value('status') : '',
+            'followUp' => in_array($value('follow_up'), ['due', 'scheduled', 'none'], true) ? $value('follow_up') : '',
+            'owner' => $owner === 'unassigned' || preg_match('/^[a-f0-9]{24}$/', $owner) === 1 ? $owner : '',
+            'sort' => array_key_exists($value('sort'), self::SORT_OPTIONS) ? $value('sort') : 'priority',
         ];
     }
 
@@ -87,7 +129,12 @@ final class CustomerService
         return strlen($name) < 2 ? null : $this->repository->findByName($name);
     }
 
-    /** @return list<array{primary: CustomerProfile, duplicate: CustomerProfile, confidence: int}> */
+    /**
+     * Pairs of profiles that are probably the same customer: near-identical names, or a shared email
+     * address or phone number. Names that differ by a number (branches, sites) are never paired.
+     *
+     * @return list<array{primary: CustomerProfile, duplicate: CustomerProfile, confidence: int, reason: string}>
+     */
     public function duplicateSuggestions(int $limit = 8): array
     {
         $this->repository->synchronizeFromShipments();
@@ -95,19 +142,39 @@ final class CustomerService
         foreach ($this->repository->duplicateReviewNames(self::DUPLICATE_REVIEW_MAX_PROFILES) as $row) {
             $normalized = $this->normalizedDuplicateName($row['displayName']);
             if ($normalized !== '') {
-                $entries[] = ['key' => $row['customerKey'], 'name' => $row['displayName'], 'normalized' => $normalized];
+                $entries[] = [
+                    'key' => $row['customerKey'],
+                    'name' => $row['displayName'],
+                    'normalized' => $normalized,
+                    'email' => strtolower(trim($row['email'])),
+                    'phone' => $this->phoneDigits($row['phone']),
+                ];
             }
         }
 
         // Compare only names that share their first or last three characters. A small edit leaves
         // at least one end intact, so this keeps recall while avoiding an all-pairs comparison.
-        $blocks = [];
+        $nameBlocks = [];
+        $contactBlocks = [];
         foreach ($entries as $index => $entry) {
-            $blocks['p' . substr($entry['normalized'], 0, 3)][] = $index;
-            $blocks['s' . substr($entry['normalized'], -3)][] = $index;
+            $nameBlocks['p' . substr($entry['normalized'], 0, 3)][] = $index;
+            $nameBlocks['s' . substr($entry['normalized'], -3)][] = $index;
+            if ($entry['email'] !== '') {
+                $contactBlocks['e' . $entry['email']][] = $index;
+            }
+            if ($entry['phone'] !== '') {
+                $contactBlocks['t' . $entry['phone']][] = $index;
+            }
         }
         $candidates = [];
-        foreach ($blocks as $members) {
+        $consider = function (array $left, array $right) use (&$candidates): void {
+            $pairKey = strcmp($left['key'], $right['key']) < 0 ? $left['key'] . $right['key'] : $right['key'] . $left['key'];
+            if (!array_key_exists($pairKey, $candidates)) {
+                $match = $this->duplicateMatch($left, $right);
+                $candidates[$pairKey] = $match === null ? null : ['left' => $left, 'right' => $right] + $match;
+            }
+        };
+        foreach ($nameBlocks as $members) {
             $memberCount = count($members);
             if ($memberCount < 2) {
                 continue;
@@ -122,14 +189,18 @@ final class CustomerService
                     if ($rightLength - strlen($left['normalized']) > max(3, (int) ceil($rightLength * 0.2))) {
                         break;
                     }
-                    $pairKey = strcmp($left['key'], $right['key']) < 0 ? $left['key'] . $right['key'] : $right['key'] . $left['key'];
-                    if (isset($candidates[$pairKey])) {
-                        continue;
-                    }
-                    $confidence = $this->normalizedDuplicateConfidence($left['normalized'], $right['normalized']);
-                    $candidates[$pairKey] = $confidence >= self::DUPLICATE_CONFIDENCE_THRESHOLD
-                        ? ['left' => $left, 'right' => $right, 'confidence' => $confidence]
-                        : null;
+                    $consider($left, $right);
+                }
+            }
+        }
+        foreach ($contactBlocks as $members) {
+            $memberCount = count($members);
+            if ($memberCount < 2 || $memberCount > self::SHARED_CONTACT_GROUP_LIMIT) {
+                continue;
+            }
+            for ($leftIndex = 0; $leftIndex < $memberCount; $leftIndex++) {
+                for ($rightIndex = $leftIndex + 1; $rightIndex < $memberCount; $rightIndex++) {
+                    $consider($entries[$members[$leftIndex]], $entries[$members[$rightIndex]]);
                 }
             }
         }
@@ -146,7 +217,7 @@ final class CustomerService
                 continue;
             }
             [$primary, $duplicate] = $this->preferredProfile($leftProfile, $rightProfile);
-            $suggestions[] = ['primary' => $primary, 'duplicate' => $duplicate, 'confidence' => $match['confidence']];
+            $suggestions[] = ['primary' => $primary, 'duplicate' => $duplicate, 'confidence' => $match['confidence'], 'reason' => $match['reason']];
             if (count($suggestions) >= max(1, min($limit, 20))) {
                 break;
             }
@@ -323,6 +394,18 @@ final class CustomerService
             throw new InvalidArgumentException('Select a valid customer status.');
         }
 
+        [$assignedActorId, $assignedName] = [$existing?->assignedActorId, $existing?->assignedName ?? ''];
+        if (array_key_exists('owner_actor_id', $input)) {
+            $assignedActorId = strtolower($this->text($input['owner_actor_id'] ?? '', 24));
+            $assignedName = $this->text($input['owner_name'] ?? '', 160);
+            if ($assignedActorId === '') {
+                [$assignedActorId, $assignedName] = [null, ''];
+            } elseif (preg_match('/^[a-f0-9]{24}$/', $assignedActorId) !== 1 || $assignedName === '') {
+                throw new InvalidArgumentException('Select a valid customer owner.');
+            }
+        }
+        $expectedUpdatedAt = $this->text($input['expected_updated_at'] ?? '', 32);
+
         $key = $existing?->customerKey ?? $this->newCustomerKey($displayName);
         $customer = new CustomerProfile(
             $existing?->id,
@@ -347,9 +430,63 @@ final class CustomerService
             $existing?->rewardAdjustmentPoints ?? 0,
             $existing?->rewardEarnedAdjustmentPoints ?? 0,
             $existing?->cargoWeightRewardPoints ?? 0,
+            $assignedActorId,
+            $assignedName,
         );
 
-        return $this->repository->save($customer, $actorId);
+        return $this->repository->save($customer, $actorId, $existing !== null && $expectedUpdatedAt !== '' ? $expectedUpdatedAt : null);
+    }
+
+    public function delete(string $customerKey, string $actorId): void
+    {
+        if (preg_match('/^[a-f0-9]{24}$/', $actorId) !== 1) {
+            throw new InvalidArgumentException('The customer-data actor is invalid.');
+        }
+        if ($this->find($customerKey) === null) {
+            throw new InvalidArgumentException('Customer profile not found.');
+        }
+        $this->repository->delete($customerKey, $actorId);
+    }
+
+    /** @return list<array{type: string, occurredOn: string, summary: string, actorId: string, actorName: string, createdAt: string}> */
+    public function activities(string $customerKey, int $limit = 20): array
+    {
+        if (preg_match('/^[a-f0-9]{64}$/', $customerKey) !== 1) {
+            return [];
+        }
+        return $this->repository->activities($customerKey, max(1, min($limit, 100)));
+    }
+
+    /**
+     * Logs a call, visit, email, meeting, or note, and sets the next follow-up from the same form;
+     * leaving the next follow-up empty closes it.
+     *
+     * @param array<string, mixed> $input
+     */
+    public function addActivity(string $customerKey, array $input, string $actorId, string $actorName): CustomerProfile
+    {
+        if (preg_match('/^[a-f0-9]{24}$/', $actorId) !== 1) {
+            throw new InvalidArgumentException('The customer-data actor is invalid.');
+        }
+        if ($this->find($customerKey) === null) {
+            throw new InvalidArgumentException('Customer profile not found.');
+        }
+        $type = strtolower($this->text($input['activity_type'] ?? '', 20));
+        if (!array_key_exists($type, self::ACTIVITY_TYPES)) {
+            throw new InvalidArgumentException('Select a valid activity type.');
+        }
+        $occurredOn = $this->date($input['occurred_on'] ?? '') ?? gmdate('Y-m-d');
+        if ($occurredOn > gmdate('Y-m-d')) {
+            throw new InvalidArgumentException('An activity date cannot be in the future.');
+        }
+        $summary = $this->multilineText($input['summary'] ?? '', 1000);
+        if (strlen($summary) < 3) {
+            throw new InvalidArgumentException('Describe the activity in at least a few words.');
+        }
+        $nextFollowUpOn = $this->date($input['next_follow_up_on'] ?? '');
+        $actorName = $this->text($actorName, 160);
+
+        return $this->repository->addActivity($customerKey, $type, $occurredOn, $summary, $nextFollowUpOn, $actorId, $actorName === '' ? 'Records user' : $actorName);
     }
 
     public function merge(string $targetCustomerKey, string $sourceCustomerKey, string $actorId): CustomerProfile
@@ -367,7 +504,11 @@ final class CustomerService
         if ($target === null || $source === null) {
             throw new InvalidArgumentException('One of the customer profiles no longer exists.');
         }
-        if ($this->duplicateConfidence($target->displayName, $source->displayName) < self::DUPLICATE_CONFIDENCE_THRESHOLD) {
+        $match = $this->duplicateMatch(
+            ['normalized' => $this->normalizedDuplicateName($target->displayName), 'email' => strtolower($target->email), 'phone' => $this->phoneDigits($target->phone)],
+            ['normalized' => $this->normalizedDuplicateName($source->displayName), 'email' => strtolower($source->email), 'phone' => $this->phoneDigits($source->phone)],
+        );
+        if ($match === null) {
             throw new InvalidArgumentException('These customer names are not similar enough for the duplicate merge workflow.');
         }
         return $this->repository->merge($targetCustomerKey, $sourceCustomerKey, $actorId);
@@ -469,12 +610,41 @@ final class CustomerService
         return $this->repository->find($key) === null ? $key : bin2hex(random_bytes(32));
     }
 
-    private function duplicateConfidence(string $left, string $right): int
+    /**
+     * @param array{normalized: string, email: string, phone: string} $left
+     * @param array{normalized: string, email: string, phone: string} $right
+     * @return array{confidence: int, reason: string}|null
+     */
+    private function duplicateMatch(array $left, array $right): ?array
     {
-        return $this->normalizedDuplicateConfidence(
-            $this->normalizedDuplicateName($left),
-            $this->normalizedDuplicateName($right),
-        );
+        if ($this->numbersDiffer($left['normalized'], $right['normalized'])) {
+            return null;
+        }
+        $confidence = $this->normalizedDuplicateConfidence($left['normalized'], $right['normalized']);
+        if ($confidence >= self::DUPLICATE_CONFIDENCE_THRESHOLD) {
+            return ['confidence' => $confidence, 'reason' => 'name'];
+        }
+        if ($left['email'] !== '' && $left['email'] === $right['email']) {
+            return ['confidence' => max($confidence, 90), 'reason' => 'email'];
+        }
+        if ($left['phone'] !== '' && $left['phone'] === $right['phone']) {
+            return ['confidence' => max($confidence, 85), 'reason' => 'phone'];
+        }
+        return null;
+    }
+
+    /** Names that differ in any number are treated as distinct branches or sites, e.g. "Douala 1" and "Douala 2". */
+    private function numbersDiffer(string $left, string $right): bool
+    {
+        preg_match_all('/\d+/', $left, $leftNumbers);
+        preg_match_all('/\d+/', $right, $rightNumbers);
+        return $leftNumbers[0] !== $rightNumbers[0];
+    }
+
+    private function phoneDigits(string $phone): string
+    {
+        $digits = preg_replace('/\D+/', '', $phone) ?? '';
+        return strlen($digits) >= 9 ? substr($digits, -9) : '';
     }
 
     private function normalizedDuplicateConfidence(string $left, string $right): int
@@ -482,10 +652,7 @@ final class CustomerService
         if ($left === '' || $right === '' || $left === $right) {
             return $left !== '' && $left === $right ? 100 : 0;
         }
-        // Names that differ in any number are treated as distinct branches or sites, e.g. "Douala 1" and "Douala 2".
-        preg_match_all('/\d+/', $left, $leftNumbers);
-        preg_match_all('/\d+/', $right, $rightNumbers);
-        if ($leftNumbers[0] !== $rightNumbers[0]) {
+        if ($this->numbersDiffer($left, $right)) {
             return 0;
         }
         $maximumLength = max(strlen($left), strlen($right));

@@ -5,10 +5,18 @@ declare(strict_types=1);
 $e = static fn (mixed $value): string => htmlspecialchars((string) $value, ENT_QUOTES, 'UTF-8');
 $customers = is_array($customers ?? null) ? $customers : [];
 $items = is_array($customers['items'] ?? null) ? $customers['items'] : [];
-$queryForPage = static function (int $targetPage) use ($search, $statusFilter): string {
+$search = (string) ($search ?? '');
+$statusFilter = (string) ($statusFilter ?? '');
+$followUpFilter = (string) ($followUpFilter ?? '');
+$ownerFilter = (string) ($ownerFilter ?? '');
+$sortOrder = (string) ($sortOrder ?? '');
+$queryForPage = static function (int $targetPage) use ($search, $statusFilter, $followUpFilter, $ownerFilter, $sortOrder): string {
     return http_build_query(array_filter([
         'q' => $search ?? '',
         'status' => $statusFilter ?? '',
+        'follow_up' => $followUpFilter ?? '',
+        'owner' => $ownerFilter ?? '',
+        'sort' => $sortOrder ?? '',
         'page' => $targetPage,
     ], static fn (mixed $value): bool => $value !== ''));
 };
@@ -21,7 +29,7 @@ $queryForPage = static function (int $targetPage) use ($search, $statusFilter): 
         <?php if ($items === []): ?><tr><td colspan="8">No customers match the current filters.</td></tr><?php endif; ?>
         <?php foreach ($items as $customer): ?>
             <tr>
-                <td><strong><?= $e($customer->displayName) ?></strong><small><?= $customer->source === 'shipment' ? 'Created from shipment data' : 'Manual profile' ?></small></td>
+                <td><strong><?= $e($customer->displayName) ?></strong><small><?= $customer->source === 'shipment' ? 'Created from shipment data' : 'Manual profile' ?><?= $customer->assignedName !== '' ? ' &middot; Owner: ' . $e($customer->assignedName) : '' ?></small></td>
                 <td><span class="pickup-customer-status is-<?= $e($customer->status) ?>"><?= $e($customer->status === 'attention' ? 'Needs attention' : ucfirst($customer->status)) ?></span></td>
                 <td><strong><?= $e($customer->contactName !== '' ? $customer->contactName : 'Not assigned') ?></strong><small><?= $e($customer->email !== '' ? $customer->email : ($customer->phone !== '' ? $customer->phone : 'No contact details')) ?></small></td>
                 <td><strong><?= $e(number_format($customer->totalCashXaf)) ?> XAF</strong><small><?= $e(number_format($customer->shipmentCount)) ?> <?= $customer->shipmentCount === 1 ? 'shipment' : 'shipments' ?></small></td>

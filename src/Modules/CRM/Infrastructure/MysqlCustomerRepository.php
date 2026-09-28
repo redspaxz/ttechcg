@@ -15,6 +15,11 @@ use Throwable;
 
 final class MysqlCustomerRepository implements CustomerRepository
 {
+    /** Actor recorded for changes the application makes on its own, such as alias resolution. */
+    private const SYSTEM_ACTOR_ID = '000000000000000000000000';
+    private const SYNC_NAME = 'shipments';
+    private const PROFILE_CHANGED_MESSAGE = 'This profile was changed by someone else after you opened it. Your changes were not saved; review the current details and edit again.';
+
     private bool $schemaReady = false;
     private bool $synchronized = false;
 
@@ -22,75 +27,115 @@ final class MysqlCustomerRepository implements CustomerRepository
     {
     }
 
+    /**
+     * Creates profiles for new consignors. Only shipment rows added since the last run are read, so
+     * CRM pages do not rescan every sheet; a profile that was deleted is not recreated from old sheets.
+     */
     public function synchronizeFromShipments(): void
     {
         if ($this->synchronized) {
             return;
         }
         $this->ensureSchema();
-        $this->resolveShipmentAliases();
-        // Group by the column collation (case- and accent-insensitive) so spelling variants that the
-        // unique display-name index treats as equal become one profile. A name-derived key that is
-        // still held by a renamed profile falls back to a random key instead of dropping the sender.
-        $this->connection->exec(
-            "INSERT INTO pickup_customers
-                (customer_key, display_name, country_code, status, source, assigned_role, created_at, updated_at)
-             SELECT CASE WHEN key_owner.id IS NULL THEN candidates.name_key
-                         ELSE SHA2(CONCAT(candidates.name_key, ':', UUID()), 256) END,
-                    candidates.display_name, 'CM', 'active', 'shipment', 'admin', UTC_TIMESTAMP(), UTC_TIMESTAMP()
-             FROM (
-                 SELECT SHA2(LOWER(MIN(TRIM(ps.consignor))), 256) AS name_key, MIN(TRIM(ps.consignor)) AS display_name
-                 FROM pickup_shipments ps
-                 INNER JOIN pickup_sheets p ON p.id = ps.pickup_sheet_id
-                 LEFT JOIN pickup_customers existing_customer
-                   ON LOWER(TRIM(existing_customer.display_name)) = LOWER(TRIM(ps.consignor))
-                 WHERE p.deleted_at IS NULL
-                   AND TRIM(ps.consignor) <> ''
-                   AND existing_customer.id IS NULL
-                 GROUP BY LOWER(TRIM(ps.consignor))
-             ) candidates
-             LEFT JOIN pickup_customers key_owner ON key_owner.customer_key = candidates.name_key
-             ON DUPLICATE KEY UPDATE pickup_customers.id = pickup_customers.id",
-        );
+        $latestShipmentId = (int) $this->connection->query('SELECT COALESCE(MAX(id), 0) FROM pickup_shipments')->fetchColumn();
+        $stateStatement = $this->connection->prepare('SELECT last_shipment_id FROM pickup_crm_sync_state WHERE sync_name = :sync_name');
+        $stateStatement->execute(['sync_name' => self::SYNC_NAME]);
+        $lastShipmentId = (int) ($stateStatement->fetchColumn() ?: 0);
+        if ($latestShipmentId > $lastShipmentId) {
+            $this->resolveShipmentAliases($lastShipmentId, $latestShipmentId);
+            // Group by the column collation (case- and accent-insensitive) so spelling variants that
+            // the unique display-name index treats as equal become one profile. A name-derived key
+            // still held by a renamed profile falls back to a random key instead of dropping the sender.
+            $insertStatement = $this->connection->prepare(
+                "INSERT INTO pickup_customers
+                    (customer_key, display_name, country_code, status, source, assigned_role, created_at, updated_at)
+                 SELECT CASE WHEN key_owner.id IS NULL THEN candidates.name_key
+                             ELSE SHA2(CONCAT(candidates.name_key, ':', UUID()), 256) END,
+                        candidates.display_name, 'CM', 'active', 'shipment', 'admin', UTC_TIMESTAMP(), UTC_TIMESTAMP()
+                 FROM (
+                     SELECT SHA2(LOWER(MIN(TRIM(ps.consignor))), 256) AS name_key, MIN(TRIM(ps.consignor)) AS display_name
+                     FROM pickup_shipments ps
+                     INNER JOIN pickup_sheets p ON p.id = ps.pickup_sheet_id
+                     LEFT JOIN pickup_customers existing_customer
+                       ON existing_customer.display_name = TRIM(ps.consignor)
+                     WHERE ps.id > :after_shipment_id AND ps.id <= :through_shipment_id
+                       AND p.deleted_at IS NULL
+                       AND TRIM(ps.consignor) <> ''
+                       AND existing_customer.id IS NULL
+                     GROUP BY LOWER(TRIM(ps.consignor))
+                 ) candidates
+                 LEFT JOIN pickup_customers key_owner ON key_owner.customer_key = candidates.name_key
+                 ON DUPLICATE KEY UPDATE pickup_customers.id = pickup_customers.id",
+            );
+            $insertStatement->execute(['after_shipment_id' => $lastShipmentId, 'through_shipment_id' => $latestShipmentId]);
+            $this->connection->prepare(
+                'INSERT INTO pickup_crm_sync_state (sync_name, last_shipment_id, updated_at)
+                 VALUES (:sync_name, :last_shipment_id, UTC_TIMESTAMP())
+                 ON DUPLICATE KEY UPDATE last_shipment_id = GREATEST(last_shipment_id, VALUES(last_shipment_id)), updated_at = UTC_TIMESTAMP()',
+            )->execute(['sync_name' => self::SYNC_NAME, 'last_shipment_id' => $latestShipmentId]);
+        }
         $this->synchronized = true;
     }
 
-    /** Points shipments still typed with a merged-away name at the profile that absorbed it. */
-    private function resolveShipmentAliases(): void
+    /** Points new shipments still typed with a merged-away name at the profile that absorbed it. */
+    private function resolveShipmentAliases(int $afterShipmentId, int $throughShipmentId): void
     {
         if ($this->connection->query('SELECT 1 FROM pickup_customer_aliases LIMIT 1')->fetchColumn() === false) {
             return;
         }
-        $this->connection->exec(
-            'UPDATE pickup_shipments ps
-             INNER JOIN pickup_customer_aliases alias_map ON alias_map.alias_name = TRIM(ps.consignor)
-             INNER JOIN pickup_customers c ON c.customer_key = alias_map.customer_key
-             SET ps.consignor = c.display_name',
-        );
+        $this->connection->beginTransaction();
+        try {
+            $statement = $this->connection->prepare(
+                'SELECT ps.id, ps.pickup_sheet_id, p.reference_number, ps.line_number, ps.consignor, c.display_name AS new_consignor
+                 FROM pickup_shipments ps
+                 INNER JOIN pickup_sheets p ON p.id = ps.pickup_sheet_id
+                 INNER JOIN pickup_customer_aliases alias_map ON alias_map.alias_name = TRIM(ps.consignor)
+                 INNER JOIN pickup_customers c ON c.customer_key = alias_map.customer_key
+                 WHERE ps.id > :after_shipment_id AND ps.id <= :through_shipment_id
+                 FOR UPDATE',
+            );
+            $statement->execute(['after_shipment_id' => $afterShipmentId, 'through_shipment_id' => $throughShipmentId]);
+            $update = $this->connection->prepare('UPDATE pickup_shipments SET consignor = :consignor WHERE id = :id');
+            $changes = [];
+            foreach ($statement->fetchAll() as $row) {
+                $update->execute(['consignor' => (string) $row['new_consignor'], 'id' => (int) $row['id']]);
+                $changes[] = $this->consignorChange($row, (string) $row['new_consignor']);
+            }
+            $this->auditConsignorChanges($changes, 'crm_alias_resolution', self::SYSTEM_ACTOR_ID);
+            $this->connection->commit();
+        } catch (Throwable $exception) {
+            if ($this->connection->inTransaction()) {
+                $this->connection->rollBack();
+            }
+            throw $exception;
+        }
     }
 
-    public function paginated(string $search, string $status, int $limit, int $offset): array
+    public function paginated(array $filters, int $limit, int $offset): array
     {
         $this->ensureSchema();
-        [$where, $parameters] = $this->filters($search, $status);
+        [$where, $parameters] = $this->filters($filters);
         $countStatement = $this->connection->prepare('SELECT COUNT(*) FROM pickup_customers c' . $where);
         $countStatement->execute($parameters);
         $totalRecords = (int) $countStatement->fetchColumn();
 
-        $statement = $this->connection->prepare(
-            $this->customerSelect()
-            . $where
-            . " ORDER BY
-                    CASE WHEN c.next_follow_up_on IS NOT NULL AND c.next_follow_up_on <= UTC_DATE() AND c.status <> 'inactive' THEN 0 ELSE 1 END,
+        $orderBy = match ($filters['sort'] ?? 'priority') {
+            'name' => 'LOWER(c.display_name) ASC, c.display_name ASC',
+            'last_shipment' => "COALESCE(metrics.last_shipment_on, '0000-00-00') DESC, LOWER(c.display_name) ASC",
+            'value' => 'COALESCE(metrics.total_cash_xaf, 0) DESC, LOWER(c.display_name) ASC',
+            'points' => 'GREATEST(0, COALESCE(metrics.cargo_reward_points, 0) + COALESCE(rewards.adjustment_points, 0)) DESC, LOWER(c.display_name) ASC',
+            default => "CASE WHEN c.next_follow_up_on IS NOT NULL AND c.next_follow_up_on <= UTC_DATE() AND c.status <> 'inactive' THEN 0 ELSE 1 END,
                     CASE c.status WHEN 'attention' THEN 0 WHEN 'lead' THEN 1 WHEN 'active' THEN 2 ELSE 3 END,
                     COALESCE(metrics.last_shipment_on, '0000-00-00') DESC,
-                    c.display_name ASC
-                LIMIT :limit OFFSET :offset",
+                    c.display_name ASC",
+        };
+        $statement = $this->connection->prepare(
+            $this->customerSelect() . $where . ' ORDER BY ' . $orderBy . ' LIMIT :limit OFFSET :offset',
         );
         foreach ($parameters as $name => $value) {
             $statement->bindValue(':' . $name, $value);
         }
-        $statement->bindValue(':limit', max(1, min($limit, 50)), PDO::PARAM_INT);
+        $statement->bindValue(':limit', max(1, min($limit, 5000)), PDO::PARAM_INT);
         $statement->bindValue(':offset', max(0, $offset), PDO::PARAM_INT);
         $statement->execute();
 
@@ -153,7 +198,7 @@ final class MysqlCustomerRepository implements CustomerRepository
         $statement->bindValue(':query_length', $query);
         $statement->bindValue(':query_prefix', $query);
         $statement->bindValue(':query_exact', $query);
-        $statement->bindValue(':limit', max(1, min($limit, 20)), PDO::PARAM_INT);
+        $statement->bindValue(':limit', max(1, min($limit, 50)), PDO::PARAM_INT);
         $statement->execute();
 
         return array_values(array_filter(array_map(
@@ -165,20 +210,27 @@ final class MysqlCustomerRepository implements CustomerRepository
     public function duplicateReviewNames(int $limit): array
     {
         $this->ensureSchema();
-        $statement = $this->connection->prepare('SELECT customer_key, display_name FROM pickup_customers ORDER BY id LIMIT :limit');
+        $statement = $this->connection->prepare('SELECT customer_key, display_name, email, phone FROM pickup_customers ORDER BY id LIMIT :limit');
         $statement->bindValue(':limit', max(1, $limit), PDO::PARAM_INT);
         $statement->execute();
         return array_map(static fn (array $row): array => [
             'customerKey' => (string) $row['customer_key'],
             'displayName' => (string) $row['display_name'],
+            'email' => (string) ($row['email'] ?? ''),
+            'phone' => (string) ($row['phone'] ?? ''),
         ], $statement->fetchAll());
     }
 
     public function find(string $customerKey): ?CustomerProfile
     {
         $this->ensureSchema();
-        $statement = $this->connection->prepare($this->customerSelect() . ' WHERE c.customer_key = :customer_key LIMIT 1');
-        $statement->execute(['customer_key' => $customerKey]);
+        // Totals are aggregated for this one customer only, using the consignor index.
+        $statement = $this->connection->prepare($this->customerSelect(true) . ' WHERE c.customer_key = :customer_key LIMIT 1');
+        $statement->execute([
+            'customer_key' => $customerKey,
+            'metrics_customer_key' => $customerKey,
+            'rewards_customer_key' => $customerKey,
+        ]);
         $row = $statement->fetch();
         return is_array($row) ? $this->profile($row) : null;
     }
@@ -221,7 +273,7 @@ final class MysqlCustomerRepository implements CustomerRepository
              INNER JOIN pickup_sheets p ON p.id = ps.pickup_sheet_id
              INNER JOIN pickup_customers c ON c.customer_key = :customer_key
              WHERE p.deleted_at IS NULL
-               AND LOWER(TRIM(ps.consignor)) = LOWER(TRIM(c.display_name))
+               AND ps.consignor = c.display_name
              ORDER BY p.collection_date DESC, p.id DESC, ps.line_number DESC
              LIMIT :limit OFFSET :offset",
         );
@@ -248,24 +300,30 @@ final class MysqlCustomerRepository implements CustomerRepository
              INNER JOIN pickup_sheets p ON p.id = ps.pickup_sheet_id
              INNER JOIN pickup_customers c ON c.customer_key = :customer_key
              WHERE p.deleted_at IS NULL
-               AND LOWER(TRIM(ps.consignor)) = LOWER(TRIM(c.display_name))',
+               AND ps.consignor = c.display_name',
         );
         $statement->execute(['customer_key' => $customerKey]);
         return (int) $statement->fetchColumn();
     }
 
-    public function save(CustomerProfile $customer, string $actorId): CustomerProfile
+    public function save(CustomerProfile $customer, string $actorId, ?string $expectedUpdatedAt = null): CustomerProfile
     {
         $this->ensureSchema();
         $this->connection->beginTransaction();
         try {
             $existingStatement = $this->connection->prepare(
-                'SELECT id, display_name FROM pickup_customers WHERE customer_key = :customer_key LIMIT 1 FOR UPDATE',
+                'SELECT id, display_name, updated_at FROM pickup_customers WHERE customer_key = :customer_key LIMIT 1 FOR UPDATE',
             );
             $existingStatement->execute(['customer_key' => $customer->customerKey]);
             $existingRow = $existingStatement->fetch();
             if ($customer->id === null && is_array($existingRow)) {
                 throw new InvalidArgumentException('A customer profile already uses this organization name.');
+            }
+            if ($customer->id !== null && !is_array($existingRow)) {
+                throw new InvalidArgumentException('Customer profile not found.');
+            }
+            if ($expectedUpdatedAt !== null && is_array($existingRow) && (string) $existingRow['updated_at'] !== $expectedUpdatedAt) {
+                throw new InvalidArgumentException(self::PROFILE_CHANGED_MESSAGE);
             }
             $previousDisplayName = is_array($existingRow) ? (string) $existingRow['display_name'] : false;
 
@@ -300,15 +358,7 @@ final class MysqlCustomerRepository implements CustomerRepository
             }
 
             if (is_string($previousDisplayName) && trim($previousDisplayName) !== trim($customer->displayName)) {
-                $renameStatement = $this->connection->prepare(
-                    'UPDATE pickup_shipments
-                     SET consignor = :display_name
-                     WHERE LOWER(TRIM(consignor)) = LOWER(TRIM(:previous_display_name))',
-                );
-                $renameStatement->execute([
-                    'display_name' => $customer->displayName,
-                    'previous_display_name' => $previousDisplayName,
-                ]);
+                $this->renameConsignors($previousDisplayName, $customer->displayName, 'crm_customer_rename', $actorId);
             }
 
             $parameters = [
@@ -325,16 +375,20 @@ final class MysqlCustomerRepository implements CustomerRepository
                 'next_follow_up_on' => $customer->nextFollowUpOn,
                 'source' => $customer->source,
                 'assigned_role' => 'admin',
+                'assigned_actor_id' => $customer->assignedActorId,
+                'assigned_name' => $customer->assignedActorId === null ? null : $this->nullable($customer->assignedName),
                 'updated_by' => $actorId,
             ];
             if ($customer->id === null) {
                 $statement = $this->connection->prepare(
                     'INSERT INTO pickup_customers
                         (customer_key, display_name, contact_name, email, phone, address, city, country_code,
-                         status, notes, next_follow_up_on, source, assigned_role, created_by, updated_by, created_at, updated_at)
+                         status, notes, next_follow_up_on, source, assigned_role, assigned_actor_id, assigned_name,
+                         created_by, updated_by, created_at, updated_at)
                      VALUES
                         (:customer_key, :display_name, :contact_name, :email, :phone, :address, :city, :country_code,
-                         :status, :notes, :next_follow_up_on, :source, :assigned_role, :created_by, :updated_by, UTC_TIMESTAMP(), UTC_TIMESTAMP())',
+                         :status, :notes, :next_follow_up_on, :source, :assigned_role, :assigned_actor_id, :assigned_name,
+                         :created_by, :updated_by, UTC_TIMESTAMP(), UTC_TIMESTAMP())',
                 );
                 $parameters['created_by'] = $actorId;
             } else {
@@ -343,8 +397,8 @@ final class MysqlCustomerRepository implements CustomerRepository
                      SET display_name = :display_name, contact_name = :contact_name, email = :email,
                          phone = :phone, address = :address, city = :city, country_code = :country_code,
                          status = :status, notes = :notes, next_follow_up_on = :next_follow_up_on,
-                         source = :source, assigned_role = :assigned_role, updated_by = :updated_by,
-                         updated_at = UTC_TIMESTAMP()
+                         source = :source, assigned_role = :assigned_role, assigned_actor_id = :assigned_actor_id,
+                         assigned_name = :assigned_name, updated_by = :updated_by, updated_at = UTC_TIMESTAMP()
                      WHERE customer_key = :customer_key',
                 );
             }
@@ -363,6 +417,101 @@ final class MysqlCustomerRepository implements CustomerRepository
         return $this->find($customer->customerKey) ?? $customer;
     }
 
+    public function delete(string $customerKey, string $actorId): void
+    {
+        $this->ensureSchema();
+        $this->connection->beginTransaction();
+        try {
+            $statement = $this->connection->prepare('SELECT id FROM pickup_customers WHERE customer_key = :customer_key FOR UPDATE');
+            $statement->execute(['customer_key' => $customerKey]);
+            if ($statement->fetchColumn() === false) {
+                throw new InvalidArgumentException('Customer profile not found.');
+            }
+            // Merge snapshots hold copies of the profile's personal data, so they go too.
+            $this->connection->prepare(
+                'DELETE FROM pickup_customer_merges WHERE target_customer_key = :target_key OR source_customer_key = :source_key',
+            )->execute(['target_key' => $customerKey, 'source_key' => $customerKey]);
+            // Reward adjustments, aliases, and activities are removed by their foreign-key cascades.
+            $this->connection->prepare('DELETE FROM pickup_customers WHERE customer_key = :customer_key')
+                ->execute(['customer_key' => $customerKey]);
+            $this->connection->commit();
+        } catch (Throwable $exception) {
+            if ($this->connection->inTransaction()) {
+                $this->connection->rollBack();
+            }
+            throw $exception;
+        }
+    }
+
+    public function activities(string $customerKey, int $limit): array
+    {
+        $this->ensureSchema();
+        $statement = $this->connection->prepare(
+            'SELECT activity_type, occurred_on, summary, actor_id, actor_name, created_at
+             FROM pickup_customer_activities
+             WHERE customer_key = :customer_key
+             ORDER BY occurred_on DESC, id DESC
+             LIMIT :limit',
+        );
+        $statement->bindValue(':customer_key', $customerKey);
+        $statement->bindValue(':limit', max(1, min($limit, 100)), PDO::PARAM_INT);
+        $statement->execute();
+        return array_map(static fn (array $row): array => [
+            'type' => (string) $row['activity_type'],
+            'occurredOn' => (string) $row['occurred_on'],
+            'summary' => (string) $row['summary'],
+            'actorId' => (string) $row['actor_id'],
+            'actorName' => (string) $row['actor_name'],
+            'createdAt' => (string) $row['created_at'],
+        ], $statement->fetchAll());
+    }
+
+    public function addActivity(
+        string $customerKey,
+        string $type,
+        string $occurredOn,
+        string $summary,
+        ?string $nextFollowUpOn,
+        string $actorId,
+        string $actorName,
+    ): CustomerProfile
+    {
+        $this->ensureSchema();
+        $this->connection->beginTransaction();
+        try {
+            $statement = $this->connection->prepare('SELECT id FROM pickup_customers WHERE customer_key = :customer_key FOR UPDATE');
+            $statement->execute(['customer_key' => $customerKey]);
+            if ($statement->fetchColumn() === false) {
+                throw new InvalidArgumentException('Customer profile not found.');
+            }
+            $this->connection->prepare(
+                'INSERT INTO pickup_customer_activities
+                    (customer_key, activity_type, occurred_on, summary, actor_id, actor_name, created_at)
+                 VALUES (:customer_key, :activity_type, :occurred_on, :summary, :actor_id, :actor_name, UTC_TIMESTAMP())',
+            )->execute([
+                'customer_key' => $customerKey,
+                'activity_type' => $type,
+                'occurred_on' => $occurredOn,
+                'summary' => $summary,
+                'actor_id' => $actorId,
+                'actor_name' => $actorName,
+            ]);
+            $this->connection->prepare(
+                'UPDATE pickup_customers
+                 SET next_follow_up_on = :next_follow_up_on, updated_by = :updated_by, updated_at = UTC_TIMESTAMP()
+                 WHERE customer_key = :customer_key',
+            )->execute(['next_follow_up_on' => $nextFollowUpOn, 'updated_by' => $actorId, 'customer_key' => $customerKey]);
+            $this->connection->commit();
+        } catch (Throwable $exception) {
+            if ($this->connection->inTransaction()) {
+                $this->connection->rollBack();
+            }
+            throw $exception;
+        }
+
+        return $this->find($customerKey) ?? throw new RuntimeException('Customer profile could not be loaded.');
+    }
+
     public function merge(string $targetCustomerKey, string $sourceCustomerKey, string $actorId): CustomerProfile
     {
         $this->ensureSchema();
@@ -370,7 +519,8 @@ final class MysqlCustomerRepository implements CustomerRepository
         try {
             $profileStatement = $this->connection->prepare(
                 'SELECT customer_key, display_name, contact_name, email, phone, address, city, country_code,
-                        status, notes, next_follow_up_on, source, assigned_role, created_by, updated_by, created_at, updated_at
+                        status, notes, next_follow_up_on, source, assigned_role, assigned_actor_id, assigned_name,
+                        created_by, updated_by, created_at, updated_at
                  FROM pickup_customers
                  WHERE customer_key IN (:target_key, :source_key)
                  ORDER BY customer_key
@@ -387,28 +537,10 @@ final class MysqlCustomerRepository implements CustomerRepository
                 throw new InvalidArgumentException('One of the customer profiles no longer exists.');
             }
 
-            $shipmentSnapshotStatement = $this->connection->prepare(
-                'SELECT pickup_sheet_id, line_number, consignor
-                 FROM pickup_shipments
-                 WHERE LOWER(TRIM(consignor)) = LOWER(TRIM(:source_name))
-                 FOR UPDATE',
+            $shipments = array_map(
+                static fn (array $change): array => [$change['sheetId'], $change['lineNumber'], $change['before']],
+                $this->renameConsignors((string) $source['display_name'], (string) $target['display_name'], 'crm_customer_merge', $actorId),
             );
-            $shipmentSnapshotStatement->execute(['source_name' => (string) $source['display_name']]);
-            $shipments = array_map(static fn (array $row): array => [
-                (int) $row['pickup_sheet_id'],
-                (int) $row['line_number'],
-                (string) $row['consignor'],
-            ], $shipmentSnapshotStatement->fetchAll());
-
-            $shipmentStatement = $this->connection->prepare(
-                'UPDATE pickup_shipments
-                 SET consignor = :target_name
-                 WHERE LOWER(TRIM(consignor)) = LOWER(TRIM(:source_name))',
-            );
-            $shipmentStatement->execute([
-                'target_name' => (string) $target['display_name'],
-                'source_name' => (string) $source['display_name'],
-            ]);
 
             $rewardIds = $this->idsWhere('pickup_customer_reward_adjustments', $sourceCustomerKey);
             $this->connection->prepare(
@@ -418,6 +550,11 @@ final class MysqlCustomerRepository implements CustomerRepository
             $aliasIds = $this->idsWhere('pickup_customer_aliases', $sourceCustomerKey);
             $this->connection->prepare(
                 'UPDATE pickup_customer_aliases SET customer_key = :target_key WHERE customer_key = :source_key',
+            )->execute(['target_key' => $targetCustomerKey, 'source_key' => $sourceCustomerKey]);
+
+            $activityIds = $this->idsWhere('pickup_customer_activities', $sourceCustomerKey);
+            $this->connection->prepare(
+                'UPDATE pickup_customer_activities SET customer_key = :target_key WHERE customer_key = :source_key',
             )->execute(['target_key' => $targetCustomerKey, 'source_key' => $sourceCustomerKey]);
 
             $targetBefore = $this->mergeFields($target);
@@ -455,6 +592,7 @@ final class MysqlCustomerRepository implements CustomerRepository
                     'shipments' => $shipments,
                     'rewardIds' => $rewardIds,
                     'aliasIds' => $aliasIds,
+                    'activityIds' => $activityIds,
                 ], JSON_THROW_ON_ERROR | JSON_UNESCAPED_UNICODE),
                 'merged_by' => $actorId,
             ]);
@@ -540,7 +678,8 @@ final class MysqlCustomerRepository implements CustomerRepository
             )->execute(['alias_name' => $sourceName, 'customer_key' => $targetKey]);
 
             $columns = ['customer_key', 'display_name', 'contact_name', 'email', 'phone', 'address', 'city', 'country_code',
-                'status', 'notes', 'next_follow_up_on', 'source', 'assigned_role', 'created_by', 'updated_by', 'created_at'];
+                'status', 'notes', 'next_follow_up_on', 'source', 'assigned_role', 'assigned_actor_id', 'assigned_name',
+                'created_by', 'updated_by', 'created_at'];
             $this->connection->prepare(
                 'INSERT INTO pickup_customers (' . implode(', ', $columns) . ', updated_at)
                  VALUES (:' . implode(', :', $columns) . ', UTC_TIMESTAMP())',
@@ -549,37 +688,48 @@ final class MysqlCustomerRepository implements CustomerRepository
                 $columns,
             )));
 
-            $aliasStatement = $this->connection->prepare(
-                'UPDATE pickup_customer_aliases SET customer_key = :source_key WHERE id = :id AND customer_key = :target_key',
-            );
-            foreach (is_array($snapshot['aliasIds'] ?? null) ? $snapshot['aliasIds'] : [] as $aliasId) {
-                $aliasStatement->execute(['source_key' => $sourceKey, 'id' => (int) $aliasId, 'target_key' => $targetKey]);
+            foreach ([
+                'pickup_customer_aliases' => 'aliasIds',
+                'pickup_customer_reward_adjustments' => 'rewardIds',
+                'pickup_customer_activities' => 'activityIds',
+            ] as $table => $snapshotKey) {
+                $moveBack = $this->connection->prepare(
+                    'UPDATE ' . $table . ' SET customer_key = :source_key WHERE id = :id AND customer_key = :target_key',
+                );
+                foreach (is_array($snapshot[$snapshotKey] ?? null) ? $snapshot[$snapshotKey] : [] as $rowId) {
+                    $moveBack->execute(['source_key' => $sourceKey, 'id' => (int) $rowId, 'target_key' => $targetKey]);
+                }
             }
-            $rewardStatement = $this->connection->prepare(
-                'UPDATE pickup_customer_reward_adjustments SET customer_key = :source_key WHERE id = :id AND customer_key = :target_key',
-            );
-            foreach (is_array($snapshot['rewardIds'] ?? null) ? $snapshot['rewardIds'] : [] as $rewardId) {
-                $rewardStatement->execute(['source_key' => $sourceKey, 'id' => (int) $rewardId, 'target_key' => $targetKey]);
-            }
+
             // Only shipments still attributed to the retained profile are handed back; rows edited to
             // another sender since the merge are left alone.
             $shipmentStatement = $this->connection->prepare(
-                'UPDATE pickup_shipments
-                 SET consignor = :previous_consignor
-                 WHERE pickup_sheet_id = :pickup_sheet_id AND line_number = :line_number
-                   AND LOWER(TRIM(consignor)) = LOWER(TRIM(:target_name))',
+                'SELECT ps.id, ps.pickup_sheet_id, p.reference_number, ps.line_number, ps.consignor
+                 FROM pickup_shipments ps
+                 INNER JOIN pickup_sheets p ON p.id = ps.pickup_sheet_id
+                 WHERE ps.pickup_sheet_id = :pickup_sheet_id AND ps.line_number = :line_number
+                   AND ps.consignor = :target_name
+                 FOR UPDATE',
             );
+            $restoreStatement = $this->connection->prepare('UPDATE pickup_shipments SET consignor = :consignor WHERE id = :id');
+            $changes = [];
             foreach (is_array($snapshot['shipments'] ?? null) ? $snapshot['shipments'] : [] as $shipment) {
                 if (!is_array($shipment) || count($shipment) !== 3) {
                     continue;
                 }
                 $shipmentStatement->execute([
-                    'previous_consignor' => (string) $shipment[2],
                     'pickup_sheet_id' => (int) $shipment[0],
                     'line_number' => (int) $shipment[1],
                     'target_name' => (string) $target['display_name'],
                 ]);
+                $row = $shipmentStatement->fetch();
+                if (!is_array($row)) {
+                    continue;
+                }
+                $restoreStatement->execute(['consignor' => (string) $shipment[2], 'id' => (int) $row['id']]);
+                $changes[] = $this->consignorChange($row, (string) $shipment[2]);
             }
+            $this->auditConsignorChanges($changes, 'crm_customer_merge_undo', $actorId);
 
             // Restore target fields only where nobody has edited them since the merge.
             $current = $this->mergeFields($target);
@@ -694,7 +844,7 @@ final class MysqlCustomerRepository implements CustomerRepository
                      FROM pickup_shipments ps
                      INNER JOIN pickup_sheets p ON p.id = ps.pickup_sheet_id
                      WHERE p.deleted_at IS NULL
-                       AND LOWER(TRIM(ps.consignor)) = LOWER(TRIM(:shipment_customer_name)))
+                       AND ps.consignor = :shipment_customer_name)
                     +
                     (SELECT COALESCE(SUM(points_delta), 0)
                      FROM pickup_customer_reward_adjustments
@@ -704,8 +854,10 @@ final class MysqlCustomerRepository implements CustomerRepository
                 'shipment_customer_name' => $customerDisplayName,
                 'reward_customer_key' => $customerKey,
             ]);
-            $balance = (int) $balanceStatement->fetchColumn();
-            if ($balance + $pointsDelta < 0) {
+            // Bonuses are always allowed. A redemption is checked against the visible balance, which
+            // never drops below zero even when points were redeemed on a sheet that was later deleted.
+            $availableBalance = max(0, (int) $balanceStatement->fetchColumn());
+            if ($pointsDelta < 0 && $availableBalance + $pointsDelta < 0) {
                 throw new InvalidArgumentException('A redemption cannot exceed the available reward balance.');
             }
 
@@ -731,35 +883,63 @@ final class MysqlCustomerRepository implements CustomerRepository
         return $this->find($customerKey) ?? throw new RuntimeException('Updated customer rewards could not be loaded.');
     }
 
-    /** @return array{0: string, 1: array<string, string>} */
-    private function filters(string $search, string $status): array
+    /**
+     * @param array{search?: string, status?: string, followUp?: string, owner?: string, sort?: string} $filters
+     * @return array{0: string, 1: array<string, string>}
+     */
+    private function filters(array $filters): array
     {
         $conditions = [];
         $parameters = [];
+        $search = (string) ($filters['search'] ?? '');
         if ($search !== '') {
-            $conditions[] = '(c.display_name LIKE :search OR c.contact_name LIKE :search_contact OR c.email LIKE :search_email OR c.phone LIKE :search_phone OR c.city LIKE :search_city)';
-            $like = '%' . $search . '%';
-            $parameters = [
-                'search' => $like,
-                'search_contact' => $like,
-                'search_email' => $like,
-                'search_phone' => $like,
-                'search_city' => $like,
-            ];
+            // "!" escapes LIKE wildcards so "%" and "_" are searched for literally.
+            $like = '%' . strtr($search, ['!' => '!!', '%' => '!%', '_' => '!_']) . '%';
+            $conditions[] = "(c.display_name LIKE :search ESCAPE '!' OR c.contact_name LIKE :search_contact ESCAPE '!'
+                OR c.email LIKE :search_email ESCAPE '!' OR c.phone LIKE :search_phone ESCAPE '!' OR c.city LIKE :search_city ESCAPE '!'
+                OR EXISTS (SELECT 1 FROM pickup_customer_aliases search_alias
+                           WHERE search_alias.customer_key = c.customer_key AND search_alias.alias_name LIKE :search_alias ESCAPE '!'))";
+            foreach (['search', 'search_contact', 'search_email', 'search_phone', 'search_city', 'search_alias'] as $name) {
+                $parameters[$name] = $like;
+            }
         }
+        $status = (string) ($filters['status'] ?? '');
         if ($status !== '') {
             $conditions[] = 'c.status = :status';
             $parameters['status'] = $status;
         }
+        $conditions[] = match ((string) ($filters['followUp'] ?? '')) {
+            'due' => "(c.next_follow_up_on IS NOT NULL AND c.next_follow_up_on <= UTC_DATE() AND c.status <> 'inactive')",
+            'scheduled' => 'c.next_follow_up_on > UTC_DATE()',
+            'none' => 'c.next_follow_up_on IS NULL',
+            default => '',
+        };
+        $owner = (string) ($filters['owner'] ?? '');
+        if ($owner === 'unassigned') {
+            $conditions[] = 'c.assigned_actor_id IS NULL';
+        } elseif (preg_match('/^[a-f0-9]{24}$/', $owner) === 1) {
+            $conditions[] = 'c.assigned_actor_id = :owner';
+            $parameters['owner'] = $owner;
+        }
+        $conditions = array_values(array_filter($conditions));
 
         return [$conditions === [] ? '' : ' WHERE ' . implode(' AND ', $conditions), $parameters];
     }
 
-    private function customerSelect(): string
+    /**
+     * @param bool $singleCustomer aggregate totals for one customer (bind :metrics_customer_key and
+     *                             :rewards_customer_key) instead of for every consignor
+     */
+    private function customerSelect(bool $singleCustomer = false): string
     {
+        $metricsFilter = $singleCustomer
+            ? ' AND ps.consignor = (SELECT metrics_customer.display_name FROM pickup_customers metrics_customer WHERE metrics_customer.customer_key = :metrics_customer_key)'
+            : '';
+        $rewardsFilter = $singleCustomer ? ' WHERE customer_key = :rewards_customer_key' : '';
+
         return "SELECT c.id, c.customer_key, c.display_name, c.contact_name, c.email, c.phone,
                        c.address, c.city, c.country_code, c.status, c.notes, c.next_follow_up_on,
-                       c.source, c.created_at, c.updated_at,
+                       c.source, c.assigned_actor_id, c.assigned_name, c.created_at, c.updated_at,
                        COALESCE(metrics.shipment_count, 0) AS shipment_count,
                        COALESCE(metrics.total_cash_xaf, 0) AS total_cash_xaf,
                        COALESCE(metrics.cargo_reward_points, 0) AS cargo_reward_points,
@@ -776,14 +956,14 @@ final class MysqlCustomerRepository implements CustomerRepository
                            MAX(p.collection_date) AS last_shipment_on
                     FROM pickup_shipments ps
                     INNER JOIN pickup_sheets p ON p.id = ps.pickup_sheet_id
-                    WHERE p.deleted_at IS NULL
+                    WHERE p.deleted_at IS NULL{$metricsFilter}
                     GROUP BY LOWER(TRIM(ps.consignor))
                 ) metrics ON metrics.customer_name = LOWER(TRIM(c.display_name))
                 LEFT JOIN (
                     SELECT customer_key,
                            COALESCE(SUM(points_delta), 0) AS adjustment_points,
                            COALESCE(SUM(CASE WHEN points_delta > 0 THEN points_delta ELSE 0 END), 0) AS earned_adjustment_points
-                    FROM pickup_customer_reward_adjustments
+                    FROM pickup_customer_reward_adjustments{$rewardsFilter}
                     GROUP BY customer_key
                 ) rewards ON rewards.customer_key = c.customer_key";
     }
@@ -813,7 +993,89 @@ final class MysqlCustomerRepository implements CustomerRepository
             (int) ($row['reward_adjustment_points'] ?? 0),
             (int) ($row['reward_earned_adjustment_points'] ?? 0),
             (int) ($row['cargo_reward_points'] ?? 0),
+            isset($row['assigned_actor_id']) ? (string) $row['assigned_actor_id'] : null,
+            (string) ($row['assigned_name'] ?? ''),
         );
+    }
+
+    /**
+     * Renames every shipment consignor that matches $fromName and records one audit entry per
+     * affected sheet, so CRM-driven changes appear in the sheet edit history.
+     *
+     * @return list<array{shipmentId: int, sheetId: int, reference: string, lineNumber: int, before: string, after: string}>
+     */
+    private function renameConsignors(string $fromName, string $toName, string $source, string $actorId): array
+    {
+        $statement = $this->connection->prepare(
+            'SELECT ps.id, ps.pickup_sheet_id, p.reference_number, ps.line_number, ps.consignor
+             FROM pickup_shipments ps
+             INNER JOIN pickup_sheets p ON p.id = ps.pickup_sheet_id
+             WHERE ps.consignor = TRIM(:previous_display_name)
+             FOR UPDATE',
+        );
+        $statement->execute(['previous_display_name' => $fromName]);
+        $changes = array_map(fn (array $row): array => $this->consignorChange($row, $toName), $statement->fetchAll());
+
+        $this->connection->prepare(
+            'UPDATE pickup_shipments
+             SET consignor = :display_name
+             WHERE consignor = TRIM(:previous_display_name)',
+        )->execute(['display_name' => $toName, 'previous_display_name' => $fromName]);
+        $this->auditConsignorChanges($changes, $source, $actorId);
+
+        return $changes;
+    }
+
+    /**
+     * @param array<string, mixed> $row
+     * @return array{shipmentId: int, sheetId: int, reference: string, lineNumber: int, before: string, after: string}
+     */
+    private function consignorChange(array $row, string $after): array
+    {
+        return [
+            'shipmentId' => (int) $row['id'],
+            'sheetId' => (int) $row['pickup_sheet_id'],
+            'reference' => (string) $row['reference_number'],
+            'lineNumber' => (int) $row['line_number'],
+            'before' => (string) $row['consignor'],
+            'after' => $after,
+        ];
+    }
+
+    /** @param list<array{shipmentId: int, sheetId: int, reference: string, lineNumber: int, before: string, after: string}> $changes */
+    private function auditConsignorChanges(array $changes, string $source, string $actorId): void
+    {
+        $bySheet = [];
+        foreach ($changes as $change) {
+            if ($change['before'] !== $change['after']) {
+                $bySheet[$change['sheetId']][] = $change;
+            }
+        }
+        if ($bySheet === []) {
+            return;
+        }
+        $statement = $this->connection->prepare(
+            'INSERT INTO pickup_sheet_edit_audit
+                (pickup_sheet_id, reference_number, actor_id, before_snapshot, after_snapshot, created_at)
+             VALUES (:pickup_sheet_id, :reference_number, :actor_id, :before_snapshot, :after_snapshot, UTC_TIMESTAMP())',
+        );
+        foreach ($bySheet as $sheetId => $sheetChanges) {
+            $snapshot = static fn (string $side): string => json_encode([
+                'reference_number' => $sheetChanges[0]['reference'],
+                'change_source' => $source,
+                'shipments' => array_map(static fn (array $change): array => [
+                    'line_number' => $change['lineNumber'],
+                    'consignor' => $change[$side],
+                ], $sheetChanges),
+            ], JSON_THROW_ON_ERROR | JSON_UNESCAPED_SLASHES | JSON_UNESCAPED_UNICODE);
+            $statement->execute([
+                'pickup_sheet_id' => $sheetId,
+                'reference_number' => $sheetChanges[0]['reference'],
+                'actor_id' => $actorId,
+                'before_snapshot' => $snapshot('before'),
+                'after_snapshot' => $snapshot('after'),
+            ]);
+        }
     }
 
     private function ensureSchema(): void
@@ -837,6 +1099,8 @@ final class MysqlCustomerRepository implements CustomerRepository
                 next_follow_up_on DATE NULL,
                 source VARCHAR(20) NOT NULL DEFAULT 'manual',
                 assigned_role VARCHAR(20) NOT NULL DEFAULT 'admin',
+                assigned_actor_id CHAR(24) NULL,
+                assigned_name VARCHAR(160) NULL,
                 created_by CHAR(24) NULL,
                 updated_by CHAR(24) NULL,
                 created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
@@ -844,7 +1108,8 @@ final class MysqlCustomerRepository implements CustomerRepository
                 UNIQUE INDEX pickup_customers_key_idx (customer_key),
                 UNIQUE INDEX pickup_customers_name_unique_idx (display_name),
                 INDEX pickup_customers_status_follow_up_idx (status, next_follow_up_on),
-                INDEX pickup_customers_email_idx (email)
+                INDEX pickup_customers_email_idx (email),
+                INDEX pickup_customers_assigned_actor_idx (assigned_actor_id)
             ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci",
         );
         $this->connection->exec(
@@ -890,20 +1155,51 @@ final class MysqlCustomerRepository implements CustomerRepository
                 INDEX pickup_customer_merges_target_idx (target_customer_key)
             ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci',
         );
+        $this->connection->exec(
+            'CREATE TABLE IF NOT EXISTS pickup_customer_activities (
+                id BIGINT UNSIGNED NOT NULL AUTO_INCREMENT PRIMARY KEY,
+                customer_key CHAR(64) NOT NULL,
+                activity_type VARCHAR(20) NOT NULL,
+                occurred_on DATE NOT NULL,
+                summary TEXT NOT NULL,
+                actor_id CHAR(24) NOT NULL,
+                actor_name VARCHAR(160) NOT NULL,
+                created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+                INDEX pickup_customer_activities_customer_idx (customer_key, occurred_on),
+                CONSTRAINT pickup_customer_activities_customer_fk
+                    FOREIGN KEY (customer_key) REFERENCES pickup_customers(customer_key) ON DELETE CASCADE
+            ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci',
+        );
+        $this->connection->exec(
+            'CREATE TABLE IF NOT EXISTS pickup_crm_sync_state (
+                sync_name VARCHAR(40) NOT NULL PRIMARY KEY,
+                last_shipment_id BIGINT UNSIGNED NOT NULL DEFAULT 0,
+                updated_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP
+            ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci',
+        );
+        $this->ensureColumn('assigned_role', "ALTER TABLE pickup_customers ADD COLUMN assigned_role VARCHAR(20) NOT NULL DEFAULT 'admin' AFTER source");
+        $this->ensureColumn(
+            'assigned_actor_id',
+            'ALTER TABLE pickup_customers
+                ADD COLUMN assigned_actor_id CHAR(24) NULL AFTER assigned_role,
+                ADD COLUMN assigned_name VARCHAR(160) NULL AFTER assigned_actor_id,
+                ADD INDEX pickup_customers_assigned_actor_idx (assigned_actor_id)',
+        );
+        $this->connection->exec("UPDATE pickup_customers SET country_code = 'CM' WHERE country_code IS NULL OR country_code <> 'CM'");
+        $this->connection->exec("UPDATE pickup_customers SET assigned_role = 'admin' WHERE assigned_role <> 'admin'");
+        $this->schemaReady = true;
+    }
+
+    private function ensureColumn(string $column, string $alterStatement): void
+    {
         try {
-            $this->connection->query('SELECT assigned_role FROM pickup_customers LIMIT 1');
+            $this->connection->query('SELECT ' . $column . ' FROM pickup_customers LIMIT 1');
         } catch (PDOException $exception) {
             if ((int) ($exception->errorInfo[1] ?? 0) !== 1054) {
                 throw $exception;
             }
-            $this->connection->exec(
-                "ALTER TABLE pickup_customers
-                 ADD COLUMN assigned_role VARCHAR(20) NOT NULL DEFAULT 'admin' AFTER source",
-            );
+            $this->connection->exec($alterStatement);
         }
-        $this->connection->exec("UPDATE pickup_customers SET country_code = 'CM' WHERE country_code IS NULL OR country_code <> 'CM'");
-        $this->connection->exec("UPDATE pickup_customers SET assigned_role = 'admin' WHERE assigned_role <> 'admin'");
-        $this->schemaReady = true;
     }
 
     private function nullable(string $value): ?string

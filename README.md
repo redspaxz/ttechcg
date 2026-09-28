@@ -204,9 +204,12 @@ Customer-facing operational recordkeeping and profile data:
 
 - customer directories and profiles
 - organization and contact details, shown read-only until a user with `crm_update` clicks Edit details (`?mode=edit`); a rejected save reopens the form with the entered values
-- relationship history and follow-up state
+- a contact activity log (calls, visits, emails, meetings, notes) that also reschedules or closes the follow-up
+- customer owners, and directory filters for follow-ups due, owner, and status, with sorting
+- Excel export of the filtered directory
 - shipment history and reward summaries
 - duplicate prevention, reviewed duplicate merges, and merge undo
+- customer deletion for erasure requests
 
 ### Backup
 
@@ -224,7 +227,7 @@ Encrypted application-data backup and restore with transactional safety checks.
 | Workflow control | open/paid/delete lifecycle and audit logging | Implemented |
 | Search and listings | paginated searchable submissions and AJAX fallback | Implemented |
 | Printing and export | A4 print view and native XLSX export | Implemented |
-| CRM | customer profiles, shipment history, follow-up tracking, duplicate prevention, merge and undo | Implemented |
+| CRM | customer profiles, activity log, owners, follow-up filters, Excel export, duplicate prevention, merge and undo, erasure | Implemented |
 | Loyalty | point balances, lifetime totals, tiers, adjustments | Implemented |
 | Dashboard | tabbed KPIs, market performance, operational metrics, user activity, security log | Implemented |
 | Reporting | printable A4 performance reports with selectable period and sections | Implemented |
@@ -301,6 +304,26 @@ It will not undo when another profile now uses the original name, or when the ke
 
 Merge history is stored in `pickup_customer_merges`, with a JSON snapshot per merge, and aliases in `pickup_customer_aliases` (migration 019). Both tables are included in encrypted backups. Merges and undos are rate limited, need a CSRF token and the `crm` permission, and are recorded in the security log as `pickupsheet.crm_customer_merge` and `pickupsheet.crm_customer_merge_undo`.
 
+### CRM operations
+
+**Activity and follow-ups.** The Activity section on a customer profile logs calls, visits, emails, meetings and notes with a date and summary (no future dates). The same form sets the next follow-up: change it to reschedule, or clear it to close the follow-up. Anyone with `crm_update` can log activity. The "Follow-ups due" figure on the CRM page links to the matching filtered list.
+
+**Directory.** Filter by search text (including merged-away names), status, follow-up (due, scheduled later, not scheduled) and owner (mine, unassigned), and sort by priority, name, latest shipment, shipment value or reward points. `%` and `_` in the search box are matched literally. "Export to Excel" downloads the filtered list, up to 5,000 customers; it needs the `export` permission and is rate limited and logged.
+
+**Owners.** Administrators assign a customer to themselves or to any active local operator or administrator account; the owner shows on the profile and in the directory. Operator edits keep the existing owner.
+
+**Edit conflicts.** The edit form carries the profile's last-updated time. If someone else saved the profile in the meantime, the save is refused with an explanation, and the form reopens with the entered values.
+
+**Deletion.** Administrators can delete a customer, for example to honour an erasure request. This removes the profile, its activity, reward adjustments, aliases and merge snapshots. Pickup sheets keep the consignor name as part of the operational record, and the profile is not rebuilt from those sheets; it only comes back if the name is saved on a sheet again.
+
+**Rewards.** Bonuses are always accepted. If points were redeemed on a sheet that was later deleted, the profile shows a points shortfall instead of a negative balance, and new bonuses cover the shortfall first. Redemptions are checked against the visible balance.
+
+**Audit trail.** Every consignor change the CRM makes on pickup sheets (renames, merges, merge undos, and resolving merged-away names on new sheets) is written to `pickup_sheet_edit_audit` per sheet, tagged with its source.
+
+**Pickup-sheet suggestions.** The consignor suggestions on pickup sheets include CRM customers that have no sheets yet, so operators pick the recorded spelling.
+
+**Performance.** CRM pages only turn shipment rows added since the previous run into customer profiles (tracked in `pickup_crm_sync_state`), and single-profile lookups total that customer's shipments through the consignor index added in migration 021.
+
 ## Security and operational expectations
 
 This project is designed with security controls built in:
@@ -342,6 +365,12 @@ php tests/run.php
 ```
 
 This includes the repository's assertion-based checks for application behavior and security-related logic.
+
+Run the MySQL integration checks for the CRM and pickup-sheet SQL against a disposable database. The script drops every table in the target database, so it refuses any database whose name does not end in `_test`, and it skips itself when `TEST_MYSQL_DSN` is not set:
+
+```bash
+TEST_MYSQL_DSN="mysql:host=127.0.0.1;port=3306;dbname=pickupsheet_test;charset=utf8mb4" TEST_MYSQL_USER=root TEST_MYSQL_PASSWORD=secret php tests/mysql.php
+```
 
 Run the JavaScript behaviour checks with Node.js:
 
@@ -385,6 +414,7 @@ php tests/run.php
 
 - set `RUN_MIGRATIONS=true` for local or explicit schema changes
 - keep the database in a consistent dev state before testing features that depend on schema changes
+- migration 021 adds the owner columns only when they are missing, because the application adds them itself if a CRM page loads first
 - to preview which CRM profiles migration 018 will fold together, run `SELECT display_name, COUNT(*) FROM pickup_customers GROUP BY display_name HAVING COUNT(*) > 1;` before migrating
 
 ### Authentication and SSO issues

@@ -19,6 +19,9 @@ final class DemoCustomerRepository implements CustomerRepository
     private const REWARDS_SESSION_KEY = '_demo_pickup_customer_rewards';
     private const ALIASES_SESSION_KEY = '_demo_pickup_customer_aliases';
     private const MERGES_SESSION_KEY = '_demo_pickup_customer_merges';
+    private const ACTIVITIES_SESSION_KEY = '_demo_pickup_customer_activities';
+    private const ERASED_SESSION_KEY = '_demo_pickup_customer_erased_names';
+    private const PROFILE_CHANGED_MESSAGE = 'This profile was changed by someone else after you opened it. Your changes were not saved; review the current details and edit again.';
 
     public function __construct(private readonly PickupSheetRepository $pickupSheets)
     {
@@ -35,12 +38,13 @@ final class DemoCustomerRepository implements CustomerRepository
                 $profileNames[$this->key((string) ($profile['displayName'] ?? ''))] = true;
             }
         }
+        $erasedNames = $_SESSION[self::ERASED_SESSION_KEY] ?? [];
         foreach ($this->metrics() as $key => $metric) {
-            if (isset($profiles[$key]) || isset($profileNames[$key])) {
+            if (isset($profiles[$key]) || isset($profileNames[$key]) || isset($erasedNames[$key])) {
                 continue;
             }
             $profiles[$key] = [
-                'id' => count($profiles) + 1,
+                'id' => $this->nextId($profiles),
                 'customerKey' => $key,
                 'displayName' => $metric['displayName'],
                 'contactName' => '',
@@ -61,11 +65,35 @@ final class DemoCustomerRepository implements CustomerRepository
         $_SESSION[self::SESSION_KEY] = $profiles;
     }
 
-    public function paginated(string $search, string $status, int $limit, int $offset): array
+    public function paginated(array $filters, int $limit, int $offset): array
     {
         $metrics = $this->metrics();
-        $profiles = array_values(array_filter($this->profiles(), static function (array $profile) use ($search, $status): bool {
+        $search = strtolower((string) ($filters['search'] ?? ''));
+        $status = (string) ($filters['status'] ?? '');
+        $followUp = (string) ($filters['followUp'] ?? '');
+        $owner = (string) ($filters['owner'] ?? '');
+        $today = gmdate('Y-m-d');
+        $aliasNames = [];
+        foreach ($this->aliases() as $alias) {
+            $aliasNames[(string) $alias['customerKey']][] = (string) $alias['aliasName'];
+        }
+        $profiles = array_values(array_filter($this->profiles(), static function (array $profile) use ($search, $status, $followUp, $owner, $today, $aliasNames): bool {
             if ($status !== '' && ($profile['status'] ?? '') !== $status) {
+                return false;
+            }
+            $nextFollowUpOn = $profile['nextFollowUpOn'] ?? null;
+            $matchesFollowUp = match ($followUp) {
+                'due' => $nextFollowUpOn !== null && $nextFollowUpOn <= $today && ($profile['status'] ?? '') !== 'inactive',
+                'scheduled' => $nextFollowUpOn !== null && $nextFollowUpOn > $today,
+                'none' => $nextFollowUpOn === null,
+                default => true,
+            };
+            if (!$matchesFollowUp) {
+                return false;
+            }
+            $assignedActorId = $profile['assignedActorId'] ?? null;
+            if (($owner === 'unassigned' && $assignedActorId !== null)
+                || (preg_match('/^[a-f0-9]{24}$/', $owner) === 1 && $assignedActorId !== $owner)) {
                 return false;
             }
             if ($search === '') {
@@ -73,27 +101,27 @@ final class DemoCustomerRepository implements CustomerRepository
             }
             $haystack = implode(' ', [
                 $profile['displayName'] ?? '', $profile['contactName'] ?? '', $profile['email'] ?? '',
-                $profile['phone'] ?? '', $profile['city'] ?? '',
+                $profile['phone'] ?? '', $profile['city'] ?? '', ...($aliasNames[(string) $profile['customerKey']] ?? []),
             ]);
-            return stripos($haystack, $search) !== false;
+            return str_contains(strtolower($haystack), $search);
         }));
-        usort($profiles, static function (array $left, array $right): int {
-            $today = gmdate('Y-m-d');
-            $leftDue = ($left['nextFollowUpOn'] ?? null) !== null && $left['nextFollowUpOn'] <= $today && ($left['status'] ?? '') !== 'inactive';
-            $rightDue = ($right['nextFollowUpOn'] ?? null) !== null && $right['nextFollowUpOn'] <= $today && ($right['status'] ?? '') !== 'inactive';
-            return ($rightDue <=> $leftDue)
-                ?: (strcmp((string) ($left['displayName'] ?? ''), (string) ($right['displayName'] ?? '')));
+        $items = array_map(
+            fn (array $profile): CustomerProfile => $this->profile($profile, $metrics[$this->key((string) ($profile['displayName'] ?? ''))] ?? []),
+            $profiles,
+        );
+        $byName = static fn (CustomerProfile $left, CustomerProfile $right): int => strcasecmp($left->displayName, $right->displayName);
+        usort($items, match ((string) ($filters['sort'] ?? 'priority')) {
+            'name' => $byName,
+            'last_shipment' => static fn (CustomerProfile $left, CustomerProfile $right): int => strcmp((string) $right->lastShipmentOn, (string) $left->lastShipmentOn) ?: $byName($left, $right),
+            'value' => static fn (CustomerProfile $left, CustomerProfile $right): int => ($right->totalCashXaf <=> $left->totalCashXaf) ?: $byName($left, $right),
+            'points' => static fn (CustomerProfile $left, CustomerProfile $right): int => ($right->rewardBalance() <=> $left->rewardBalance()) ?: $byName($left, $right),
+            default => static fn (CustomerProfile $left, CustomerProfile $right): int => ($right->followUpDue($today) <=> $left->followUpDue($today))
+                ?: strcmp($left->displayName, $right->displayName),
         });
 
         return [
-            'items' => array_map(
-                fn (array $profile): CustomerProfile => $this->profile(
-                    $profile,
-                    $metrics[$this->key((string) ($profile['displayName'] ?? ''))] ?? [],
-                ),
-                array_slice($profiles, max(0, $offset), max(1, $limit)),
-            ),
-            'totalRecords' => count($profiles),
+            'items' => array_slice($items, max(0, $offset), max(1, $limit)),
+            'totalRecords' => count($items),
         ];
     }
 
@@ -152,6 +180,8 @@ final class DemoCustomerRepository implements CustomerRepository
         return array_map(static fn (array $profile): array => [
             'customerKey' => (string) $profile['customerKey'],
             'displayName' => (string) ($profile['displayName'] ?? ''),
+            'email' => (string) ($profile['email'] ?? ''),
+            'phone' => (string) ($profile['phone'] ?? ''),
         ], array_slice(array_values($this->profiles()), 0, max(1, $limit)));
     }
 
@@ -212,12 +242,15 @@ final class DemoCustomerRepository implements CustomerRepository
         return count($this->recentShipments($customerKey, PHP_INT_MAX));
     }
 
-    public function save(CustomerProfile $customer, string $actorId): CustomerProfile
+    public function save(CustomerProfile $customer, string $actorId, ?string $expectedUpdatedAt = null): CustomerProfile
     {
         $profiles = $this->profiles();
         $existing = $profiles[$customer->customerKey] ?? null;
         if ($customer->id === null && is_array($existing)) {
             throw new InvalidArgumentException('A customer profile already uses this organization name.');
+        }
+        if ($expectedUpdatedAt !== null && is_array($existing) && (string) ($existing['updatedAt'] ?? '') !== $expectedUpdatedAt) {
+            throw new InvalidArgumentException(self::PROFILE_CHANGED_MESSAGE);
         }
         foreach ($profiles as $key => $profile) {
             if ($key !== $customer->customerKey
@@ -245,7 +278,7 @@ final class DemoCustomerRepository implements CustomerRepository
         }
         $now = gmdate('Y-m-d H:i:s');
         $profiles[$customer->customerKey] = [
-            'id' => is_array($existing) ? (int) $existing['id'] : count($profiles) + 1,
+            'id' => is_array($existing) ? (int) $existing['id'] : $this->nextId($profiles),
             'customerKey' => $customer->customerKey,
             'displayName' => $customer->displayName,
             'contactName' => $customer->contactName,
@@ -258,11 +291,89 @@ final class DemoCustomerRepository implements CustomerRepository
             'notes' => $customer->notes,
             'nextFollowUpOn' => $customer->nextFollowUpOn,
             'source' => $customer->source,
+            'assignedActorId' => $customer->assignedActorId,
+            'assignedName' => $customer->assignedActorId === null ? '' : $customer->assignedName,
             'createdAt' => is_array($existing) ? $existing['createdAt'] : $now,
             'updatedAt' => $now,
         ];
         $_SESSION[self::SESSION_KEY] = $profiles;
         return $this->find($customer->customerKey) ?? $customer;
+    }
+
+    public function delete(string $customerKey, string $actorId): void
+    {
+        $profiles = $this->profiles();
+        $profile = $profiles[$customerKey] ?? null;
+        if (!is_array($profile)) {
+            throw new InvalidArgumentException('Customer profile not found.');
+        }
+        unset($profiles[$customerKey]);
+        $_SESSION[self::SESSION_KEY] = $profiles;
+        $keep = static fn (mixed $row): bool => !is_array($row) || ($row['customerKey'] ?? '') !== $customerKey;
+        $_SESSION[self::REWARDS_SESSION_KEY] = array_filter(is_array($_SESSION[self::REWARDS_SESSION_KEY] ?? null) ? $_SESSION[self::REWARDS_SESSION_KEY] : [], $keep);
+        $_SESSION[self::ACTIVITIES_SESSION_KEY] = array_values(array_filter($this->allActivities(), $keep));
+        $_SESSION[self::ALIASES_SESSION_KEY] = array_filter($this->aliases(), $keep);
+        $_SESSION[self::MERGES_SESSION_KEY] = array_map(
+            static fn (array $merge): array => in_array($customerKey, [$merge['targetCustomerKey'] ?? '', $merge['sourceCustomerKey'] ?? ''], true)
+                ? ['undoneAt' => 'erased', 'snapshot' => []] + $merge
+                : $merge,
+            $this->merges(),
+        );
+        // Do not rebuild the erased profile from sheets that already carry the name.
+        $erased = is_array($_SESSION[self::ERASED_SESSION_KEY] ?? null) ? $_SESSION[self::ERASED_SESSION_KEY] : [];
+        $erased[$this->key((string) $profile['displayName'])] = true;
+        $_SESSION[self::ERASED_SESSION_KEY] = $erased;
+    }
+
+    public function activities(string $customerKey, int $limit): array
+    {
+        $activities = array_values(array_filter(
+            $this->allActivities(),
+            static fn (array $activity): bool => ($activity['customerKey'] ?? '') === $customerKey,
+        ));
+        usort($activities, static fn (array $left, array $right): int => strcmp((string) $right['occurredOn'], (string) $left['occurredOn'])
+            ?: ((int) $right['id'] <=> (int) $left['id']));
+        return array_map(static fn (array $activity): array => [
+            'type' => (string) $activity['type'],
+            'occurredOn' => (string) $activity['occurredOn'],
+            'summary' => (string) $activity['summary'],
+            'actorId' => (string) $activity['actorId'],
+            'actorName' => (string) $activity['actorName'],
+            'createdAt' => (string) $activity['createdAt'],
+        ], array_slice($activities, 0, max(1, min($limit, 100))));
+    }
+
+    public function addActivity(
+        string $customerKey,
+        string $type,
+        string $occurredOn,
+        string $summary,
+        ?string $nextFollowUpOn,
+        string $actorId,
+        string $actorName,
+    ): CustomerProfile
+    {
+        $profiles = $this->profiles();
+        if (!is_array($profiles[$customerKey] ?? null)) {
+            throw new InvalidArgumentException('Customer profile not found.');
+        }
+        $activities = $this->allActivities();
+        $activities[] = [
+            'id' => count($activities) + 1,
+            'customerKey' => $customerKey,
+            'type' => $type,
+            'occurredOn' => $occurredOn,
+            'summary' => $summary,
+            'actorId' => $actorId,
+            'actorName' => $actorName,
+            'createdAt' => gmdate('Y-m-d H:i:s'),
+        ];
+        $_SESSION[self::ACTIVITIES_SESSION_KEY] = $activities;
+        $profiles[$customerKey]['nextFollowUpOn'] = $nextFollowUpOn;
+        $profiles[$customerKey]['updatedAt'] = gmdate('Y-m-d H:i:s');
+        $_SESSION[self::SESSION_KEY] = $profiles;
+
+        return $this->find($customerKey) ?? throw new RuntimeException('Customer profile could not be loaded.');
     }
 
     public function merge(string $targetCustomerKey, string $sourceCustomerKey, string $actorId): CustomerProfile
@@ -314,6 +425,16 @@ final class DemoCustomerRepository implements CustomerRepository
         $aliases[$sourceNameKey] = ['aliasName' => trim((string) $source['displayName']), 'customerKey' => $targetCustomerKey];
         $_SESSION[self::ALIASES_SESSION_KEY] = $aliases;
 
+        $activities = $this->allActivities();
+        $activityIndexes = [];
+        foreach ($activities as $index => $activity) {
+            if (($activity['customerKey'] ?? '') === $sourceCustomerKey) {
+                $activities[$index]['customerKey'] = $targetCustomerKey;
+                $activityIndexes[] = $index;
+            }
+        }
+        $_SESSION[self::ACTIVITIES_SESSION_KEY] = $activities;
+
         $merges = $this->merges();
         $merges[] = [
             'id' => count($merges) + 1,
@@ -329,6 +450,7 @@ final class DemoCustomerRepository implements CustomerRepository
                 'shipments' => $shipments,
                 'rewardIndexes' => $rewardIndexes,
                 'aliasKeys' => $movedAliases,
+                'activityIndexes' => $activityIndexes,
             ],
         ];
         $_SESSION[self::MERGES_SESSION_KEY] = $merges;
@@ -398,6 +520,14 @@ final class DemoCustomerRepository implements CustomerRepository
             }
         }
         $_SESSION[self::REWARDS_SESSION_KEY] = $adjustments;
+
+        $activities = $this->allActivities();
+        foreach ($snapshot['activityIndexes'] ?? [] as $activityIndex) {
+            if (($activities[$activityIndex]['customerKey'] ?? null) === $targetKey) {
+                $activities[$activityIndex]['customerKey'] = $sourceKey;
+            }
+        }
+        $_SESSION[self::ACTIVITIES_SESSION_KEY] = $activities;
 
         // Only shipments still attributed to the retained profile are handed back.
         $restoredShipments = [];
@@ -547,7 +677,7 @@ final class DemoCustomerRepository implements CustomerRepository
         if ($customer === null) {
             throw new RuntimeException('Customer profile not found for reward adjustment.');
         }
-        if ($customer->rewardBalance() + $pointsDelta < 0) {
+        if ($pointsDelta < 0 && $customer->rewardBalance() + $pointsDelta < 0) {
             throw new InvalidArgumentException('A redemption cannot exceed the available reward balance.');
         }
 
@@ -630,6 +760,8 @@ final class DemoCustomerRepository implements CustomerRepository
             $this->rewardAdjustmentPoints((string) $profile['customerKey']),
             $this->rewardEarnedAdjustmentPoints((string) $profile['customerKey']),
             intdiv((int) ($metrics['totalWeightGrams'] ?? 0), 100),
+            isset($profile['assignedActorId']) ? (string) $profile['assignedActorId'] : null,
+            (string) ($profile['assignedName'] ?? ''),
         );
     }
 
@@ -690,6 +822,19 @@ final class DemoCustomerRepository implements CustomerRepository
     {
         $aliases = $_SESSION[self::ALIASES_SESSION_KEY] ?? [];
         return is_array($aliases) ? $aliases : [];
+    }
+
+    /** @return list<array<string, mixed>> */
+    private function allActivities(): array
+    {
+        $activities = $_SESSION[self::ACTIVITIES_SESSION_KEY] ?? [];
+        return is_array($activities) ? $activities : [];
+    }
+
+    /** @param array<string, array<string, mixed>> $profiles */
+    private function nextId(array $profiles): int
+    {
+        return max([0, ...array_map(static fn (array $profile): int => (int) ($profile['id'] ?? 0), $profiles)]) + 1;
     }
 
     /** @return list<array<string, mixed>> */

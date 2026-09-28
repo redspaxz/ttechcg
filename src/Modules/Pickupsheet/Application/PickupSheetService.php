@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 namespace App\Modules\Pickupsheet\Application;
 
+use App\Modules\Pickupsheet\Domain\ConsignorDirectory;
 use App\Modules\Pickupsheet\Domain\PickupSheet;
 use App\Modules\Pickupsheet\Domain\PickupSheetRepository;
 use App\Modules\Pickupsheet\Domain\PickupShipment;
@@ -16,8 +17,10 @@ final class PickupSheetService
     public const PRIVACY_NOTICE_VERSION = '2026-08-24';
     private const MAX_SHIPMENTS = 50;
 
-    public function __construct(private readonly PickupSheetRepository $repository)
-    {
+    public function __construct(
+        private readonly PickupSheetRepository $repository,
+        private readonly ?ConsignorDirectory $consignorDirectory = null,
+    ) {
     }
 
     /** @return list<PickupSheet> */
@@ -154,7 +157,26 @@ final class PickupSheetService
         if (strlen($query) > 160) {
             throw new InvalidArgumentException('The consignor search is too long.');
         }
-        $suggestions = $this->repository->consignorSuggestions($query, max(1, min($limit, 50)));
+        $limit = max(1, min($limit, 50));
+        $suggestions = $this->repository->consignorSuggestions($query, $limit);
+        if ($this->consignorDirectory !== null) {
+            // Add CRM customers that have no sheets yet, so operators pick the recorded spelling
+            // instead of typing a new variant. Names already suggested keep their ranking.
+            try {
+                $known = array_fill_keys(array_map('strtolower', $suggestions), true);
+                foreach ($this->consignorDirectory->names($query, $limit) as $name) {
+                    if (count($suggestions) >= $limit) {
+                        break;
+                    }
+                    if (!isset($known[strtolower($name)])) {
+                        $known[strtolower($name)] = true;
+                        $suggestions[] = $name;
+                    }
+                }
+            } catch (\RuntimeException $exception) {
+                error_log('CRM consignor suggestions are unavailable: ' . $exception->getMessage());
+            }
+        }
         if ($query === '') {
             usort($suggestions, static fn (string $left, string $right): int => strcasecmp($left, $right) ?: strcmp($left, $right));
         }
