@@ -44,23 +44,32 @@ final class CustomerController
             'search' => $request->queryString('q'),
             'statusFilter' => $request->queryString('status'),
         ];
+        $duplicateSuggestions = [];
         $error = null;
         try {
             $summary = $this->service->summary();
             $directory = $this->customerDirectory($request);
+            if ($principal->can('crm')) {
+                $duplicateSuggestions = $this->service->duplicateSuggestions();
+            }
         } catch (RuntimeException $exception) {
             error_log($exception->__toString());
             $error = 'Customer data is unavailable. Apply the CRM migration and check the MySQL connection.';
         }
 
         $flash = $_SESSION['_crm_flash'] ?? null;
-        unset($_SESSION['_crm_flash']);
+        $mergeError = $_SESSION['_crm_merge_error'] ?? null;
+        unset($_SESSION['_crm_flash'], $_SESSION['_crm_merge_error']);
+        if ($error === null && is_string($mergeError) && $mergeError !== '') {
+            $error = $mergeError;
+        }
         $body = $this->view->render('pickupsheet/customers', $this->common($request, $principal) + [
             'pageTitle' => 'Customer CRM',
             'summary' => $summary,
             'customers' => $directory['customers'],
             'search' => $directory['search'],
             'statusFilter' => $directory['statusFilter'],
+            'duplicateSuggestions' => $duplicateSuggestions,
             'flash' => is_string($flash) ? $flash : null,
             'error' => $error,
         ]);
@@ -230,6 +239,54 @@ final class CustomerController
             $location = $request->basePath . '/dhl/pickupsheet/customers/edit?customer=' . rawurlencode($key);
         }
         return Response::redirect($location);
+    }
+
+    public function merge(Request $request): Response
+    {
+        $principal = $this->authorize($request, 'crm');
+        if ($principal instanceof Response) {
+            return $principal;
+        }
+        try {
+            $retryAfter = $this->rateLimiter->consume('pickup-crm-merge', $request->clientIdentifier(), 20, 3600);
+        } catch (RuntimeException $exception) {
+            error_log($exception->__toString());
+            $this->log($request, $principal, 'pickupsheet.crm_customer_merge', 'failed');
+            return Response::html('Customer merges are temporarily unavailable.', 503, $this->privateHeaders());
+        }
+        if ($retryAfter > 0) {
+            $this->log($request, $principal, 'pickupsheet.crm_customer_merge', 'rate_limited', ['retry_after' => $retryAfter]);
+            return Response::html('Too many customer merges. Please try again later.', 429, $this->privateHeaders() + ['Retry-After' => (string) $retryAfter]);
+        }
+        if (!$this->csrf->validate($request->input('_token'))) {
+            $this->log($request, $principal, 'pickupsheet.crm_customer_merge', 'denied', ['reason' => 'csrf']);
+            return Response::html('Invalid or expired form token.', 419, $this->privateHeaders());
+        }
+
+        $targetKey = strtolower($request->input('target_customer_key'));
+        $sourceKey = strtolower($request->input('source_customer_key'));
+        try {
+            $targetName = $this->service->find($targetKey)?->displayName;
+            $sourceName = $this->service->find($sourceKey)?->displayName;
+            $merged = $this->service->merge($targetKey, $sourceKey, $this->actorId($principal));
+            $_SESSION['_crm_flash'] = sprintf(
+                'Merged %s into %s. Shipments, rewards, and available contact details were preserved.',
+                $sourceName ?? 'the duplicate profile',
+                $targetName ?? $merged->displayName,
+            );
+            $this->log($request, $principal, 'pickupsheet.crm_customer_merge', 'accepted', [
+                'resource_id' => substr($merged->customerKey, 0, 24),
+                'merged_resource_id' => substr($sourceKey, 0, 24),
+            ]);
+        } catch (InvalidArgumentException $exception) {
+            $_SESSION['_crm_merge_error'] = $exception->getMessage();
+            $this->log($request, $principal, 'pickupsheet.crm_customer_merge', 'denied', ['reason' => 'validation']);
+        } catch (RuntimeException $exception) {
+            error_log($exception->__toString());
+            $_SESSION['_crm_merge_error'] = 'The customer profiles could not be merged. Check MySQL and try again.';
+            $this->log($request, $principal, 'pickupsheet.crm_customer_merge', 'failed');
+        }
+        return Response::redirect($request->basePath . '/dhl/pickupsheet/customers');
     }
 
     public function adjustRewards(Request $request): Response

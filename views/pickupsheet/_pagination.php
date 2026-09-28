@@ -31,4 +31,9 @@ $pagerUrlWithSize = static function (int $page) use ($pagerUrl, $pagerSizeParam,
     <?php else: ?>
         <span class="pickup-pagination-disabled" aria-disabled="true">Next</span>
     <?php endif; ?>
+    <?php if ($pagerPage < $pagerTotalPages): ?>
+        <a href="<?= $pagerEscape($pagerUrlWithSize($pagerTotalPages)) ?>" data-ajax-page="<?= $pagerEscape($pagerTotalPages) ?>" aria-label="Go to last page, page <?= $pagerEscape($pagerTotalPages) ?>">Last</a>
+    <?php else: ?>
+        <span class="pickup-pagination-disabled" aria-disabled="true">Last</span>
+    <?php endif; ?>
 </nav>

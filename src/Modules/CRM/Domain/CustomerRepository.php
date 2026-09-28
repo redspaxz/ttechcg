@@ -20,6 +20,9 @@ interface CustomerRepository
     /** @return list<string> */
     public function suggestions(string $query, int $limit): array;
 
+    /** @return list<CustomerProfile> */
+    public function duplicateReviewProfiles(int $limit): array;
+
     public function find(string $customerKey): ?CustomerProfile;
 
     /**
@@ -37,6 +40,8 @@ interface CustomerRepository
     public function shipmentCount(string $customerKey): int;
 
     public function save(CustomerProfile $customer, string $actorId): CustomerProfile;
+
+    public function merge(string $targetCustomerKey, string $sourceCustomerKey, string $actorId): CustomerProfile;
 
     /**
      * @return list<array{

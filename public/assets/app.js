@@ -819,6 +819,14 @@ document.querySelector('[data-copy-recovery-codes]')?.addEventListener('click', 
 document.querySelector('[data-print-recovery-codes]')?.addEventListener('click', () => window.print());
 
 document.addEventListener('submit', (event) => {
+    if (event.target.matches('[data-crm-merge-form]')) {
+        const keepName = event.target.dataset.keepName || 'the selected customer';
+        const mergeName = event.target.dataset.mergeName || 'the duplicate customer';
+        if (!window.confirm(`Merge ${mergeName} into ${keepName}? The ${mergeName} profile will be removed after its data is transferred.`)) {
+            event.preventDefault();
+            return;
+        }
+    }
     if (event.target.matches('[data-pickup-payment]')) {
         const reference = event.target.querySelector('[name="reference"]')?.value || 'this pickup sheet';
         const receipt = event.target.querySelector('[name="receipt_number"]')?.value.trim().toUpperCase() || '';

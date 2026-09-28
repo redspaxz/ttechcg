@@ -485,6 +485,14 @@ rmdir($rateLimitDirectory);
 
 $config = require dirname(__DIR__) . '/config/app.php';
 $view = new View(dirname(__DIR__) . '/views');
+$firstPaginationFixture = $view->renderPartial('pickupsheet/_submission-records', [
+    'basePath' => '',
+    'pickupOperational' => true,
+    'pickupSheets' => $firstPickupPage['items'],
+    'pagination' => $firstPickupPage,
+    'errors' => [],
+]);
+$assert(str_contains($firstPaginationFixture, 'data-ajax-page="2" aria-label="Go to last page, page 2">Last</a>'), 'Paginated tables should provide a direct normal-link and AJAX-enhanced jump to the final page.');
 $paginationFixture = $view->renderPartial('pickupsheet/_submission-records', [
     'basePath' => '',
     'pickupOperational' => true,
@@ -501,6 +509,7 @@ $assert(!str_contains($paginationFixture, 'Sheets on this page'), 'Submitted she
 $assert(str_contains($paginationFixture, 'Page 2 of 2 · 12 records'), 'The pagination fragment should display accurate page and record totals.');
 $assert(str_contains($paginationFixture, 'data-ajax-page="1" rel="prev"'), 'The second page should provide a normal-link fallback to the previous page.');
 $assert(!str_contains($paginationFixture, 'data-ajax-page="3"'), 'The final page should not link beyond the available records.');
+$assert(str_contains($paginationFixture, '<span class="pickup-pagination-disabled" aria-disabled="true">Last</span>'), 'The final-page control should be disabled when the table is already at its end.');
 $filteredSecondPickupPage = $pickupService->paginated(2, 10, 'Pagination');
 $filteredPaginationFixture = $view->renderPartial('pickupsheet/_submission-records', [
     'basePath' => '',
@@ -1058,6 +1067,20 @@ try {
 }
 $assert($duplicateRejected, 'CRM should reject a duplicate organization name instead of overwriting the existing profile.');
 $assert($renameCustomerService->find($renameCustomerKey)?->contactName === 'Customer Contact', 'A rejected duplicate CRM submission should leave the existing profile unchanged.');
+
+$nearDuplicate = $renameCustomerService->save(null, [
+    'display_name' => 'Renamed Customer Compny',
+    'email' => 'duplicate@example.com',
+    'notes' => 'Imported from an older customer list.',
+    'status' => 'attention',
+], str_repeat('b', 24));
+$renameCustomerService->adjustRewards($nearDuplicate->customerKey, 'bonus', '7', 'Legacy duplicate bonus', str_repeat('b', 24));
+$duplicateSuggestions = $renameCustomerService->duplicateSuggestions();
+$assert(count($duplicateSuggestions) === 1 && ($duplicateSuggestions[0]['confidence'] ?? 0) >= 88, 'CRM should conservatively suggest a near-matching customer name for review.');
+$mergedCustomer = $renameCustomerService->merge($renameCustomerKey, $nearDuplicate->customerKey, str_repeat('a', 24));
+$assert($renameCustomerService->find($nearDuplicate->customerKey) === null, 'Merging CRM duplicates should remove the redundant profile.');
+$assert($mergedCustomer->displayName === 'Renamed Customer Company' && $mergedCustomer->email === 'duplicate@example.com' && $mergedCustomer->status === 'attention', 'A CRM merge should retain the selected name and preserve useful fields from the duplicate.');
+$assert($mergedCustomer->shipmentCount === 1 && $mergedCustomer->rewardBalance() === 32, 'A CRM merge should preserve shipment history and transfer reward adjustments to the retained profile.');
 
 $_SESSION = [];
 $leaderboardPickupRepository = new DemoPickupSheetRepository();
@@ -1757,6 +1780,11 @@ $assert($adminDashboardLogs->status() === 200 && str_contains($adminDashboardLog
 $assert(str_contains($adminDashboardLogs->body(), '<details class="pickup-audit-log-entry"') && str_contains($adminDashboardLogs->body(), '<dt>Details</dt>') && str_contains($adminDashboardLogs->body(), '<dt>Request</dt>'), 'AJAX log pages should retain expandable detail and request metadata.');
 $assert($adminDashboardSheets->status() === 200 && str_contains($adminDashboardSheets->body(), 'Latest pickup sheets') && str_contains($adminDashboardSheets->body(), 'data-ajax-current-page="1"'), 'The recent-sheet endpoint should return its paginated table fragment.');
 
+$controllerDuplicate = $customerService->save(null, [
+    'display_name' => 'Controller Clien',
+    'contact_name' => 'Duplicate Controller Contact',
+    'status' => 'lead',
+], str_repeat('a', 24));
 $customerDirectory = $customerController->index(new Request('GET', '/dhl/pickupsheet/customers'));
 $customerKey = hash('sha256', strtolower('Controller Client'));
 $customerProfile = $customerController->edit(new Request('GET', '/dhl/pickupsheet/customers/edit', ['customer' => $customerKey]));
@@ -1764,6 +1792,7 @@ $assert($customerDirectory->status() === 200 && str_contains($customerDirectory-
 $assert(str_contains($customerDirectory->body(), 'Controller Client') && str_contains($customerDirectory->body(), '14,000 XAF'), 'CRM should synchronize shipment consignors and their operational value.');
 $assert(str_contains($customerDirectory->body(), 'data-ajax-pager-id="customer-directory"') && str_contains($customerDirectory->body(), 'data-ajax-pager-form="customer-directory"'), 'The customer directory and its filters should use progressive AJAX pagination.');
 $assert(str_contains($customerDirectory->body(), 'class="pickup-crm-directory-content"'), 'The AJAX customer directory should retain its card-specific content wrapper and padding.');
+$assert(str_contains($customerDirectory->body(), 'Possible duplicate customers') && str_contains($customerDirectory->body(), 'data-crm-merge-form') && str_contains($customerDirectory->body(), 'Controller Clien'), 'Administrators should receive actionable possible-duplicate suggestions in CRM.');
 $customerDirectoryFragment = $customerController->page(new Request('GET', '/dhl/pickupsheet/customers/page', ['page' => '1']));
 $assert($customerDirectoryFragment->status() === 200 && str_contains($customerDirectoryFragment->body(), 'Customer directory') && str_contains($customerDirectoryFragment->body(), 'data-ajax-current-page="1"'), 'The customer directory endpoint should return a normal-link-compatible page fragment.');
 $assert($customerProfile->status() === 200 && str_contains($customerProfile->body(), 'Recent shipments') && str_contains($customerProfile->body(), 'pickup-customer-history-content') && str_contains($customerProfile->body(), $savedReference), 'A synchronized customer profile should show linked shipment history inside its compact AJAX card content.');
@@ -1809,6 +1838,18 @@ $assert(str_contains($updatedCustomerProfile->body(), 'Needs attention') && str_
 $newCustomerPage = $customerController->create(new Request('GET', '/dhl/pickupsheet/customers/new'));
 $assert($newCustomerPage->status() === 200 && str_contains($newCustomerPage->body(), 'Add customer') && str_contains($newCustomerPage->body(), 'New relationship'), 'Administrators should be able to open a prospective-customer form.');
 $assert(str_contains($newCustomerPage->body(), 'data-customer-autocomplete-form') && str_contains($newCustomerPage->body(), 'list="customer-name-suggestions"') && str_contains($newCustomerPage->body(), 'data-search-endpoint="/dhl/pickupsheet/customers/search"'), 'The add-customer name field should expose accessible existing-customer autocomplete.');
+$invalidMergeCsrf = $customerController->merge(new Request('POST', '/dhl/pickupsheet/customers/merge', [], [
+    '_token' => 'invalid-token',
+    'target_customer_key' => $customerKey,
+    'source_customer_key' => $controllerDuplicate->customerKey,
+]));
+$assert($invalidMergeCsrf->status() === 419, 'CRM duplicate merges should require a valid CSRF token.');
+$mergeCustomer = $customerController->merge(new Request('POST', '/dhl/pickupsheet/customers/merge', [], [
+    '_token' => $pickupCsrf->token(),
+    'target_customer_key' => $customerKey,
+    'source_customer_key' => $controllerDuplicate->customerKey,
+]));
+$assert($mergeCustomer->status() === 303 && $customerService->find($controllerDuplicate->customerKey) === null, 'An administrator should be able to merge a suggested duplicate into the selected CRM profile.');
 $customerSearch = $customerController->search(new Request('GET', '/dhl/pickupsheet/customers/search', ['q' => 'controller'], [], '', $recordsServer));
 $customerSearchPayload = json_decode($customerSearch->body(), true);
 $assert($customerSearch->status() === 200 && ($customerSearchPayload['suggestions'] ?? []) === ['Controller Client'], 'Authenticated CRM autocomplete should return matching customer names.');
@@ -2506,6 +2547,7 @@ $assert(is_string($styles) && str_contains($styles, '.pickup-customer-history-co
 $assert(is_string($styles) && str_contains($styles, '.pickup-customer-profile-heading h1') && str_contains($styles, 'font-size: clamp(1.75rem, 3vw, 2.5rem);'), 'Customer profile names should use a restrained responsive heading size.');
 $assert(is_string($styles) && str_contains($styles, '.pickup-customer-history .pickup-crm-table-wrap td { padding: 11px 12px; }') && str_contains($styles, '.pickup-customer-history .pickup-pagination { gap: 10px; padding: 12px 16px 14px; }'), 'Recent shipment rows and pagination should use a compact, consistent spacing rhythm.');
 $assert(is_string($styles) && str_contains($styles, '.pickup-crm-directory-content > .pickup-card-heading') && str_contains($styles, '.pickup-crm-directory .pickup-crm-table-wrap td,') && str_contains($styles, '.pickup-crm-directory .pickup-pagination,'), 'The AJAX-wrapped Customer directory card should retain compact heading, row, and pager padding.');
+$assert(is_string($styles) && str_contains($styles, '.pickup-crm-duplicate-list article') && str_contains($styles, '.pickup-crm-duplicate-actions button'), 'CRM duplicate suggestions should have responsive comparison and merge controls.');
 $assert(is_string($styles) && str_contains($styles, '.pickup-workspace-header {') && str_contains($styles, 'position: sticky;') && str_contains($styles, 'z-index: 1150;') && str_contains($styles, 'top: 0;'), 'Pickupsheet workspace headers should remain visible while their pages scroll.');
 $assert(is_string($styles) && str_contains($styles, '.pickup-admin-workspace > .pickup-workspace-header') && str_contains($styles, 'box-shadow: 0 0 0 100vmax #0b0b0c;'), 'Sticky administrator headers should retain their full-width dark background.');
 $assert(is_string($styles) && str_contains($styles, '.pickup-header-links { display: flex; min-width: 0; flex-wrap: wrap;') && str_contains($styles, 'flex-direction: row; justify-content: flex-start; gap: 8px 14px;'), 'Link-heavy administrator headers should wrap compactly instead of becoming a tall scrolling column.');
@@ -2523,6 +2565,7 @@ $assert(is_string($script) && str_contains($script, 'numberFormatter.format(tota
 $assert(is_string($script) && str_contains($script, "[data-field]:not([data-identity-field])"), 'Account-populated checker fields should not make an otherwise blank shipment count as complete.');
 $assert(is_string($script) && str_contains($script, "document.querySelectorAll('[data-ajax-pager]')"), 'The browser should initialize every qualified AJAX-paginated table.');
 $assert(is_string($script) && str_contains($script, "document.querySelectorAll('[data-ajax-pager-form]')"), 'The browser should submit qualified table filters without a full refresh.');
+$assert(is_string($script) && str_contains($script, "event.target.matches('[data-crm-merge-form]')") && str_contains($script, 'profile will be removed after its data is transferred'), 'CRM merges should require an explicit browser confirmation that describes the destructive result.');
 $assert(is_string($script) && str_contains($script, 'await fetch(pageEndpoint'), 'Pagination should load table fragments asynchronously.');
 $assert(is_string($script) && str_contains($script, "spinner.hidden = !loading"), 'AJAX pagination should toggle its loading spinner.');
 $assert(is_string($script) && str_contains($script, "window.history.pushState"), 'AJAX pagination should preserve browser history.');
@@ -2657,6 +2700,7 @@ $assert(is_string($customerRepositorySource) && str_contains($customerRepository
 $assert(is_string($customerRepositorySource) && str_contains($customerRepositorySource, 'FLOOR(COALESCE(SUM(ps.weight_kg), 0) * 10)'), 'CRM should award 10 whole reward points per aggregate kilogram of active cargo.');
 $assert(is_string($customerRepositorySource) && str_contains($customerRepositorySource, 'GREATEST(0, COALESCE(metrics.cargo_reward_points, 0) + COALESCE(rewards.adjustment_points, 0)) DESC'), 'The MySQL loyalty leaderboard should rank customers by redeemable point balance from highest to lowest.');
 $assert(is_string($customerRepositorySource) && str_contains($customerRepositorySource, 'points_delta < 0'), 'CRM redemption logs should query only negative point adjustments.');
+$assert(is_string($customerRepositorySource) && str_contains($customerRepositorySource, 'public function merge(') && str_contains($customerRepositorySource, 'UPDATE pickup_customer_reward_adjustments') && str_contains($customerRepositorySource, 'DELETE FROM pickup_customers'), 'MySQL CRM merges should transactionally transfer reward history before deleting the duplicate profile.');
 $assert(is_string($customerRepositorySource) && substr_count($customerRepositorySource, 'LIMIT :limit OFFSET :offset') >= 3, 'Customer directory, shipment history, and redemption history should paginate at query time.');
 $customerRewardsMigration = file_get_contents(dirname(__DIR__) . '/database/migrations/013_create_pickup_customer_rewards.sql');
 $assert(is_string($customerRewardsMigration) && str_contains($customerRewardsMigration, 'CREATE TABLE IF NOT EXISTS pickup_customer_reward_adjustments'), 'MySQL should create the customer reward adjustment ledger idempotently.');
@@ -2764,6 +2808,7 @@ $assert(is_string($bootstrap) && str_contains($bootstrap, "'/dhl/pickupsheet/log
 $assert(is_string($bootstrap) && str_contains($bootstrap, "'/dhl/pickupsheet/settings'") && str_contains($bootstrap, "'/dhl/pickupsheet/settings/2fa/enroll'") && str_contains($bootstrap, "'/dhl/pickupsheet/settings/2fa/reset'") && str_contains($bootstrap, "'/dhl/pickupsheet/settings/2fa/recovery-codes'"), 'Pickupsheet should expose signed-in user settings and protected self-service 2FA routes.');
 $assert(is_string($bootstrap) && str_contains($bootstrap, "'/dhl/pickupsheet/logout'"), 'Pickupsheet should expose a CSRF-protected logout route.');
 $assert(is_string($bootstrap) && str_contains($bootstrap, "'/dhl/pickupsheet/consignors/search'"), 'Pickupsheet should expose its protected consignor autocomplete route.');
+$assert(is_string($bootstrap) && str_contains($bootstrap, "'/dhl/pickupsheet/customers/merge'"), 'CRM should expose an administrator-protected duplicate merge route.');
 $cloudflareTrustSource = file_get_contents(dirname(__DIR__) . '/src/Shared/Security/CloudflareRequestTrust.php');
 $requestSource = file_get_contents(dirname(__DIR__) . '/src/Shared/Http/Request.php');
 $securityHeadersSource = file_get_contents(dirname(__DIR__) . '/src/Shared/Security/SecurityHeaders.php');

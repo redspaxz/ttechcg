@@ -68,6 +68,28 @@ final class CustomerService
         return $this->repository->suggestions($query, max(1, min($limit, 20)));
     }
 
+    /** @return list<array{primary: CustomerProfile, duplicate: CustomerProfile, confidence: int}> */
+    public function duplicateSuggestions(int $limit = 8): array
+    {
+        $this->repository->synchronizeFromShipments();
+        $profiles = $this->repository->duplicateReviewProfiles(200);
+        $matches = [];
+        $profileCount = count($profiles);
+        for ($leftIndex = 0; $leftIndex < $profileCount; $leftIndex++) {
+            for ($rightIndex = $leftIndex + 1; $rightIndex < $profileCount; $rightIndex++) {
+                $confidence = $this->duplicateConfidence($profiles[$leftIndex]->displayName, $profiles[$rightIndex]->displayName);
+                if ($confidence < 88) {
+                    continue;
+                }
+                [$primary, $duplicate] = $this->preferredProfile($profiles[$leftIndex], $profiles[$rightIndex]);
+                $matches[] = compact('primary', 'duplicate', 'confidence');
+            }
+        }
+        usort($matches, static fn (array $left, array $right): int => ($right['confidence'] <=> $left['confidence'])
+            ?: strcasecmp($left['primary']->displayName, $right['primary']->displayName));
+        return array_slice($matches, 0, max(1, min($limit, 20)));
+    }
+
     public function find(string $customerKey): ?CustomerProfile
     {
         if (preg_match('/^[a-f0-9]{64}$/', $customerKey) !== 1) {
@@ -256,6 +278,27 @@ final class CustomerService
         return $this->repository->save($customer, $actorId);
     }
 
+    public function merge(string $targetCustomerKey, string $sourceCustomerKey, string $actorId): CustomerProfile
+    {
+        if (preg_match('/^[a-f0-9]{24}$/', $actorId) !== 1) {
+            throw new InvalidArgumentException('The customer-data actor is invalid.');
+        }
+        if (preg_match('/^[a-f0-9]{64}$/', $targetCustomerKey) !== 1
+            || preg_match('/^[a-f0-9]{64}$/', $sourceCustomerKey) !== 1
+            || hash_equals($targetCustomerKey, $sourceCustomerKey)) {
+            throw new InvalidArgumentException('Select two different valid customer profiles to merge.');
+        }
+        $target = $this->find($targetCustomerKey);
+        $source = $this->find($sourceCustomerKey);
+        if ($target === null || $source === null) {
+            throw new InvalidArgumentException('One of the customer profiles no longer exists.');
+        }
+        if ($this->duplicateConfidence($target->displayName, $source->displayName) < 88) {
+            throw new InvalidArgumentException('These customer names are not similar enough for the duplicate merge workflow.');
+        }
+        return $this->repository->merge($targetCustomerKey, $sourceCustomerKey, $actorId);
+    }
+
     /** @param array<string, mixed> $input */
     public function updateDetailsWithoutNames(string $customerKey, array $input, string $actorId): CustomerProfile
     {
@@ -324,6 +367,49 @@ final class CustomerService
     private function containsControlCharacters(string $value): bool
     {
         return preg_match('/[\x00-\x1F\x7F]/', $value) === 1;
+    }
+
+    private function duplicateConfidence(string $left, string $right): int
+    {
+        $left = $this->normalizedDuplicateName($left);
+        $right = $this->normalizedDuplicateName($right);
+        if ($left === '' || $right === '' || $left === $right) {
+            return $left !== '' && $left === $right ? 100 : 0;
+        }
+        $maximumLength = max(strlen($left), strlen($right));
+        if ($maximumLength < 5) {
+            return 0;
+        }
+        $distance = levenshtein($left, $right);
+        $distanceLimit = $maximumLength >= 18 ? 3 : ($maximumLength >= 9 ? 2 : 1);
+        similar_text($left, $right, $similarity);
+        if ($distance > $distanceLimit && $similarity < 90.0) {
+            return 0;
+        }
+        return max(0, min(99, (int) round(max($similarity, (1 - ($distance / $maximumLength)) * 100))));
+    }
+
+    private function normalizedDuplicateName(string $name): string
+    {
+        $name = strtolower(trim($name));
+        $name = str_replace('&', ' and ', $name);
+        $name = preg_replace('/[^a-z0-9]+/', ' ', $name) ?? $name;
+        $tokens = array_values(array_filter(explode(' ', trim($name))));
+        $aliases = ['co' => 'company', 'corp' => 'corporation', 'intl' => 'international', 'ltd' => 'limited'];
+        $tokens = array_map(static fn (string $token): string => $aliases[$token] ?? $token, $tokens);
+        return implode(' ', $tokens);
+    }
+
+    /** @return array{CustomerProfile, CustomerProfile} */
+    private function preferredProfile(CustomerProfile $left, CustomerProfile $right): array
+    {
+        $score = static fn (CustomerProfile $profile): int => ($profile->shipmentCount * 100)
+            + ($profile->contactName !== '' ? 10 : 0)
+            + ($profile->email !== '' ? 5 : 0)
+            + ($profile->phone !== '' ? 5 : 0)
+            + ($profile->address !== '' ? 2 : 0)
+            + ($profile->notes !== '' ? 1 : 0);
+        return $score($right) > $score($left) ? [$right, $left] : [$left, $right];
     }
 
     /** @return array{items: array<never>, page: int, perPage: int, totalRecords: int, totalPages: int} */

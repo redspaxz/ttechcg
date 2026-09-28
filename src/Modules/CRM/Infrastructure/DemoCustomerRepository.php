@@ -143,6 +143,18 @@ final class DemoCustomerRepository implements CustomerRepository
         return array_slice($names, 0, max(1, min($limit, 20)));
     }
 
+    public function duplicateReviewProfiles(int $limit): array
+    {
+        $metrics = $this->metrics();
+        return array_map(
+            fn (array $profile): CustomerProfile => $this->profile(
+                $profile,
+                $metrics[$this->key((string) ($profile['displayName'] ?? ''))] ?? [],
+            ),
+            array_slice(array_values($this->profiles()), 0, max(1, min($limit, 200))),
+        );
+    }
+
     public function find(string $customerKey): ?CustomerProfile
     {
         $profile = $this->profiles()[$customerKey] ?? null;
@@ -225,6 +237,43 @@ final class DemoCustomerRepository implements CustomerRepository
         ];
         $_SESSION[self::SESSION_KEY] = $profiles;
         return $this->find($customer->customerKey) ?? $customer;
+    }
+
+    public function merge(string $targetCustomerKey, string $sourceCustomerKey, string $actorId): CustomerProfile
+    {
+        $profiles = $this->profiles();
+        $target = $profiles[$targetCustomerKey] ?? null;
+        $source = $profiles[$sourceCustomerKey] ?? null;
+        if (!is_array($target) || !is_array($source)) {
+            throw new InvalidArgumentException('One of the customer profiles no longer exists.');
+        }
+
+        $this->renameExistingShipments((string) $source['displayName'], (string) $target['displayName'], $actorId);
+        foreach (['contactName', 'email', 'phone', 'address', 'city'] as $field) {
+            if (trim((string) ($target[$field] ?? '')) === '') {
+                $target[$field] = (string) ($source[$field] ?? '');
+            }
+        }
+        $target['status'] = $this->mergedStatus((string) ($target['status'] ?? 'active'), (string) ($source['status'] ?? 'active'));
+        $target['nextFollowUpOn'] = $this->earliestDate($target['nextFollowUpOn'] ?? null, $source['nextFollowUpOn'] ?? null);
+        $target['notes'] = $this->mergedNotes($target, $source);
+        $target['updatedAt'] = gmdate('Y-m-d H:i:s');
+        $profiles[$targetCustomerKey] = $target;
+        unset($profiles[$sourceCustomerKey]);
+        $_SESSION[self::SESSION_KEY] = $profiles;
+
+        $adjustments = $_SESSION[self::REWARDS_SESSION_KEY] ?? [];
+        if (is_array($adjustments)) {
+            foreach ($adjustments as &$adjustment) {
+                if (is_array($adjustment) && ($adjustment['customerKey'] ?? '') === $sourceCustomerKey) {
+                    $adjustment['customerKey'] = $targetCustomerKey;
+                }
+            }
+            unset($adjustment);
+            $_SESSION[self::REWARDS_SESSION_KEY] = $adjustments;
+        }
+
+        return $this->find($targetCustomerKey) ?? throw new RuntimeException('Merged customer profile could not be loaded.');
     }
 
     private function renameExistingShipments(string $previousName, string $newName, string $actorId): void
@@ -441,6 +490,37 @@ final class DemoCustomerRepository implements CustomerRepository
 
         $fraction = str_pad($matches[2] ?? '', 3, '0');
         return ((int) $matches[1] * 1000) + (int) $fraction;
+    }
+
+    private function mergedStatus(string $target, string $source): string
+    {
+        $priority = ['inactive' => 0, 'lead' => 1, 'active' => 2, 'attention' => 3];
+        return ($priority[$source] ?? 0) > ($priority[$target] ?? 0) ? $source : $target;
+    }
+
+    private function earliestDate(mixed $target, mixed $source): ?string
+    {
+        $dates = array_values(array_filter([$target, $source], static fn (mixed $date): bool => is_string($date) && $date !== ''));
+        return $dates === [] ? null : min($dates);
+    }
+
+    /** @param array<string, mixed> $target @param array<string, mixed> $source */
+    private function mergedNotes(array $target, array $source): string
+    {
+        $notes = trim((string) ($target['notes'] ?? ''));
+        $sourceNotes = trim((string) ($source['notes'] ?? ''));
+        $details = [];
+        foreach (['contactName' => 'Contact', 'email' => 'Email', 'phone' => 'Phone', 'address' => 'Address', 'city' => 'City'] as $field => $label) {
+            $sourceValue = trim((string) ($source[$field] ?? ''));
+            if ($sourceValue !== '' && $sourceValue !== trim((string) ($target[$field] ?? ''))) {
+                $details[] = $label . ': ' . $sourceValue;
+            }
+        }
+        $mergedContext = trim(implode('; ', $details) . ($sourceNotes !== '' ? ($details === [] ? '' : '; ') . 'Notes: ' . $sourceNotes : ''));
+        if ($mergedContext !== '') {
+            $notes .= ($notes === '' ? '' : "\n\n") . 'Merged from ' . (string) ($source['displayName'] ?? 'duplicate profile') . ': ' . $mergedContext;
+        }
+        return substr($notes, 0, 2000);
     }
 
     private function key(string $name): string

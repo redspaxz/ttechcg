@@ -35,6 +35,11 @@ final class UnavailableCustomerRepository implements CustomerRepository
         throw new RuntimeException('Customer storage is unavailable.');
     }
 
+    public function duplicateReviewProfiles(int $limit): array
+    {
+        throw new RuntimeException('Customer storage is unavailable.');
+    }
+
     public function find(string $customerKey): ?CustomerProfile
     {
         throw new RuntimeException('Customer storage is unavailable.');
@@ -51,6 +56,11 @@ final class UnavailableCustomerRepository implements CustomerRepository
     }
 
     public function save(CustomerProfile $customer, string $actorId): CustomerProfile
+    {
+        throw new RuntimeException('Customer storage is unavailable.');
+    }
+
+    public function merge(string $targetCustomerKey, string $sourceCustomerKey, string $actorId): CustomerProfile
     {
         throw new RuntimeException('Customer storage is unavailable.');
     }

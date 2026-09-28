@@ -137,6 +137,17 @@ final class MysqlCustomerRepository implements CustomerRepository
         ), static fn (string $name): bool => $name !== ''));
     }
 
+    public function duplicateReviewProfiles(int $limit): array
+    {
+        $this->ensureSchema();
+        $statement = $this->connection->prepare(
+            $this->customerSelect() . ' ORDER BY LOWER(c.display_name), c.display_name LIMIT :limit',
+        );
+        $statement->bindValue(':limit', max(1, min($limit, 200)), PDO::PARAM_INT);
+        $statement->execute();
+        return array_map(fn (array $row): CustomerProfile => $this->profile($row), $statement->fetchAll());
+    }
+
     public function find(string $customerKey): ?CustomerProfile
     {
         $this->ensureSchema();
@@ -280,6 +291,89 @@ final class MysqlCustomerRepository implements CustomerRepository
         }
 
         return $this->find($customer->customerKey) ?? $customer;
+    }
+
+    public function merge(string $targetCustomerKey, string $sourceCustomerKey, string $actorId): CustomerProfile
+    {
+        $this->ensureSchema();
+        $this->connection->beginTransaction();
+        try {
+            $profileStatement = $this->connection->prepare(
+                'SELECT customer_key, display_name, contact_name, email, phone, address, city, country_code,
+                        status, notes, next_follow_up_on, source
+                 FROM pickup_customers
+                 WHERE customer_key IN (:target_key, :source_key)
+                 ORDER BY customer_key
+                 FOR UPDATE',
+            );
+            $profileStatement->execute(['target_key' => $targetCustomerKey, 'source_key' => $sourceCustomerKey]);
+            $profiles = [];
+            foreach ($profileStatement->fetchAll() as $profile) {
+                $profiles[(string) $profile['customer_key']] = $profile;
+            }
+            $target = $profiles[$targetCustomerKey] ?? null;
+            $source = $profiles[$sourceCustomerKey] ?? null;
+            if (!is_array($target) || !is_array($source)) {
+                throw new InvalidArgumentException('One of the customer profiles no longer exists.');
+            }
+
+            $shipmentStatement = $this->connection->prepare(
+                'UPDATE pickup_shipments
+                 SET consignor = :target_name
+                 WHERE LOWER(TRIM(consignor)) = LOWER(TRIM(:source_name))',
+            );
+            $shipmentStatement->execute([
+                'target_name' => (string) $target['display_name'],
+                'source_name' => (string) $source['display_name'],
+            ]);
+
+            $rewardStatement = $this->connection->prepare(
+                'UPDATE pickup_customer_reward_adjustments
+                 SET customer_key = :target_key
+                 WHERE customer_key = :source_key',
+            );
+            $rewardStatement->execute(['target_key' => $targetCustomerKey, 'source_key' => $sourceCustomerKey]);
+
+            foreach (['contact_name', 'email', 'phone', 'address', 'city'] as $field) {
+                if (trim((string) ($target[$field] ?? '')) === '') {
+                    $target[$field] = (string) ($source[$field] ?? '');
+                }
+            }
+            $target['status'] = $this->mergedStatus((string) $target['status'], (string) $source['status']);
+            $target['next_follow_up_on'] = $this->earliestDate($target['next_follow_up_on'] ?? null, $source['next_follow_up_on'] ?? null);
+            $target['notes'] = $this->mergedDatabaseNotes($target, $source);
+
+            $updateStatement = $this->connection->prepare(
+                'UPDATE pickup_customers
+                 SET contact_name = :contact_name, email = :email, phone = :phone, address = :address,
+                     city = :city, status = :status, notes = :notes, next_follow_up_on = :next_follow_up_on,
+                     updated_by = :updated_by, updated_at = UTC_TIMESTAMP()
+                 WHERE customer_key = :customer_key',
+            );
+            $updateStatement->execute([
+                'contact_name' => $this->nullable((string) ($target['contact_name'] ?? '')),
+                'email' => $this->nullable((string) ($target['email'] ?? '')),
+                'phone' => $this->nullable((string) ($target['phone'] ?? '')),
+                'address' => $this->nullable((string) ($target['address'] ?? '')),
+                'city' => $this->nullable((string) ($target['city'] ?? '')),
+                'status' => $target['status'],
+                'notes' => $this->nullable((string) $target['notes']),
+                'next_follow_up_on' => $target['next_follow_up_on'],
+                'updated_by' => $actorId,
+                'customer_key' => $targetCustomerKey,
+            ]);
+
+            $deleteStatement = $this->connection->prepare('DELETE FROM pickup_customers WHERE customer_key = :source_key');
+            $deleteStatement->execute(['source_key' => $sourceCustomerKey]);
+            $this->connection->commit();
+        } catch (Throwable $exception) {
+            if ($this->connection->inTransaction()) {
+                $this->connection->rollBack();
+            }
+            throw $exception;
+        }
+
+        return $this->find($targetCustomerKey) ?? throw new RuntimeException('Merged customer profile could not be loaded.');
     }
 
     public function rewardAdjustments(string $customerKey, int $limit): array
@@ -550,5 +644,36 @@ final class MysqlCustomerRepository implements CustomerRepository
     private function nullable(string $value): ?string
     {
         return $value === '' ? null : $value;
+    }
+
+    private function mergedStatus(string $target, string $source): string
+    {
+        $priority = ['inactive' => 0, 'lead' => 1, 'active' => 2, 'attention' => 3];
+        return ($priority[$source] ?? 0) > ($priority[$target] ?? 0) ? $source : $target;
+    }
+
+    private function earliestDate(mixed $target, mixed $source): ?string
+    {
+        $dates = array_values(array_filter([$target, $source], static fn (mixed $date): bool => is_string($date) && $date !== ''));
+        return $dates === [] ? null : min($dates);
+    }
+
+    /** @param array<string, mixed> $target @param array<string, mixed> $source */
+    private function mergedDatabaseNotes(array $target, array $source): string
+    {
+        $notes = trim((string) ($target['notes'] ?? ''));
+        $sourceNotes = trim((string) ($source['notes'] ?? ''));
+        $details = [];
+        foreach (['contact_name' => 'Contact', 'email' => 'Email', 'phone' => 'Phone', 'address' => 'Address', 'city' => 'City'] as $field => $label) {
+            $sourceValue = trim((string) ($source[$field] ?? ''));
+            if ($sourceValue !== '' && $sourceValue !== trim((string) ($target[$field] ?? ''))) {
+                $details[] = $label . ': ' . $sourceValue;
+            }
+        }
+        $mergedContext = trim(implode('; ', $details) . ($sourceNotes !== '' ? ($details === [] ? '' : '; ') . 'Notes: ' . $sourceNotes : ''));
+        if ($mergedContext !== '') {
+            $notes .= ($notes === '' ? '' : "\n\n") . 'Merged from ' . (string) $source['display_name'] . ': ' . $mergedContext;
+        }
+        return substr($notes, 0, 2000);
     }
 }

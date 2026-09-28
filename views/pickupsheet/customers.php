@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 $e = static fn (mixed $value): string => htmlspecialchars((string) $value, ENT_QUOTES, 'UTF-8');
 $summary = is_array($summary ?? null) ? $summary : [];
+$duplicateSuggestions = is_array($duplicateSuggestions ?? null) ? $duplicateSuggestions : [];
 ?>
 <section class="pickup-view-workspace pickup-crm-workspace">
     <div class="container pickup-workspace-header">
@@ -31,6 +32,28 @@ $summary = is_array($summary ?? null) ? $summary : [];
             <article><span>Needs attention</span><strong><?= $e(number_format((int) ($summary['attentionCount'] ?? 0))) ?></strong><small>Flagged accounts</small></article>
             <article><span>Follow-ups due</span><strong><?= $e(number_format((int) ($summary['followUpsDue'] ?? 0))) ?></strong><small>Due today or overdue</small></article>
         </section>
+
+        <?php if ($duplicateSuggestions !== []): ?>
+            <section class="pickup-crm-duplicates" aria-labelledby="crm-duplicates-title">
+                <div class="pickup-card-heading"><div><span>Data quality</span><h2 id="crm-duplicates-title">Possible duplicate customers</h2></div><small><?= $e(count($duplicateSuggestions)) ?> suggested <?= count($duplicateSuggestions) === 1 ? 'match' : 'matches' ?></small></div>
+                <p class="pickup-crm-duplicates-intro">Review each suggestion before merging. The profile you keep retains its name; shipment history, rewards, and available contact details from the other profile are moved into it.</p>
+                <div class="pickup-crm-duplicate-list">
+                    <?php foreach ($duplicateSuggestions as $suggestion): ?>
+                        <?php $primary = $suggestion['primary']; $duplicate = $suggestion['duplicate']; ?>
+                        <article>
+                            <div class="pickup-crm-duplicate-score"><strong><?= $e((int) $suggestion['confidence']) ?>%</strong><span>Name match</span></div>
+                            <div class="pickup-crm-duplicate-profile"><strong><?= $e($primary->displayName) ?></strong><small><?= $e(number_format($primary->shipmentCount)) ?> shipments &middot; <?= $e($primary->contactName !== '' ? $primary->contactName : 'No contact') ?></small></div>
+                            <span class="pickup-crm-duplicate-separator" aria-hidden="true">&harr;</span>
+                            <div class="pickup-crm-duplicate-profile"><strong><?= $e($duplicate->displayName) ?></strong><small><?= $e(number_format($duplicate->shipmentCount)) ?> shipments &middot; <?= $e($duplicate->contactName !== '' ? $duplicate->contactName : 'No contact') ?></small></div>
+                            <div class="pickup-crm-duplicate-actions">
+                                <form method="post" action="<?= $e($basePath) ?>/dhl/pickupsheet/customers/merge" data-crm-merge-form data-keep-name="<?= $e($primary->displayName) ?>" data-merge-name="<?= $e($duplicate->displayName) ?>"><input type="hidden" name="_token" value="<?= $e($csrfToken) ?>"><input type="hidden" name="target_customer_key" value="<?= $e($primary->customerKey) ?>"><input type="hidden" name="source_customer_key" value="<?= $e($duplicate->customerKey) ?>"><button type="submit">Keep <?= $e($primary->displayName) ?></button></form>
+                                <form method="post" action="<?= $e($basePath) ?>/dhl/pickupsheet/customers/merge" data-crm-merge-form data-keep-name="<?= $e($duplicate->displayName) ?>" data-merge-name="<?= $e($primary->displayName) ?>"><input type="hidden" name="_token" value="<?= $e($csrfToken) ?>"><input type="hidden" name="target_customer_key" value="<?= $e($duplicate->customerKey) ?>"><input type="hidden" name="source_customer_key" value="<?= $e($primary->customerKey) ?>"><button type="submit">Keep <?= $e($duplicate->displayName) ?></button></form>
+                            </div>
+                        </article>
+                    <?php endforeach; ?>
+                </div>
+            </section>
+        <?php endif; ?>
 
         <form class="pickup-crm-filter" method="get" action="<?= $e($basePath) ?>/dhl/pickupsheet/customers" data-ajax-pager-form="customer-directory">
             <label><span>Search customers</span><input type="search" name="q" value="<?= $e($search ?? '') ?>" maxlength="100" placeholder="Name, contact, email, phone, or city"></label>
