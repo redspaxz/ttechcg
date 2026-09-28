@@ -361,6 +361,32 @@ final class CustomerController
         return Response::redirect($request->basePath . '/dhl/pickupsheet/customers');
     }
 
+    public function dismissMerge(Request $request): Response
+    {
+        $principal = $this->authorize($request, 'crm');
+        if ($principal instanceof Response) {
+            return $principal;
+        }
+        $guard = $this->guardWrite($request, $principal, 'pickupsheet.crm_customer_merge_dismiss', 'pickup-crm-merge', 20);
+        if ($guard !== null) {
+            return $guard;
+        }
+
+        try {
+            $this->service->dismissMerge($request->input('merge_id'), $this->actorId($principal));
+            $_SESSION['_crm_flash'] = 'Merge kept. It was removed from Recent merges and can no longer be undone.';
+            $this->log($request, $principal, 'pickupsheet.crm_customer_merge_dismiss', 'accepted');
+        } catch (InvalidArgumentException $exception) {
+            $_SESSION['_crm_merge_error'] = $exception->getMessage();
+            $this->log($request, $principal, 'pickupsheet.crm_customer_merge_dismiss', 'denied', ['reason' => 'validation']);
+        } catch (RuntimeException $exception) {
+            error_log($exception->__toString());
+            $_SESSION['_crm_merge_error'] = 'The merge could not be updated. Check MySQL and try again.';
+            $this->log($request, $principal, 'pickupsheet.crm_customer_merge_dismiss', 'failed');
+        }
+        return Response::redirect($request->basePath . '/dhl/pickupsheet/customers');
+    }
+
     public function addActivity(Request $request): Response
     {
         $principal = $this->authorize($request, 'crm_update');

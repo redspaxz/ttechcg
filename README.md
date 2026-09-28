@@ -300,7 +300,9 @@ One organization should have one customer profile. The CRM enforces this in four
 - hands back the shipments the merge moved, identified by sheet and line, if they still name the kept profile
 - restores fields on the kept profile that nobody has edited since the merge
 
-It will not undo when another profile now uses the original name, or when the kept profile has since been merged into another one; undo that later merge first. Shipments entered under the old name after the merge stay with the kept profile.
+**Ignore** sits beside Undo merge. It confirms the merge as final: the merge leaves Recent merges and can no longer be undone (migration 022 records who ignored it and when). Ignoring and undoing are recorded in the security log as `pickupsheet.crm_customer_merge_dismiss` and `pickupsheet.crm_customer_merge_undo`.
+
+Undo will not run when another profile now uses the original name, or when the kept profile has since been merged into another one; undo that later merge first. Shipments entered under the old name after the merge stay with the kept profile.
 
 Merge history is stored in `pickup_customer_merges`, with a JSON snapshot per merge, and aliases in `pickup_customer_aliases` (migration 019). Both tables are included in encrypted backups. Merges and undos are rate limited, need a CSRF token and the `crm` permission, and are recorded in the security log as `pickupsheet.crm_customer_merge` and `pickupsheet.crm_customer_merge_undo`.
 

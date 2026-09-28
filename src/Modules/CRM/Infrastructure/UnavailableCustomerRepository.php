@@ -103,6 +103,11 @@ final class UnavailableCustomerRepository implements CustomerRepository
         throw new RuntimeException('Customer storage is unavailable.');
     }
 
+    public function dismissMerge(int $mergeId, string $actorId): void
+    {
+        throw new RuntimeException('Customer storage is unavailable.');
+    }
+
     public function rewardAdjustments(string $customerKey, int $limit): array
     {
         throw new RuntimeException('Customer storage is unavailable.');

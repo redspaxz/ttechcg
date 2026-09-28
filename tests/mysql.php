@@ -126,6 +126,14 @@ try {
 $restored = $crm()->undoMerge((string) $crm()->recentMerges()[0]['id'], $actor);
 $check($restored->shipmentCount === 1 && $restored->rewardAdjustmentPoints === 9 && count($crm()->activities($source->customerKey)) === 1, 'undo restores shipments, rewards, and activity');
 $crm()->merge($target->customerKey, $source->customerKey, $actor);
+$repeatedMergeId = (string) $crm()->recentMerges()[0]['id'];
+$crm()->dismissMerge($repeatedMergeId, $actor);
+try {
+    $crm()->undoMerge($repeatedMergeId, $actor);
+    $check(false, 'an ignored merge leaves Recent merges and cannot be undone');
+} catch (InvalidArgumentException) {
+    $check($crm()->recentMerges() === [], 'an ignored merge leaves Recent merges and cannot be undone');
+}
 $directory = $crm()->paginated(['search' => 'acme trading'], 1, 10)['items'];
 $check(count($directory) === 1 && $directory[0]->customerKey === $target->customerKey, 'directory search finds a customer by a merged-away name');
 $check($crm()->paginated(['search' => '%'], 1, 10)['totalRecords'] === 0, 'directory search treats % literally');

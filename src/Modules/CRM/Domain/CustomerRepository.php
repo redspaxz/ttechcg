@@ -105,6 +105,9 @@ interface CustomerRepository
     /** Restores the merged-away profile and returns it. */
     public function undoMerge(int $mergeId, string $actorId): CustomerProfile;
 
+    /** Confirms a merge as final: it leaves the recent-merges list and can no longer be undone. */
+    public function dismissMerge(int $mergeId, string $actorId): void;
+
     /**
      * @return list<array{
      *     pointsDelta: int,

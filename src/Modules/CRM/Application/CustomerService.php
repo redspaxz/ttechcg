@@ -525,6 +525,17 @@ final class CustomerService
         return $this->repository->undoMerge((int) $mergeId, $actorId);
     }
 
+    public function dismissMerge(string $mergeId, string $actorId): void
+    {
+        if (preg_match('/^[a-f0-9]{24}$/', $actorId) !== 1) {
+            throw new InvalidArgumentException('The customer-data actor is invalid.');
+        }
+        if (preg_match('/^[1-9][0-9]{0,17}$/', $mergeId) !== 1) {
+            throw new InvalidArgumentException('Select a valid merge to ignore.');
+        }
+        $this->repository->dismissMerge((int) $mergeId, $actorId);
+    }
+
     /** @param array<string, mixed> $input */
     public function updateDetailsWithoutNames(string $customerKey, array $input, string $actorId): CustomerProfile
     {

@@ -464,7 +464,7 @@ final class DemoCustomerRepository implements CustomerRepository
         $recent = [];
         foreach (array_reverse($this->merges()) as $merge) {
             $target = $profiles[$merge['targetCustomerKey'] ?? ''] ?? null;
-            if (($merge['undoneAt'] ?? null) !== null || !is_array($target)) {
+            if (($merge['undoneAt'] ?? null) !== null || ($merge['dismissedAt'] ?? null) !== null || !is_array($target)) {
                 continue;
             }
             $recent[] = [
@@ -483,7 +483,7 @@ final class DemoCustomerRepository implements CustomerRepository
         $merges = $this->merges();
         $index = $mergeId - 1;
         $merge = $merges[$index] ?? null;
-        if (!is_array($merge) || ($merge['undoneAt'] ?? null) !== null) {
+        if (!is_array($merge) || ($merge['undoneAt'] ?? null) !== null || ($merge['dismissedAt'] ?? null) !== null) {
             throw new InvalidArgumentException('This merge has already been undone or no longer exists.');
         }
         $profiles = $this->profiles();
@@ -555,6 +555,18 @@ final class DemoCustomerRepository implements CustomerRepository
         $_SESSION[self::MERGES_SESSION_KEY] = $merges;
 
         return $this->find($sourceKey) ?? throw new RuntimeException('Restored customer profile could not be loaded.');
+    }
+
+    public function dismissMerge(int $mergeId, string $actorId): void
+    {
+        $merges = $this->merges();
+        $merge = $merges[$mergeId - 1] ?? null;
+        if (!is_array($merge) || ($merge['undoneAt'] ?? null) !== null || ($merge['dismissedAt'] ?? null) !== null) {
+            throw new InvalidArgumentException('This merge has already been undone, ignored, or no longer exists.');
+        }
+        $merges[$mergeId - 1]['dismissedAt'] = gmdate('Y-m-d H:i:s');
+        $merges[$mergeId - 1]['dismissedBy'] = $actorId;
+        $_SESSION[self::MERGES_SESSION_KEY] = $merges;
     }
 
     /** Points shipments still typed with a merged-away name at the profile that absorbed it. */

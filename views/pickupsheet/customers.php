@@ -58,13 +58,14 @@ $recentMerges = is_array($recentMerges ?? null) ? $recentMerges : [];
 
         <?php if ($recentMerges !== []): ?>
             <section class="pickup-crm-duplicates pickup-crm-merge-history" aria-labelledby="crm-merge-history-title">
-                <div class="pickup-card-heading"><div><span>Data quality</span><h2 id="crm-merge-history-title">Recent merges</h2></div><small>Undo restores the separate profile</small></div>
+                <div class="pickup-card-heading"><div><span>Data quality</span><h2 id="crm-merge-history-title">Recent merges</h2></div><small>Undo restores the separate profile; Ignore keeps the merge</small></div>
                 <p class="pickup-crm-duplicates-intro">Undo moves the merged profile's shipments, rewards, and aliases back and restores any retained-profile fields nobody has edited since. Shipments later entered under the old name stay with the retained profile.</p>
                 <div class="pickup-crm-merge-list">
                     <?php foreach ($recentMerges as $merge): ?>
                         <article>
                             <div class="pickup-crm-duplicate-profile"><strong><?= $e($merge['sourceName']) ?> &rarr; <?= $e($merge['targetName']) ?></strong><small>Merged <?= $e($merge['mergedAt']) ?> UTC</small></div>
-                            <form method="post" action="<?= $e($basePath) ?>/dhl/pickupsheet/customers/merge/undo" data-crm-undo-merge-form data-merge-name="<?= $e($merge['sourceName']) ?>" data-keep-name="<?= $e($merge['targetName']) ?>"><input type="hidden" name="_token" value="<?= $e($csrfToken) ?>"><input type="hidden" name="merge_id" value="<?= $e($merge['id']) ?>"><button type="submit">Undo merge</button></form>
+                            <div class="pickup-crm-merge-actions"><form method="post" action="<?= $e($basePath) ?>/dhl/pickupsheet/customers/merge/undo" data-crm-undo-merge-form data-merge-name="<?= $e($merge['sourceName']) ?>" data-keep-name="<?= $e($merge['targetName']) ?>"><input type="hidden" name="_token" value="<?= $e($csrfToken) ?>"><input type="hidden" name="merge_id" value="<?= $e($merge['id']) ?>"><button type="submit">Undo merge</button></form>
+                            <form method="post" action="<?= $e($basePath) ?>/dhl/pickupsheet/customers/merge/dismiss" data-crm-dismiss-merge-form data-merge-name="<?= $e($merge['sourceName']) ?>" data-keep-name="<?= $e($merge['targetName']) ?>"><input type="hidden" name="_token" value="<?= $e($csrfToken) ?>"><input type="hidden" name="merge_id" value="<?= $e($merge['id']) ?>"><button type="submit" class="pickup-crm-ignore">Ignore</button></form></div>
                         </article>
                     <?php endforeach; ?>
                 </div>

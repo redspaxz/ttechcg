@@ -614,7 +614,7 @@ final class MysqlCustomerRepository implements CustomerRepository
             'SELECT m.id, m.target_customer_key, c.display_name AS target_name, m.source_display_name, m.merged_at
              FROM pickup_customer_merges m
              INNER JOIN pickup_customers c ON c.customer_key = m.target_customer_key
-             WHERE m.undone_at IS NULL
+             WHERE m.undone_at IS NULL AND m.dismissed_at IS NULL
              ORDER BY m.merged_at DESC, m.id DESC
              LIMIT :limit',
         );
@@ -637,7 +637,7 @@ final class MysqlCustomerRepository implements CustomerRepository
             $mergeStatement = $this->connection->prepare(
                 'SELECT target_customer_key, source_customer_key, snapshot
                  FROM pickup_customer_merges
-                 WHERE id = :id AND undone_at IS NULL
+                 WHERE id = :id AND undone_at IS NULL AND dismissed_at IS NULL
                  FOR UPDATE',
             );
             $mergeStatement->execute(['id' => $mergeId]);
@@ -760,6 +760,20 @@ final class MysqlCustomerRepository implements CustomerRepository
         }
 
         return $this->find($sourceKey) ?? throw new RuntimeException('Restored customer profile could not be loaded.');
+    }
+
+    public function dismissMerge(int $mergeId, string $actorId): void
+    {
+        $this->ensureSchema();
+        $statement = $this->connection->prepare(
+            'UPDATE pickup_customer_merges
+             SET dismissed_by = :actor_id, dismissed_at = UTC_TIMESTAMP()
+             WHERE id = :id AND undone_at IS NULL AND dismissed_at IS NULL',
+        );
+        $statement->execute(['actor_id' => $actorId, 'id' => $mergeId]);
+        if ($statement->rowCount() === 0) {
+            throw new InvalidArgumentException('This merge has already been undone, ignored, or no longer exists.');
+        }
     }
 
     public function rewardAdjustments(string $customerKey, int $limit): array
@@ -1151,6 +1165,8 @@ final class MysqlCustomerRepository implements CustomerRepository
                 merged_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
                 undone_by CHAR(24) NULL,
                 undone_at DATETIME NULL,
+                dismissed_by CHAR(24) NULL,
+                dismissed_at DATETIME NULL,
                 INDEX pickup_customer_merges_open_idx (undone_at, merged_at),
                 INDEX pickup_customer_merges_target_idx (target_customer_key)
             ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci',
@@ -1177,6 +1193,13 @@ final class MysqlCustomerRepository implements CustomerRepository
                 updated_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP
             ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci',
         );
+        $this->ensureColumn(
+            'dismissed_at',
+            'ALTER TABLE pickup_customer_merges
+                ADD COLUMN dismissed_by CHAR(24) NULL AFTER undone_at,
+                ADD COLUMN dismissed_at DATETIME NULL AFTER dismissed_by',
+            'pickup_customer_merges',
+        );
         $this->ensureColumn('assigned_role', "ALTER TABLE pickup_customers ADD COLUMN assigned_role VARCHAR(20) NOT NULL DEFAULT 'admin' AFTER source");
         $this->ensureColumn(
             'assigned_actor_id',
@@ -1190,10 +1213,10 @@ final class MysqlCustomerRepository implements CustomerRepository
         $this->schemaReady = true;
     }
 
-    private function ensureColumn(string $column, string $alterStatement): void
+    private function ensureColumn(string $column, string $alterStatement, string $table = 'pickup_customers'): void
     {
         try {
-            $this->connection->query('SELECT ' . $column . ' FROM pickup_customers LIMIT 1');
+            $this->connection->query('SELECT ' . $column . ' FROM ' . $table . ' LIMIT 1');
         } catch (PDOException $exception) {
             if ((int) ($exception->errorInfo[1] ?? 0) !== 1054) {
                 throw $exception;

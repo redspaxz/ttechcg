@@ -66,6 +66,12 @@ $assert = static function (bool $condition, string $message): void {
     }
 };
 
+// Source checks compare against LF text; a Windows checkout with core.autocrlf stores files as CRLF.
+$readSource = static function (string $path): string|false {
+    $contents = file_get_contents($path);
+    return is_string($contents) ? str_replace("\r\n", "\n", $contents) : false;
+};
+
 $totpForSecret = static function (string $secret, ?int $step = null): string {
     $alphabet = 'ABCDEFGHIJKLMNOPQRSTUVWXYZ234567';
     $bits = '';
@@ -2095,6 +2101,25 @@ $customerController->merge(new Request('POST', '/dhl/pickupsheet/customers/merge
     'source_customer_key' => $controllerDuplicate->customerKey,
 ]));
 $assert($customerService->find($controllerDuplicate->customerKey) === null, 'A previously undone merge should be repeatable.');
+$assert(str_contains($customerController->index(new Request('GET', '/dhl/pickupsheet/customers'))->body(), 'data-crm-dismiss-merge-form'), 'Recent merges should offer an Ignore button beside Undo merge.');
+$repeatedMergeId = (string) ($customerService->recentMerges()[0]['id'] ?? '');
+$invalidDismissCsrf = $customerController->dismissMerge(new Request('POST', '/dhl/pickupsheet/customers/merge/dismiss', [], [
+    '_token' => 'invalid-token',
+    'merge_id' => $repeatedMergeId,
+]));
+$assert($invalidDismissCsrf->status() === 419, 'Ignoring a CRM merge should require a valid CSRF token.');
+$dismissMerge = $customerController->dismissMerge(new Request('POST', '/dhl/pickupsheet/customers/merge/dismiss', [], [
+    '_token' => $pickupCsrf->token(),
+    'merge_id' => $repeatedMergeId,
+]));
+$assert($dismissMerge->status() === 303 && !in_array($repeatedMergeId, array_map(static fn (array $merge): string => (string) $merge['id'], $customerService->recentMerges()), true), 'Ignoring a merge should remove it from Recent merges.');
+$undoAfterDismiss = false;
+try {
+    $customerService->undoMerge($repeatedMergeId, str_repeat('a', 24));
+} catch (InvalidArgumentException $exception) {
+    $undoAfterDismiss = true;
+}
+$assert($undoAfterDismiss && $customerService->find($controllerDuplicate->customerKey) === null, 'An ignored merge should no longer be undoable.');
 $existingCustomerSearch = json_decode($customerController->search(new Request('GET', '/dhl/pickupsheet/customers/search', ['q' => 'controller client'], [], '', $recordsServer))->body(), true);
 $assert(($existingCustomerSearch['existing']['name'] ?? '') === 'Controller Client' && ($existingCustomerSearch['existing']['url'] ?? '') === '/dhl/pickupsheet/customers/edit?customer=' . $customerKey, 'CRM autocomplete should link an exactly matching name to its existing profile.');
 $aliasCustomerSearch = json_decode($customerController->search(new Request('GET', '/dhl/pickupsheet/customers/search', ['q' => 'Controller Clien'], [], '', $recordsServer))->body(), true);
@@ -2371,7 +2396,7 @@ $confirmedMfaReset = $pickupController->resetUserMfa(new Request('POST', '/dhl/p
     'code' => $totpForSecret((string) $replacementMfaSecret),
 ], '', $recordsServer));
 $assert($confirmedMfaReset->status() === 303 && !$mfaService->isEnrolled('local-user:' . $managedAccount->id), 'A fully reauthenticated administrator should reset enrolled managed-account 2FA and require re-enrollment.');
-$usersView = file_get_contents(dirname(__DIR__) . '/views/pickupsheet/users.php');
+$usersView = $readSource(dirname(__DIR__) . '/views/pickupsheet/users.php');
 $assert(is_string($usersView) && !str_contains($usersView, 'passwordHash'), 'The management view must never access or render a stored password hash.');
 $managedPrincipal = $recordsAccess->authenticateCredentials('managed-operator', 'managed-password-123');
 $assert($managedPrincipal?->role === 'operator' && $managedPrincipal->fullName() === 'Marc Operator', 'A newly created managed operator should authenticate with its account name.');
@@ -2452,8 +2477,8 @@ $assert($recordsAccess->authenticateCredentials('managed-viewer', 'new-managed-p
 
 $recordsSession->login($adminPrincipal);
 $printResponse = $pickupController->print(new Request('GET', '/dhl/pickupsheet/submissions/print', ['reference' => $savedReference], [], '', $recordsServer));
-$printStyles = file_get_contents(dirname(__DIR__) . '/public/assets/print.css');
-$printScript = file_get_contents(dirname(__DIR__) . '/public/assets/print.js');
+$printStyles = $readSource(dirname(__DIR__) . '/public/assets/print.css');
+$printScript = $readSource(dirname(__DIR__) . '/public/assets/print.js');
 $assert($printResponse->status() === 200, 'A direct pickup sheet should render for printing.');
 $assert(str_contains($printResponse->body(), 'print.css?v=20260925-report-charts'), 'The print view should load its cache-safe external stylesheet.');
 $assert(str_contains($printResponse->body(), 'print.js?v=20260825-print-dialog'), 'The print view should load its CSP-compatible external behavior.');
@@ -2580,10 +2605,10 @@ foreach ($partnerAssets as $partnerAsset) {
 }
 $dhlAssetPath = dirname(__DIR__) . '/public/assets/dhl-logo.svg';
 $assert(is_file($dhlAssetPath) && filesize($dhlAssetPath) > 100, 'The DHL logo should be a non-empty local partner asset.');
-$dhlAsset = file_get_contents($dhlAssetPath);
+$dhlAsset = $readSource($dhlAssetPath);
 $assert(is_string($dhlAsset) && str_contains($dhlAsset, 'viewBox="0 0 143.5 20"'), 'The DHL mark should use the official DHL-hosted artwork geometry.');
 $assert(is_string($dhlAsset) && !str_contains($dhlAsset, '<text'), 'The disqualified font-rendered DHL artwork should not remain.');
-$partnerSources = file_get_contents(dirname(__DIR__) . '/public/assets/partners/README.md');
+$partnerSources = $readSource(dirname(__DIR__) . '/public/assets/partners/README.md');
 $assert(is_string($partnerSources) && str_contains($partnerSources, 'www.dhl.com/content/dam/dhl/global/core/images/logos/dhl-logo.svg'), 'The official DHL artwork source should be documented.');
 $assert(!str_contains($home, 'href="/dhl/pickupsheet"'), 'Pickupsheet should not be discoverable from the public site chrome or homepage.');
 $assert(str_contains($home, 'styles.css?v=20260925-app-gaps'), 'Market-performance dashboard styles and prior Pickupsheet refinements should use a cache-safe stylesheet version.');
@@ -2702,7 +2727,7 @@ $assert(str_contains($product, 'type="checkbox" name="privacy_consent" value="1"
 $assert(!str_contains($product, 'name="privacy_consent" value="1" required checked'), 'Pickup-sheet consent should not be preselected.');
 $assert(str_contains($product, '<meta name="robots" content="noindex, nofollow">'), 'The direct Pickupsheet page should not be indexed.');
 $assert(str_contains($product, 'data-analytics-page-view="disabled"'), 'Pickup-sheet operational pages should suppress Analytics page views.');
-$sitemap = file_get_contents(dirname(__DIR__) . '/sitemap.xml');
+$sitemap = $readSource(dirname(__DIR__) . '/sitemap.xml');
 $assert(is_string($sitemap) && !str_contains($sitemap, '/dhl/pickupsheet'), 'The sitemap should not advertise the new Pickupsheet route.');
 $assert(is_string($sitemap) && !str_contains($sitemap, '/pickupsheet'), 'The sitemap should not advertise the legacy Pickupsheet route.');
 $assert(is_string($sitemap) && str_contains($sitemap, '/products'), 'The sitemap should advertise the public product catalogue.');
@@ -2750,11 +2775,11 @@ $assert(str_contains($privacy, 'passphrase-encrypted backups') && str_contains($
 $assert(str_contains($privacy, 'authenticator secrets are encrypted at rest') && str_contains($privacy, 'recovery codes are stored only as keyed hashes'), 'The privacy notice should disclose local 2FA storage protections.');
 $assert(!str_contains($privacy, "visitor's country code from the source IP address") && !str_contains($privacy, 'block portal access from'), 'The privacy notice should not claim that Pickupsheet applies geolocation restrictions.');
 
-$environmentExample = file_get_contents(dirname(__DIR__) . '/.env.example');
+$environmentExample = $readSource(dirname(__DIR__) . '/.env.example');
 $assert(is_string($environmentExample) && str_contains($environmentExample, 'APP_TIMEZONE=Africa/Douala'), 'The environment example should use Cameroon time.');
 $assert(is_string($environmentExample) && str_contains($environmentExample, 'CONTACT_EMAIL=info@ttechcg.com'), 'The environment example should route production inquiries to the company mailbox.');
 $assert(is_string($environmentExample) && str_contains($environmentExample, 'PICKUPSHEET_RBAC_USERS=records-admin|admin|Records|Administrator|replace-with-password-hash'), 'The environment example should configure role-based records users with names and server-managed password hashes.');
-$credentialGenerator = file_get_contents(dirname(__DIR__) . '/bin/generate-records-credentials.php');
+$credentialGenerator = $readSource(dirname(__DIR__) . '/bin/generate-records-credentials.php');
 $assert(is_string($credentialGenerator) && str_contains($credentialGenerator, "['viewer', 'operator', 'admin']"), 'The credential generator should restrict accounts to defined RBAC roles.');
 $assert(is_string($credentialGenerator) && str_contains($credentialGenerator, "PICKUPSHEET_RBAC_USERS='"), 'The credential generator should provide a cPanel-ready RBAC environment value.');
 $assert(is_string($environmentExample) && str_contains($environmentExample, 'RUN_MIGRATIONS=true'), 'The environment example should explicitly document migration execution.');
@@ -2768,7 +2793,7 @@ $assert(is_string($environmentExample) && str_contains($environmentExample, 'CLO
 $assert(is_string($environmentExample) && !str_contains($environmentExample, 'PICKUPSHEET_GEO_RESTRICTION_ENABLED=') && !str_contains($environmentExample, 'PICKUPSHEET_ALLOWED_COUNTRIES='), 'The environment example should not expose obsolete country restriction settings.');
 $assert(is_string($environmentExample) && str_contains($environmentExample, 'CLOUDFLARE_ACCESS_AUDIENCE='), 'The environment example should document the application audience required for token validation.');
 
-$styles = file_get_contents(dirname(__DIR__) . '/public/assets/styles.css');
+$styles = $readSource(dirname(__DIR__) . '/public/assets/styles.css');
 $assert(is_string($styles) && str_contains($styles, '--navy: #0b0b0c;'), 'T&Tech near-black should be the minimal corporate foundation.');
 $assert(is_string($styles) && str_contains($styles, '--copper: #d40511;'), 'T&Tech red should be the corporate accent.');
 $assert(is_string($styles) && str_contains($styles, '--paper: #ffffff;'), 'T&Tech white should be the corporate canvas.');
@@ -2846,7 +2871,7 @@ $assert(is_string($styles) && str_contains($styles, '.pickup-admin-workspace > .
 $assert(is_string($styles) && str_contains($styles, '.pickup-header-links { display: flex; min-width: 0; flex-wrap: wrap;') && str_contains($styles, 'flex-direction: row; justify-content: flex-start; gap: 8px 14px;'), 'Link-heavy administrator headers should wrap compactly instead of becoming a tall scrolling column.');
 $assert(is_string($styles) && str_contains($styles, '.pickup-admin-actions a:last-child { grid-column: 1 / -1; border-right: 0; border-bottom: 0; }'), 'An odd final dashboard action should fill its tablet row without leaving an empty grid cell.');
 
-$script = file_get_contents(dirname(__DIR__) . '/public/assets/app.js');
+$script = $readSource(dirname(__DIR__) . '/public/assets/app.js');
 $assert(is_string($script) && str_contains($script, "event.key === 'Escape'"), 'The mobile navigation should close with Escape.');
 $assert(is_string($script) && str_contains($script, "toggleAttribute('inert', open)"), 'The open mobile navigation should isolate background content.');
 $assert(is_string($script) && str_contains($script, "matchMedia('(min-width: 821px)')"), 'The navigation state should reset when returning to desktop width.');
@@ -2879,8 +2904,8 @@ $assert(is_string($script) && str_contains($script, 'showConsignorSuggestions(in
 $assert(is_string($script) && str_contains($script, 'consignorSearchEndpoint') && str_contains($script, "endpoint.searchParams.set('q', query)") && str_contains($script, 'consignorSearchGeneration') && str_contains($script, "setAttribute('aria-busy'") && str_contains($script, 'option.animate(') && str_contains($script, '}, 140);'), 'The consignor autocomplete should progressively debounce protected AJAX searches, reject stale results, expose loading state, and animate refreshed options with JavaScript.');
 $assert(is_string($script) && !str_contains($script, 'scrollIntoView'), 'AJAX pagination should update in place without moving the user\'s viewport.');
 
-$analyticsScript = file_get_contents(dirname(__DIR__) . '/public/assets/analytics.js');
-$googleTagScript = file_get_contents(dirname(__DIR__) . '/public/assets/google-tag.js');
+$analyticsScript = $readSource(dirname(__DIR__) . '/public/assets/analytics.js');
+$googleTagScript = $readSource(dirname(__DIR__) . '/public/assets/google-tag.js');
 $assert(is_string($googleTagScript) && str_contains($googleTagScript, "window.gtag('config', 'G-WVFXFB5H3M')"), 'The supplied Google Analytics measurement ID should be configured exactly once.');
 $assert(is_string($googleTagScript) && str_contains($googleTagScript, "window.gtag('js', new Date())"), 'The supplied Google tag should initialize gtag.js.');
 $assert(is_string($googleTagScript) && str_contains($googleTagScript, "analytics_storage: 'denied'"), 'Analytics storage should be denied by default.');
@@ -2890,7 +2915,7 @@ $assert(is_string($googleTagScript) && str_contains($googleTagScript, 'window.lo
 $assert(is_string($analyticsScript) && str_contains($analyticsScript, "analytics_storage: 'granted'"), 'The consent controller should grant analytics storage only after acceptance.');
 $assert(is_string($analyticsScript) && str_contains($analyticsScript, 'analyticsSuppressed'), 'Consent acceptance should not re-enable Analytics on sensitive routes.');
 $assert(is_string($analyticsScript) && str_contains($analyticsScript, "preference === 'granted'"), 'A saved grant should restore accepted analytics consent.');
-$htaccess = file_get_contents(dirname(__DIR__) . '/.htaccess');
+$htaccess = $readSource(dirname(__DIR__) . '/.htaccess');
 $assert(is_string($htaccess) && str_contains($htaccess, "script-src 'self' https://www.googletagmanager.com"), 'The CSP should permit the supplied Google tag script after consent.');
 $assert(is_string($htaccess) && str_contains($htaccess, "connect-src 'self' https://www.googletagmanager.com https://www.google-analytics.com https://*.google-analytics.com"), 'The CSP should permit Google Analytics measurement requests after consent.');
 $assert(is_string($htaccess) && !str_contains($htaccess, "script-src 'self' 'unsafe-inline'"), 'The Google tag integration should not weaken CSP with inline-script permission.');
@@ -2901,32 +2926,32 @@ $assert(is_string($htaccess) && str_contains($htaccess, 'Cross-Origin-Opener-Pol
 $assert(is_string($htaccess) && str_contains($htaccess, 'https://ttechcg.com%{REQUEST_URI} [R=308,L,NE]'), 'Production should redirect the first request to canonical HTTPS before credentials can reach PHP.');
 $assert(is_string($htaccess) && str_contains($htaccess, 'E=HTTP_AUTHORIZATION:%1'), 'Apache should forward HTTPS Basic credentials to PHP safely.');
 
-$cpanelDeployment = file_get_contents(dirname(__DIR__) . '/.cpanel.yml');
+$cpanelDeployment = $readSource(dirname(__DIR__) . '/.cpanel.yml');
 $assert(is_string($cpanelDeployment) && str_contains($cpanelDeployment, 'chmod 700 ${DEPLOYPATH}storage/sessions ${DEPLOYPATH}storage/security'), 'Deployment should restrict writable runtime storage to the account owner.');
 $assert(is_string($cpanelDeployment) && str_contains($cpanelDeployment, 'test -w ${DEPLOYPATH}storage/security'), 'Deployment should fail if persistent security storage is not writable.');
 
-$verificationWorkflow = file_get_contents(dirname(__DIR__) . '/.github/workflows/verify.yml');
+$verificationWorkflow = $readSource(dirname(__DIR__) . '/.github/workflows/verify.yml');
 $assert(is_string($verificationWorkflow) && str_contains($verificationWorkflow, 'actions/checkout@11d5960a326750d5838078e36cf38b85af677262'), 'CI dependencies should be pinned to an immutable commit.');
 $assert(is_string($verificationWorkflow) && !str_contains($verificationWorkflow, 'actions/checkout@v4'), 'CI should not execute a mutable action tag.');
 $assert(is_string($verificationWorkflow) && str_contains($verificationWorkflow, 'node tests/consignor-autocomplete.test.js'), 'CI should exercise the animated consignor autocomplete behavior.');
 
-$database = file_get_contents(dirname(__DIR__) . '/src/Shared/Infrastructure/Database.php');
+$database = $readSource(dirname(__DIR__) . '/src/Shared/Infrastructure/Database.php');
 $assert(is_string($database) && str_contains($database, "extension_loaded('pdo_mysql')"), 'The application should use PDO MySQL.');
 
-$consentMigration = file_get_contents(dirname(__DIR__) . '/database/migrations/002_add_inquiry_privacy_consent.sql');
+$consentMigration = $readSource(dirname(__DIR__) . '/database/migrations/002_add_inquiry_privacy_consent.sql');
 $assert(is_string($consentMigration) && str_contains($consentMigration, 'privacy_consent_at'), 'The database should retain inquiry consent timestamps.');
 $assert(is_string($consentMigration) && str_contains($consentMigration, 'privacy_notice_version'), 'The database should retain privacy-notice versions.');
-$mysqlRepository = file_get_contents(dirname(__DIR__) . '/src/Modules/Contact/Infrastructure/MysqlInquiryRepository.php');
+$mysqlRepository = $readSource(dirname(__DIR__) . '/src/Modules/Contact/Infrastructure/MysqlInquiryRepository.php');
 $assert(is_string($mysqlRepository) && str_contains($mysqlRepository, ':privacy_consent_at'), 'MySQL inquiry persistence should write the consent timestamp.');
-$pickupMigration = file_get_contents(dirname(__DIR__) . '/database/migrations/003_create_pickup_sheets.sql');
+$pickupMigration = $readSource(dirname(__DIR__) . '/database/migrations/003_create_pickup_sheets.sql');
 $assert(is_string($pickupMigration) && str_contains($pickupMigration, 'CREATE TABLE IF NOT EXISTS pickup_sheets'), 'The database should store pickup-sheet headers.');
 $assert(is_string($pickupMigration) && str_contains($pickupMigration, 'CREATE TABLE IF NOT EXISTS pickup_shipments'), 'The database should store repeatable shipment rows.');
 $assert(is_string($pickupMigration) && str_contains($pickupMigration, 'ON DELETE CASCADE'), 'Shipment rows should remain part of the pickup-sheet aggregate.');
-$pickupReferenceMigration = file_get_contents(dirname(__DIR__) . '/database/migrations/004_add_pickup_sheet_reference.sql');
+$pickupReferenceMigration = $readSource(dirname(__DIR__) . '/database/migrations/004_add_pickup_sheet_reference.sql');
 $assert(is_string($pickupReferenceMigration) && str_contains($pickupReferenceMigration, 'reference_number VARCHAR(48)'), 'The database should store a pickup-sheet reference number.');
 $assert(is_string($pickupReferenceMigration) && str_contains($pickupReferenceMigration, 'UNIQUE INDEX pickup_sheets_reference_idx'), 'Pickup-sheet reference numbers should be unique.');
 $assert(is_string($pickupReferenceMigration) && str_contains($pickupReferenceMigration, '-LEGACY-'), 'Existing pickup sheets should receive a migration-safe reference.');
-$pickupMysqlRepository = file_get_contents(dirname(__DIR__) . '/src/Modules/Pickupsheet/Infrastructure/MysqlPickupSheetRepository.php');
+$pickupMysqlRepository = $readSource(dirname(__DIR__) . '/src/Modules/Pickupsheet/Infrastructure/MysqlPickupSheetRepository.php');
 $assert(is_string($pickupMysqlRepository) && str_contains($pickupMysqlRepository, 'beginTransaction()'), 'Pickup-sheet headers and rows should save transactionally.');
 $assert(is_string($pickupMysqlRepository) && str_contains($pickupMysqlRepository, ':reference_number'), 'MySQL persistence should store the generated pickup-sheet reference.');
 $assert(is_string($pickupMysqlRepository) && str_contains($pickupMysqlRepository, ':total_cash_received_xaf'), 'MySQL persistence should store the server-calculated XAF total.');
@@ -2948,20 +2973,20 @@ $assert(str_contains($pickupMysqlRepository, 'public function consignorSuggestio
 $assert(str_contains($pickupMysqlRepository, 'LEFT(LOWER(TRIM(ps.consignor)), CHAR_LENGTH(LOWER(:query_length))) = LOWER(:query_prefix)'), 'MySQL consignor autocomplete should enforce a normalized prefix match without wildcard input.');
 $assert(str_contains($pickupMysqlRepository, 'LEAST(COUNT(*), 9999) * 100') && str_contains($pickupMysqlRepository, 'DATEDIFF(UTC_DATE(), MAX(p.collection_date))'), 'MySQL relevance scoring should safely combine exact-match, bounded frequency, and recency signals.');
 $assert(str_contains($pickupMysqlRepository, 'p.deleted_at IS NULL') && str_contains($pickupMysqlRepository, "TRIM(ps.consignor) <> \\'\\'"), 'Consignor suggestions should exclude deleted sheets and blank names.');
-$sessionActivityMigration = file_get_contents(dirname(__DIR__) . '/database/migrations/010_create_pickup_records_session_activity.sql');
+$sessionActivityMigration = $readSource(dirname(__DIR__) . '/database/migrations/010_create_pickup_records_session_activity.sql');
 $assert(is_string($sessionActivityMigration) && str_contains($sessionActivityMigration, 'CREATE TABLE IF NOT EXISTS pickup_records_session_activity'), 'MySQL should persist successful staff session activity idempotently.');
 $assert(is_string($sessionActivityMigration) && str_contains($sessionActivityMigration, 'logged_in_at') && str_contains($sessionActivityMigration, 'last_seen_at') && str_contains($sessionActivityMigration, 'logged_out_at'), 'Session activity storage should retain login, activity, and logout timestamps.');
-$sessionActivityRepository = file_get_contents(dirname(__DIR__) . '/src/Shared/Infrastructure/MysqlRecordsSessionActivityRepository.php');
+$sessionActivityRepository = $readSource(dirname(__DIR__) . '/src/Shared/Infrastructure/MysqlRecordsSessionActivityRepository.php');
 $assert(is_string($sessionActivityRepository) && str_contains($sessionActivityRepository, 'COUNT(*) AS login_count'), 'MySQL session activity should aggregate login frequency per user.');
 $assert(is_string($sessionActivityRepository) && str_contains($sessionActivityRepository, 'TIMESTAMPDIFF(SECOND'), 'MySQL session activity should calculate session duration from server timestamps.');
 $assert(is_string($sessionActivityRepository) && str_contains($sessionActivityRepository, 'LIMIT :limit OFFSET :offset') && str_contains($sessionActivityRepository, 'total_records'), 'User activity pagination should count and page grouped accounts in MySQL.');
-$recordsSessionSource = file_get_contents(dirname(__DIR__) . '/src/Shared/Security/RecordsSession.php');
-$csrfSource = file_get_contents(dirname(__DIR__) . '/src/Shared/Security/Csrf.php');
-$unsafeRequestPolicySource = file_get_contents(dirname(__DIR__) . '/src/Shared/Security/UnsafeRequestPolicy.php');
-$applicationSource = file_get_contents(dirname(__DIR__) . '/src/Shared/Http/Application.php');
-$authControllerSource = file_get_contents(dirname(__DIR__) . '/src/Modules/Pickupsheet/UI/PickupsheetAuthController.php');
-$pickupControllerSource = file_get_contents(dirname(__DIR__) . '/src/Modules/Pickupsheet/UI/PickupsheetController.php');
-$adminMfaResetView = file_get_contents(dirname(__DIR__) . '/views/pickupsheet/admin-mfa-reset.php');
+$recordsSessionSource = $readSource(dirname(__DIR__) . '/src/Shared/Security/RecordsSession.php');
+$csrfSource = $readSource(dirname(__DIR__) . '/src/Shared/Security/Csrf.php');
+$unsafeRequestPolicySource = $readSource(dirname(__DIR__) . '/src/Shared/Security/UnsafeRequestPolicy.php');
+$applicationSource = $readSource(dirname(__DIR__) . '/src/Shared/Http/Application.php');
+$authControllerSource = $readSource(dirname(__DIR__) . '/src/Modules/Pickupsheet/UI/PickupsheetAuthController.php');
+$pickupControllerSource = $readSource(dirname(__DIR__) . '/src/Modules/Pickupsheet/UI/PickupsheetController.php');
+$adminMfaResetView = $readSource(dirname(__DIR__) . '/views/pickupsheet/admin-mfa-reset.php');
 $assert(is_string($recordsSessionSource) && str_contains($recordsSessionSource, 'ID_RENEWAL_INTERVAL = 900') && str_contains($recordsSessionSource, 'public function renewId()') && str_contains($recordsSessionSource, 'public function authenticatedWithin'), 'Session management should renew identifiers periodically and expose bounded authentication freshness for sensitive actions.');
 $assert(is_string($csrfSource) && str_contains($csrfSource, 'public function rotate()'), 'The synchronizer-token service should rotate CSRF state after authentication transitions.');
 $assert(is_string($unsafeRequestPolicySource) && str_contains($unsafeRequestPolicySource, "['cross-site', 'same-site', 'none']") && str_contains($unsafeRequestPolicySource, "header('Origin')") && str_contains($unsafeRequestPolicySource, "header('Referer')"), 'Unsafe requests should use Fetch Metadata and source-origin validation before routing.');
@@ -2969,34 +2994,35 @@ $assert(is_string($applicationSource) && str_contains($applicationSource, "event
 $assert(is_string($authControllerSource) && str_contains($authControllerSource, "'pickup-login-account'") && substr_count($authControllerSource, '$this->csrf->rotate();') >= 7, 'Authentication should combine account-targeted throttling with CSRF rotation across login, logout, and factor changes.');
 $assert(is_string($pickupControllerSource) && str_contains($pickupControllerSource, 'reauthenticateMfaReset') && str_contains($pickupControllerSource, "authenticatedWithin(300)") && str_contains($pickupControllerSource, "'reauthenticated_with'"), 'Managed-user factor reset should require and audit fresh administrator reauthentication.');
 $assert(is_string($adminMfaResetView) && str_contains($adminMfaResetView, 'Current administrator password') && str_contains($adminMfaResetView, 'Your authenticator or recovery code') && str_contains($adminMfaResetView, 'name="confirm_reset"'), 'The managed-user factor reset screen should collect both local factors and explicit confirmation.');
-$securityEventMigration = file_get_contents(dirname(__DIR__) . '/database/migrations/011_create_pickup_security_events.sql');
+$securityEventMigration = $readSource(dirname(__DIR__) . '/database/migrations/011_create_pickup_security_events.sql');
 $assert(is_string($securityEventMigration) && str_contains($securityEventMigration, 'CREATE TABLE IF NOT EXISTS pickup_security_events'), 'MySQL should persist detailed user audit events idempotently.');
 $assert(is_string($securityEventMigration) && str_contains($securityEventMigration, 'actor_id CHAR(24)') && str_contains($securityEventMigration, 'client_id CHAR(64)'), 'Detailed logs should correlate actors and clients through pseudonymous identifiers.');
-$securityEventRepository = file_get_contents(dirname(__DIR__) . '/src/Shared/Infrastructure/MysqlSecurityEventRepository.php');
+$securityEventRepository = $readSource(dirname(__DIR__) . '/src/Shared/Infrastructure/MysqlSecurityEventRepository.php');
 $assert(is_string($securityEventRepository) && str_contains($securityEventRepository, "WHERE event_name LIKE 'pickupsheet.%'"), 'The administrator log should query only Pickupsheet events.');
 $assert(is_string($securityEventRepository) && str_contains($securityEventRepository, 'ORDER BY occurred_at DESC, id DESC'), 'Detailed logs should show the newest events first deterministically.');
 $assert(is_string($securityEventRepository) && str_contains($securityEventRepository, 'LIMIT :limit OFFSET :offset') && str_contains($securityEventRepository, 'SELECT COUNT(*)'), 'Detailed logs should use bounded database pagination with an accurate total.');
-$customerMigration = file_get_contents(dirname(__DIR__) . '/database/migrations/012_create_pickup_customers.sql');
+$customerMigration = $readSource(dirname(__DIR__) . '/database/migrations/012_create_pickup_customers.sql');
 $assert(is_string($customerMigration) && str_contains($customerMigration, 'CREATE TABLE IF NOT EXISTS pickup_customers'), 'MySQL should create CRM customer profiles idempotently.');
 $assert(is_string($customerMigration) && str_contains($customerMigration, 'next_follow_up_on DATE') && str_contains($customerMigration, 'updated_by CHAR(24)'), 'CRM storage should support follow-up scheduling and pseudonymous administrator attribution.');
-$customerAssignmentMigration = file_get_contents(dirname(__DIR__) . '/database/migrations/016_assign_pickup_customers.sql');
+$customerAssignmentMigration = $readSource(dirname(__DIR__) . '/database/migrations/016_assign_pickup_customers.sql');
 $assert(is_string($customerAssignmentMigration) && str_contains($customerAssignmentMigration, 'assigned_role VARCHAR(20)') && str_contains($customerAssignmentMigration, "SET country_code = 'CM', assigned_role = 'admin'") && str_contains($customerAssignmentMigration, "DEFAULT 'CM'"), 'CRM migration 016 should assign every customer to administrators and enforce Cameroon as the default country.');
-$customerDuplicateMigration = file_get_contents(dirname(__DIR__) . '/database/migrations/018_prevent_duplicate_crm_customers.sql');
+$customerDuplicateMigration = $readSource(dirname(__DIR__) . '/database/migrations/018_prevent_duplicate_crm_customers.sql');
 $assert(is_string($customerDuplicateMigration) && str_contains($customerDuplicateMigration, 'UNIQUE INDEX pickup_customers_name_unique_idx (display_name)'), 'CRM organization names should be protected by a database uniqueness constraint.');
 $assert(is_string($customerDuplicateMigration) && strpos($customerDuplicateMigration, 'DELETE duplicate_customer') < strpos($customerDuplicateMigration, 'ADD UNIQUE INDEX') && str_contains($customerDuplicateMigration, 'UPDATE pickup_customer_reward_adjustments'), 'Migration 018 should fold collation-equal duplicate profiles and their rewards before adding the unique index.');
-$customerActivityMigration = file_get_contents(dirname(__DIR__) . '/database/migrations/021_add_crm_activities_owners_and_sync.sql');
+$customerActivityMigration = $readSource(dirname(__DIR__) . '/database/migrations/021_add_crm_activities_owners_and_sync.sql');
 $assert(is_string($customerActivityMigration) && str_contains($customerActivityMigration, 'CREATE TABLE IF NOT EXISTS pickup_customer_activities') && str_contains($customerActivityMigration, 'ADD COLUMN assigned_actor_id CHAR(24) NULL') && str_contains($customerActivityMigration, 'information_schema.COLUMNS') && str_contains($customerActivityMigration, 'CREATE TABLE IF NOT EXISTS pickup_crm_sync_state') && str_contains($customerActivityMigration, 'ADD INDEX pickup_shipments_consignor_idx (consignor)'), 'Migration 021 should add CRM activities, owners, the sync marker, and the consignor index.');
-$customerRepositorySource = file_get_contents(dirname(__DIR__) . '/src/Modules/CRM/Infrastructure/MysqlCustomerRepository.php');
+$customerRepositorySource = $readSource(dirname(__DIR__) . '/src/Modules/CRM/Infrastructure/MysqlCustomerRepository.php');
 $assert(is_string($customerRepositorySource) && str_contains($customerRepositorySource, 'INSERT INTO pickup_sheet_edit_audit') && str_contains($customerRepositorySource, "'crm_customer_rename'") && str_contains($customerRepositorySource, "'crm_customer_merge'") && str_contains($customerRepositorySource, "'crm_customer_merge_undo'") && str_contains($customerRepositorySource, "'crm_alias_resolution'"), 'CRM-driven consignor changes should write pickup-sheet audit entries.');
 $assert(is_string($customerRepositorySource) && str_contains($customerRepositorySource, 'ps.id > :after_shipment_id AND ps.id <= :through_shipment_id') && str_contains($customerRepositorySource, 'pickup_crm_sync_state'), 'CRM synchronization should only read shipment rows added since the previous run.');
 $assert(is_string($customerRepositorySource) && str_contains($customerRepositorySource, "LIKE :search ESCAPE '!'") && str_contains($customerRepositorySource, 'search_alias.alias_name LIKE :search_alias'), 'Directory search should escape wildcards and include merged-away names.');
 $assert(is_string($customerRepositorySource) && str_contains($customerRepositorySource, 'WHERE customer_key = :rewards_customer_key') && str_contains($customerRepositorySource, 'metrics_customer.customer_key = :metrics_customer_key'), 'Single-profile lookups should aggregate totals for that customer only.');
-$customerSpacingMigration = file_get_contents(dirname(__DIR__) . '/database/migrations/020_collapse_customer_name_spacing.sql');
-$assert(is_string($customerSpacingMigration) && str_contains($customerSpacingMigration, "UPDATE pickup_shipments
-SET consignor = TRIM(REGEXP_REPLACE(consignor, '[[:space:]]+', ' '))") && strpos($customerSpacingMigration, 'DELETE duplicate_customer') < strpos($customerSpacingMigration, 'SET display_name = TRIM(REGEXP_REPLACE'), 'Migration 020 should collapse consignor spacing and fold spacing-variant customers before collapsing profile names.');
-$customerMergeHistoryMigration = file_get_contents(dirname(__DIR__) . '/database/migrations/019_create_pickup_customer_merge_history.sql');
+$customerDismissMigration = $readSource(dirname(__DIR__) . '/database/migrations/022_add_crm_merge_dismissal.sql');
+$assert(is_string($customerDismissMigration) && str_contains($customerDismissMigration, 'ADD COLUMN dismissed_at DATETIME NULL') && str_contains($customerDismissMigration, 'information_schema.COLUMNS'), 'Migration 022 should add merge dismissal columns only when they are missing.');
+$customerSpacingMigration = $readSource(dirname(__DIR__) . '/database/migrations/020_collapse_customer_name_spacing.sql');
+$assert(is_string($customerSpacingMigration) && str_contains($customerSpacingMigration, "UPDATE pickup_shipments\nSET consignor = TRIM(REGEXP_REPLACE(consignor, '[[:space:]]+', ' '))") && strpos($customerSpacingMigration, 'DELETE duplicate_customer') < strpos($customerSpacingMigration, 'SET display_name = TRIM(REGEXP_REPLACE'), 'Migration 020 should collapse consignor spacing and fold spacing-variant customers before collapsing profile names.');
+$customerMergeHistoryMigration = $readSource(dirname(__DIR__) . '/database/migrations/019_create_pickup_customer_merge_history.sql');
 $assert(is_string($customerMergeHistoryMigration) && str_contains($customerMergeHistoryMigration, 'CREATE TABLE IF NOT EXISTS pickup_customer_aliases') && str_contains($customerMergeHistoryMigration, 'CREATE TABLE IF NOT EXISTS pickup_customer_merges'), 'Migration 019 should create CRM alias and merge-history tables idempotently.');
-$customerRepositorySource = file_get_contents(dirname(__DIR__) . '/src/Modules/CRM/Infrastructure/MysqlCustomerRepository.php');
+$customerRepositorySource = $readSource(dirname(__DIR__) . '/src/Modules/CRM/Infrastructure/MysqlCustomerRepository.php');
 $assert(is_string($customerRepositorySource) && str_contains($customerRepositorySource, 'SHA2(LOWER(MIN(TRIM(ps.consignor))), 256)'), 'CRM should connect normalized shipment consignors to customer profiles.');
 $assert(is_string($customerRepositorySource) && str_contains($customerRepositorySource, 'GROUP BY LOWER(TRIM(ps.consignor))') && str_contains($customerRepositorySource, 'SHA2(CONCAT(candidates.name_key') && str_contains($customerRepositorySource, 'ON DUPLICATE KEY UPDATE pickup_customers.id = pickup_customers.id'), 'CRM synchronization should group consignors by collation and never rewrite an existing profile key.');
 $assert(is_string($customerRepositorySource) && str_contains($customerRepositorySource, 'INNER JOIN pickup_customer_aliases alias_map') && str_contains($customerRepositorySource, 'INSERT INTO pickup_customer_merges') && str_contains($customerRepositorySource, 'public function undoMerge('), 'MySQL CRM merges should record aliases and an undo snapshot.');
@@ -3010,52 +3036,52 @@ $assert(is_string($customerRepositorySource) && str_contains($customerRepository
 $assert(is_string($customerRepositorySource) && str_contains($customerRepositorySource, 'points_delta < 0'), 'CRM redemption logs should query only negative point adjustments.');
 $assert(is_string($customerRepositorySource) && str_contains($customerRepositorySource, 'public function merge(') && str_contains($customerRepositorySource, 'UPDATE pickup_customer_reward_adjustments') && str_contains($customerRepositorySource, 'DELETE FROM pickup_customers'), 'MySQL CRM merges should transactionally transfer reward history before deleting the duplicate profile.');
 $assert(is_string($customerRepositorySource) && substr_count($customerRepositorySource, 'LIMIT :limit OFFSET :offset') >= 3, 'Customer directory, shipment history, and redemption history should paginate at query time.');
-$customerRewardsMigration = file_get_contents(dirname(__DIR__) . '/database/migrations/013_create_pickup_customer_rewards.sql');
+$customerRewardsMigration = $readSource(dirname(__DIR__) . '/database/migrations/013_create_pickup_customer_rewards.sql');
 $assert(is_string($customerRewardsMigration) && str_contains($customerRewardsMigration, 'CREATE TABLE IF NOT EXISTS pickup_customer_reward_adjustments'), 'MySQL should create the customer reward adjustment ledger idempotently.');
 $assert(is_string($customerRewardsMigration) && str_contains($customerRewardsMigration, 'points_delta INT NOT NULL') && str_contains($customerRewardsMigration, 'actor_id CHAR(24) NOT NULL'), 'Reward adjustments should store signed changes with pseudonymous administrator attribution.');
 $assert(is_string($customerRepositorySource) && str_contains($customerRepositorySource, 'FOR UPDATE') && str_contains($customerRepositorySource, '$pointsDelta < 0 && $availableBalance + $pointsDelta < 0'), 'MySQL reward redemptions should lock the customer and prevent a negative balance atomically.');
-$pickupEditMigration = file_get_contents(dirname(__DIR__) . '/database/migrations/006_create_pickup_sheet_edit_audit.sql');
+$pickupEditMigration = $readSource(dirname(__DIR__) . '/database/migrations/006_create_pickup_sheet_edit_audit.sql');
 $assert(is_string($pickupEditMigration) && str_contains($pickupEditMigration, 'CREATE TABLE IF NOT EXISTS pickup_sheet_edit_audit'), 'MySQL should provide an idempotent pickup-sheet edit audit migration.');
 $assert(is_string($pickupEditMigration) && str_contains($pickupEditMigration, 'before_snapshot LONGTEXT'), 'The edit audit should retain the prior record snapshot.');
 $assert(is_string($pickupEditMigration) && str_contains($pickupEditMigration, 'after_snapshot LONGTEXT'), 'The edit audit should retain the corrected record snapshot.');
-$pickupLifecycleMigration = file_get_contents(dirname(__DIR__) . '/database/migrations/007_add_pickup_sheet_lifecycle.sql');
+$pickupLifecycleMigration = $readSource(dirname(__DIR__) . '/database/migrations/007_add_pickup_sheet_lifecycle.sql');
 $assert(is_string($pickupLifecycleMigration) && str_contains($pickupLifecycleMigration, "status VARCHAR(20) NOT NULL DEFAULT 'open'"), 'Every persisted pickup sheet should default to open status.');
 $assert(is_string($pickupLifecycleMigration) && str_contains($pickupLifecycleMigration, 'paid_at DATETIME NULL'), 'MySQL should retain when a pickup sheet was marked paid.');
 $assert(is_string($pickupLifecycleMigration) && str_contains($pickupLifecycleMigration, 'deleted_at DATETIME NULL'), 'MySQL should retain audited soft deletion state.');
-$pickupReceiptMigration = file_get_contents(dirname(__DIR__) . '/database/migrations/017_add_pickup_payment_receipts.sql');
+$pickupReceiptMigration = $readSource(dirname(__DIR__) . '/database/migrations/017_add_pickup_payment_receipts.sql');
 $assert(is_string($pickupReceiptMigration) && str_contains($pickupReceiptMigration, 'payment_receipt_number VARCHAR(64) NULL'), 'Pickup-sheet payment migration should persist required receipt proof without invalidating legacy paid records.');
-$recordsUserMigration = file_get_contents(dirname(__DIR__) . '/database/migrations/005_create_pickup_records_users.sql');
+$recordsUserMigration = $readSource(dirname(__DIR__) . '/database/migrations/005_create_pickup_records_users.sql');
 $assert(is_string($recordsUserMigration) && str_contains($recordsUserMigration, 'CREATE TABLE IF NOT EXISTS pickup_records_users'), 'MySQL should persist managed records-user accounts.');
 $assert(is_string($recordsUserMigration) && str_contains($recordsUserMigration, 'UNIQUE INDEX pickup_records_users_username_idx'), 'Managed records usernames should be unique.');
 $assert(is_string($recordsUserMigration) && str_contains($recordsUserMigration, 'created_by CHAR(24)'), 'Managed account changes should retain a pseudonymous administrator audit identifier.');
-$recordsUserNamesMigration = file_get_contents(dirname(__DIR__) . '/database/migrations/009_add_pickup_records_user_names.sql');
+$recordsUserNamesMigration = $readSource(dirname(__DIR__) . '/database/migrations/009_add_pickup_records_user_names.sql');
 $assert(is_string($recordsUserNamesMigration) && str_contains($recordsUserNamesMigration, 'first_name VARCHAR(49)') && str_contains($recordsUserNamesMigration, 'last_name VARCHAR(49)'), 'Managed users should receive required first and last name storage.');
 $assert(is_string($recordsUserNamesMigration) && str_contains($recordsUserNamesMigration, 'MODIFY COLUMN first_name VARCHAR(49) NOT NULL'), 'The name migration should enforce required identity fields after backfilling existing users.');
-$loginMethodMigration = file_get_contents(dirname(__DIR__) . '/database/migrations/014_create_pickup_auth_settings.sql');
+$loginMethodMigration = $readSource(dirname(__DIR__) . '/database/migrations/014_create_pickup_auth_settings.sql');
 $assert(is_string($loginMethodMigration) && str_contains($loginMethodMigration, 'CREATE TABLE IF NOT EXISTS pickup_auth_settings') && str_contains($loginMethodMigration, 'local_login_enabled TINYINT(1)'), 'MySQL should persist administrator sign-in method preferences idempotently.');
-$localMfaMigration = file_get_contents(dirname(__DIR__) . '/database/migrations/015_create_pickup_local_mfa.sql');
+$localMfaMigration = $readSource(dirname(__DIR__) . '/database/migrations/015_create_pickup_local_mfa.sql');
 $assert(is_string($localMfaMigration) && str_contains($localMfaMigration, 'CREATE TABLE IF NOT EXISTS pickup_local_mfa'), 'MySQL should persist local authenticator enrollment idempotently.');
 $assert(is_string($localMfaMigration) && str_contains($localMfaMigration, 'secret_envelope TEXT NOT NULL') && str_contains($localMfaMigration, 'recovery_code_hashes LONGTEXT NOT NULL') && str_contains($localMfaMigration, 'last_used_step BIGINT NULL'), 'Local 2FA storage should retain only encrypted secrets, recovery hashes, and TOTP replay state.');
-$loginMethodServiceSource = file_get_contents(dirname(__DIR__) . '/src/Shared/Security/LoginMethodSettingsService.php');
+$loginMethodServiceSource = $readSource(dirname(__DIR__) . '/src/Shared/Security/LoginMethodSettingsService.php');
 $assert(is_string($loginMethodServiceSource) && str_contains($loginMethodServiceSource, 'avoid locking every administrator out') && str_contains($loginMethodServiceSource, 'mandatory 2FA encryption key') && str_contains($loginMethodServiceSource, 'PHP OpenSSL support'), 'Sign-in preference enforcement should preserve explicit environment and MFA hard limits while preventing lockout.');
-$recordsUserMysqlRepository = file_get_contents(dirname(__DIR__) . '/src/Shared/Infrastructure/MysqlRecordsUserRepository.php');
+$recordsUserMysqlRepository = $readSource(dirname(__DIR__) . '/src/Shared/Infrastructure/MysqlRecordsUserRepository.php');
 $assert(is_string($recordsUserMysqlRepository) && str_contains($recordsUserMysqlRepository, 'BINARY username = :username AND active = 1'), 'Managed account authentication should require an exact username and active status.');
 $assert(is_string($recordsUserMysqlRepository) && str_contains($recordsUserMysqlRepository, 'password_hash = :password_hash'), 'Administrators should be able to rotate managed account passwords.');
 $assert(is_string($recordsUserMysqlRepository) && str_contains($recordsUserMysqlRepository, 'first_name = :first_name') && str_contains($recordsUserMysqlRepository, 'last_name = :last_name'), 'Administrators should be able to maintain required account names.');
 $assert(is_string($recordsUserMysqlRepository) && str_contains($recordsUserMysqlRepository, "DELETE FROM pickup_records_users WHERE id = :id AND role IN ('operator', 'viewer')"), 'Administrators should be able to delete only confirmed lower-tier local accounts.');
 $assert(is_string($recordsUserMysqlRepository) && str_contains($recordsUserMysqlRepository, 'private function ensureSchema()'), 'Administrator account management should initialize its idempotent schema without cPanel CLI access.');
-$adminCredentialMigration = file_get_contents(dirname(__DIR__) . '/database/migrations/008_create_pickup_records_admin_credentials.sql');
+$adminCredentialMigration = $readSource(dirname(__DIR__) . '/database/migrations/008_create_pickup_records_admin_credentials.sql');
 $assert(is_string($adminCredentialMigration) && str_contains($adminCredentialMigration, 'CREATE TABLE IF NOT EXISTS pickup_records_admin_credentials'), 'MySQL should persist administrator password overrides outside source-controlled environment configuration.');
 $assert(str_contains($recordsUserMysqlRepository, 'saveAdminPasswordHash'), 'An administrator should be able to securely rotate the server-defined portal password.');
-$passwordHasherSource = file_get_contents(dirname(__DIR__) . '/src/Shared/Security/PasswordHasher.php');
-$credentialGeneratorSource = file_get_contents(dirname(__DIR__) . '/bin/generate-records-credentials.php');
+$passwordHasherSource = $readSource(dirname(__DIR__) . '/src/Shared/Security/PasswordHasher.php');
+$credentialGeneratorSource = $readSource(dirname(__DIR__) . '/bin/generate-records-credentials.php');
 $assert(is_string($passwordHasherSource) && str_contains($passwordHasherSource, 'ARGON2_MEMORY_KIB = 19456') && str_contains($passwordHasherSource, 'ARGON2_TIME_COST = 2') && str_contains($passwordHasherSource, 'BCRYPT_COST = 12'), 'Password storage should prefer OWASP-minimum Argon2id parameters with a hardened bcrypt fallback.');
 $assert(is_string($credentialGeneratorSource) && str_contains($credentialGeneratorSource, 'PasswordHasher::hash($password)') && !str_contains($credentialGeneratorSource, 'PASSWORD_DEFAULT'), 'Local credential generation should use the shared OWASP-aligned password hasher.');
 $findActiveMethod = substr($recordsUserMysqlRepository, 0, (int) strpos($recordsUserMysqlRepository, 'public function findById'));
 $assert(!str_contains($findActiveMethod, '$this->ensureSchema();'), 'Anonymous or managed-user authentication must not trigger schema creation.');
-$jumpCloudProviderSource = file_get_contents(dirname(__DIR__) . '/src/Shared/Security/JumpCloudOidcProvider.php');
-$cloudflareAccessProviderSource = file_get_contents(dirname(__DIR__) . '/src/Shared/Security/CloudflareAccessProvider.php');
-$oidcHttpSource = file_get_contents(dirname(__DIR__) . '/src/Shared/Security/NativeOidcHttpClient.php');
+$jumpCloudProviderSource = $readSource(dirname(__DIR__) . '/src/Shared/Security/JumpCloudOidcProvider.php');
+$cloudflareAccessProviderSource = $readSource(dirname(__DIR__) . '/src/Shared/Security/CloudflareAccessProvider.php');
+$oidcHttpSource = $readSource(dirname(__DIR__) . '/src/Shared/Security/NativeOidcHttpClient.php');
 $assert(is_string($jumpCloudProviderSource) && str_contains($jumpCloudProviderSource, "'code_challenge_method' => 'S256'"), 'JumpCloud authorization should use PKCE S256.');
 $assert(is_string($jumpCloudProviderSource) && str_contains($jumpCloudProviderSource, 'openssl_verify('), 'JumpCloud ID tokens should be cryptographically verified.');
 $assert(is_string($jumpCloudProviderSource) && str_contains($jumpCloudProviderSource, 'isset($claims[\'at_hash\'])'), 'JumpCloud access tokens should be bound to the ID token whenever an at_hash claim is issued.');
@@ -3066,9 +3092,9 @@ $assert(is_string($cloudflareAccessProviderSource) && str_contains($cloudflareAc
 $assert(is_string($cloudflareAccessProviderSource) && str_contains($cloudflareAccessProviderSource, "'/cdn-cgi/access/get-identity'"), 'Cloudflare Access should retrieve the full identity for complete group mapping.');
 $assert(is_string($cloudflareAccessProviderSource) && str_contains($cloudflareAccessProviderSource, '($claims[\'type\'] ?? null) !== \'app\''), 'Cloudflare Access should accept only application tokens.');
 $assert(is_string($oidcHttpSource) && str_contains($oidcHttpSource, 'CURLOPT_SSL_VERIFYPEER => true') && str_contains($oidcHttpSource, 'CURLOPT_FOLLOWLOCATION => false'), 'OIDC back-channel requests should verify TLS and reject redirects.');
-$backupServiceSource = file_get_contents(dirname(__DIR__) . '/src/Modules/Backup/Application/BackupService.php');
-$backupRepositorySource = file_get_contents(dirname(__DIR__) . '/src/Modules/Backup/Infrastructure/MysqlBackupRepository.php');
-$backupControllerSource = file_get_contents(dirname(__DIR__) . '/src/Modules/Backup/UI/BackupController.php');
+$backupServiceSource = $readSource(dirname(__DIR__) . '/src/Modules/Backup/Application/BackupService.php');
+$backupRepositorySource = $readSource(dirname(__DIR__) . '/src/Modules/Backup/Infrastructure/MysqlBackupRepository.php');
+$backupControllerSource = $readSource(dirname(__DIR__) . '/src/Modules/Backup/UI/BackupController.php');
 $assert(is_string($backupServiceSource) && str_contains($backupServiceSource, "'aes-256-gcm'") && str_contains($backupServiceSource, "hash_pbkdf2('sha256'") && str_contains($backupServiceSource, 'KDF_ITERATIONS = 210000'), 'Backups should use authenticated AES-256-GCM encryption with a hardened PBKDF2-SHA256 key.');
 $assert(is_string($backupServiceSource) && !str_contains($backupServiceSource, 'getenv('), 'Backup encryption must never derive its passphrase from stored environment configuration.');
 $assert(is_string($backupRepositorySource) && str_contains($backupRepositorySource, "'pickup_sheets'") && str_contains($backupRepositorySource, "'pickup_customer_reward_adjustments'") && str_contains($backupRepositorySource, "'pickup_customer_aliases'") && str_contains($backupRepositorySource, "'pickup_customer_merges'") && str_contains($backupRepositorySource, "'pickup_customer_activities'") && str_contains($backupRepositorySource, "'pickup_crm_sync_state'") && str_contains($backupRepositorySource, "'pickup_auth_settings'") && str_contains($backupRepositorySource, "'pickup_local_mfa'"), 'The MySQL backup allowlist should include operational, CRM reward, authentication preference, and encrypted 2FA data.');
@@ -3078,7 +3104,7 @@ $assert(is_string($backupRepositorySource) && !str_contains($backupRepositorySou
 $assert(is_string($backupRepositorySource) && substr_count($backupRepositorySource, 'beginTransaction()') === 2 && substr_count($backupRepositorySource, 'rollBack()') === 2, 'Export should use a consistent snapshot and restore should roll back every partial database change.');
 $assert(is_string($backupControllerSource) && str_contains($backupControllerSource, "!== 'RESTORE'") && str_contains($backupControllerSource, "validate(\$request->input('_token'))"), 'Restore should require exact destructive confirmation and a valid CSRF token.');
 $assert(is_string($backupControllerSource) && str_contains($backupControllerSource, 'creationFailureMessage') && str_contains($backupControllerSource, 'SELECT permission') && str_contains($backupControllerSource, 'PHP OpenSSL extension'), 'Backup creation failures should provide safe, actionable diagnostics without exposing database details.');
-$bootstrap = file_get_contents(dirname(__DIR__) . '/bootstrap/app.php');
+$bootstrap = $readSource(dirname(__DIR__) . '/bootstrap/app.php');
 $assert(is_string($bootstrap) && str_contains($bootstrap, "'httponly' => true"), 'The security session cookie should be inaccessible to client-side scripts.');
 $assert(is_string($bootstrap) && str_contains($bootstrap, "'samesite' => 'Lax'"), 'The security session cookie should use a SameSite policy.');
 $assert(is_string($bootstrap) && str_contains($bootstrap, "session.use_strict_mode', '1'"), 'PHP should reject uninitialized attacker-selected session identifiers.');
@@ -3116,17 +3142,17 @@ $assert(is_string($bootstrap) && str_contains($bootstrap, "'/dhl/pickupsheet/log
 $assert(is_string($bootstrap) && str_contains($bootstrap, "'/dhl/pickupsheet/settings'") && str_contains($bootstrap, "'/dhl/pickupsheet/settings/2fa/enroll'") && str_contains($bootstrap, "'/dhl/pickupsheet/settings/2fa/reset'") && str_contains($bootstrap, "'/dhl/pickupsheet/settings/2fa/recovery-codes'"), 'Pickupsheet should expose signed-in user settings and protected self-service 2FA routes.');
 $assert(is_string($bootstrap) && str_contains($bootstrap, "'/dhl/pickupsheet/logout'"), 'Pickupsheet should expose a CSRF-protected logout route.');
 $assert(is_string($bootstrap) && str_contains($bootstrap, "'/dhl/pickupsheet/consignors/search'"), 'Pickupsheet should expose its protected consignor autocomplete route.');
-$assert(is_string($bootstrap) && str_contains($bootstrap, "'/dhl/pickupsheet/customers/merge'") && str_contains($bootstrap, "'/dhl/pickupsheet/customers/merge/undo'") && str_contains($bootstrap, "'/dhl/pickupsheet/customers/activities'") && str_contains($bootstrap, "'/dhl/pickupsheet/customers/delete'") && str_contains($bootstrap, "'/dhl/pickupsheet/customers/export'"), 'CRM should expose administrator-protected duplicate merge and undo routes.');
-$cloudflareTrustSource = file_get_contents(dirname(__DIR__) . '/src/Shared/Security/CloudflareRequestTrust.php');
-$requestSource = file_get_contents(dirname(__DIR__) . '/src/Shared/Http/Request.php');
-$securityHeadersSource = file_get_contents(dirname(__DIR__) . '/src/Shared/Security/SecurityHeaders.php');
-$retentionSource = file_get_contents(dirname(__DIR__) . '/src/Shared/Infrastructure/SecurityDataRetention.php');
-$securityPolicy = file_get_contents(dirname(__DIR__) . '/SECURITY.md');
-$isoMapping = file_get_contents(dirname(__DIR__) . '/docs/security/iso-27001-application-controls.md');
-$cpanelDeployment = file_get_contents(dirname(__DIR__) . '/.cpanel.yml');
-$apacheConfig = file_get_contents(dirname(__DIR__) . '/.htaccess');
-$workflow = file_get_contents(dirname(__DIR__) . '/.github/workflows/verify.yml');
-$environmentLoader = file_get_contents(dirname(__DIR__) . '/src/Shared/Infrastructure/Environment.php');
+$assert(is_string($bootstrap) && str_contains($bootstrap, "'/dhl/pickupsheet/customers/merge'") && str_contains($bootstrap, "'/dhl/pickupsheet/customers/merge/undo'") && str_contains($bootstrap, "'/dhl/pickupsheet/customers/merge/dismiss'") && str_contains($bootstrap, "'/dhl/pickupsheet/customers/activities'") && str_contains($bootstrap, "'/dhl/pickupsheet/customers/delete'") && str_contains($bootstrap, "'/dhl/pickupsheet/customers/export'"), 'CRM should expose administrator-protected duplicate merge and undo routes.');
+$cloudflareTrustSource = $readSource(dirname(__DIR__) . '/src/Shared/Security/CloudflareRequestTrust.php');
+$requestSource = $readSource(dirname(__DIR__) . '/src/Shared/Http/Request.php');
+$securityHeadersSource = $readSource(dirname(__DIR__) . '/src/Shared/Security/SecurityHeaders.php');
+$retentionSource = $readSource(dirname(__DIR__) . '/src/Shared/Infrastructure/SecurityDataRetention.php');
+$securityPolicy = $readSource(dirname(__DIR__) . '/SECURITY.md');
+$isoMapping = $readSource(dirname(__DIR__) . '/docs/security/iso-27001-application-controls.md');
+$cpanelDeployment = $readSource(dirname(__DIR__) . '/.cpanel.yml');
+$apacheConfig = $readSource(dirname(__DIR__) . '/.htaccess');
+$workflow = $readSource(dirname(__DIR__) . '/.github/workflows/verify.yml');
+$environmentLoader = $readSource(dirname(__DIR__) . '/src/Shared/Infrastructure/Environment.php');
 $assert(is_string($cloudflareTrustSource) && str_contains($cloudflareTrustSource, "'173.245.48.0/20'") && str_contains($cloudflareTrustSource, "'2606:4700::/32'") && str_contains($cloudflareTrustSource, 'CLOUDFLARE_TRUSTED_PROXY_CIDRS'), 'Cloudflare forwarding headers should be constrained to published or explicitly allowlisted proxy networks.');
 $assert(is_string($requestSource) && str_contains($requestSource, "'PROXY_REMOTE_ADDR'") && !str_contains($requestSource, "'HTTP_PROXY_REMOTE_ADDR'"), 'The application should use LiteSpeed server metadata, never a client header, to recover the Cloudflare connection peer.');
 $assert(is_string($securityHeadersSource) && str_contains($securityHeadersSource, 'Content-Security-Policy') && str_contains($securityHeadersSource, 'X-Request-ID') && str_contains($securityHeadersSource, 'Strict-Transport-Security'), 'PHP should enforce security and correlation headers even when Apache header support is unavailable.');

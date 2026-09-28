@@ -853,6 +853,14 @@ document.addEventListener('submit', (event) => {
             return;
         }
     }
+    if (event.target.matches('[data-crm-dismiss-merge-form]')) {
+        const mergeName = event.target.dataset.mergeName || 'the merged customer';
+        const keepName = event.target.dataset.keepName || 'the retained customer';
+        if (!window.confirm(`Keep the merge of ${mergeName} into ${keepName}? It will be removed from Recent merges and can no longer be undone.`)) {
+            event.preventDefault();
+            return;
+        }
+    }
     if (event.target.matches('[data-crm-undo-merge-form]')) {
         const mergeName = event.target.dataset.mergeName || 'the merged customer';
         const keepName = event.target.dataset.keepName || 'the retained customer';
