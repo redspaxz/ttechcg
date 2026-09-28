@@ -164,9 +164,9 @@ final class CustomerController
         return $this->customerTablePage($request, 'shipments');
     }
 
-    public function redemptionPage(Request $request): Response
+    public function pointsPage(Request $request): Response
     {
-        return $this->customerTablePage($request, 'redemptions');
+        return $this->customerTablePage($request, 'points');
     }
 
     public function save(Request $request): Response
@@ -552,6 +552,7 @@ final class CustomerController
                 $points,
                 $request->input('reason'),
                 $this->actorId($principal),
+                $principal->fullName(),
             );
             $pointsDelta = $operation === 'bonus' ? (int) $points : -(int) $points;
             $_SESSION['_crm_flash'] = sprintf(
@@ -568,6 +569,7 @@ final class CustomerController
             ]);
         } catch (InvalidArgumentException $exception) {
             $_SESSION['_crm_errors'] = [$exception->getMessage()];
+            $_SESSION['_crm_reward_form_open'] = true;
             $this->log($request, $principal, 'pickupsheet.crm_reward_adjustment', 'denied', [
                 'resource_id' => preg_match('/^[a-f0-9]{64}$/', $key) === 1 ? substr($key, 0, 24) : null,
                 'reason' => 'validation',
@@ -597,11 +599,13 @@ final class CustomerController
         $editing = $editing || (is_array($old) && $old !== []);
         unset($_SESSION['_crm_old'], $_SESSION['_crm_errors'], $_SESSION['_crm_flash'], $_SESSION['_crm_existing_customer']);
         $activityOld = $_SESSION['_crm_activity_old'] ?? [];
-        unset($_SESSION['_crm_activity_old']);
+        $rewardFormOpen = (bool) ($_SESSION['_crm_reward_form_open'] ?? false);
+        unset($_SESSION['_crm_activity_old'], $_SESSION['_crm_reward_form_open']);
         $activities = [];
+        $activityCount = 0;
+        $showAllActivity = $request->queryString('activity') === 'all';
         $shipments = $this->emptyPage();
-        $rewardAdjustments = [];
-        $rewardRedemptions = $this->emptyPage();
+        $rewardHistory = $this->emptyPage();
         if ($customer !== null) {
             try {
                 $shipments = $this->service->paginatedShipments(
@@ -609,12 +613,12 @@ final class CustomerController
                     $this->pageNumber($request, 'shipment_page'),
                     $this->pageSize($request, 'shipment_per_page'),
                 );
-                $rewardAdjustments = $this->service->rewardAdjustments($customer->customerKey, 20);
-                $activities = $this->service->activities($customer->customerKey, 30);
-                $rewardRedemptions = $this->service->paginatedRewardRedemptions(
+                $activities = $this->service->activities($customer->customerKey, $showAllActivity ? 100 : 10);
+                $activityCount = $this->service->activityCount($customer->customerKey);
+                $rewardHistory = $this->service->paginatedRewardHistory(
                     $customer->customerKey,
-                    $this->pageNumber($request, 'redemption_page'),
-                    $this->pageSize($request, 'redemption_per_page'),
+                    $this->pageNumber($request, 'points_page'),
+                    $this->pageSize($request, 'points_per_page'),
                 );
             } catch (RuntimeException $exception) {
                 error_log($exception->__toString());
@@ -626,14 +630,17 @@ final class CustomerController
             'pageTitle' => $customer === null ? 'Add CRM customer' : 'Customer profile',
             'customer' => $customer,
             'shipments' => $shipments,
-            'rewardAdjustments' => $rewardAdjustments,
-            'rewardRedemptions' => $rewardRedemptions,
+            'rewardHistory' => $rewardHistory,
+            'actorNames' => $this->actorNames($principal),
             'old' => is_array($old) ? $old : [],
             'errors' => is_array($errors) ? $errors : [],
             'flash' => is_string($flash) ? $flash : null,
             'existingCustomer' => is_array($existingCustomer) ? $existingCustomer : null,
             'editing' => $editing && $principal->can('crm_update'),
             'activities' => $activities,
+            'activityCount' => $activityCount,
+            'rewardFormOpen' => $rewardFormOpen,
+            'showAllActivity' => $showAllActivity,
             'activityOld' => is_array($activityOld) ? $activityOld : [],
             'activityTypes' => CustomerService::ACTIVITY_TYPES,
             'ownerOptions' => $principal->can('crm') ? $this->ownerOptions($principal) : [],
@@ -796,6 +803,16 @@ final class CustomerController
         return ['actorId' => $selection, 'name' => $options[$selection]];
     }
 
+    /**
+     * Names for the account codes stored on older reward entries, which predate recorded names.
+     *
+     * @return array<string, string> actor id => display name
+     */
+    private function actorNames(RecordsPrincipal $principal): array
+    {
+        return $principal->can('crm') ? $this->ownerOptions($principal) : [$this->actorId($principal) => $principal->fullName()];
+    }
+
     /** Rate limit and CSRF checks shared by the CRM write actions. */
     private function guardWrite(Request $request, RecordsPrincipal $principal, string $event, string $bucket, int $limit): ?Response
     {
@@ -832,16 +849,17 @@ final class CustomerController
                 $data = [
                     'shipments' => $this->service->paginatedShipments($customerKey, $this->pageNumber($request, 'shipment_page'), $this->pageSize($request, 'shipment_per_page')),
                     'customerKey' => $customerKey,
-                    'currentRedemptionPage' => $this->pageNumber($request, 'redemption_page'),
+                    'currentPointsPage' => $this->pageNumber($request, 'points_page'),
                 ];
                 $template = 'pickupsheet/_customer-shipments';
             } else {
                 $data = [
-                    'rewardRedemptions' => $this->service->paginatedRewardRedemptions($customerKey, $this->pageNumber($request, 'redemption_page'), $this->pageSize($request, 'redemption_per_page')),
+                    'rewardHistory' => $this->service->paginatedRewardHistory($customerKey, $this->pageNumber($request, 'points_page'), $this->pageSize($request, 'points_per_page')),
+                    'actorNames' => $this->actorNames($principal),
                     'customerKey' => $customerKey,
                     'currentShipmentPage' => $this->pageNumber($request, 'shipment_page'),
                 ];
-                $template = 'pickupsheet/_customer-redemptions';
+                $template = 'pickupsheet/_customer-points';
             }
             return Response::html(
                 $this->view->renderPartial($template, $this->common($request, $principal) + $data),

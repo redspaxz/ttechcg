@@ -108,17 +108,17 @@ final class UnavailableCustomerRepository implements CustomerRepository
         throw new RuntimeException('Customer storage is unavailable.');
     }
 
-    public function rewardAdjustments(string $customerKey, int $limit): array
+    public function rewardHistory(string $customerKey, int $limit, int $offset = 0): array
     {
         throw new RuntimeException('Customer storage is unavailable.');
     }
 
-    public function rewardRedemptions(string $customerKey, int $limit, int $offset = 0): array
+    public function rewardHistoryCount(string $customerKey): int
     {
         throw new RuntimeException('Customer storage is unavailable.');
     }
 
-    public function rewardRedemptionCount(string $customerKey): int
+    public function activityCount(string $customerKey): int
     {
         throw new RuntimeException('Customer storage is unavailable.');
     }
@@ -128,6 +128,7 @@ final class UnavailableCustomerRepository implements CustomerRepository
         int $pointsDelta,
         string $reason,
         string $actorId,
+        string $actorName = '',
     ): CustomerProfile
     {
         throw new RuntimeException('Customer storage is unavailable.');

@@ -109,31 +109,21 @@ interface CustomerRepository
     public function dismissMerge(int $mergeId, string $actorId): void;
 
     /**
-     * @return list<array{
-     *     pointsDelta: int,
-     *     reason: string,
-     *     actorId: string,
-     *     createdAt: string
-     * }>
+     * Bonuses and redemptions together, newest first.
+     *
+     * @return list<array{pointsDelta: int, reason: string, actorId: string, actorName: string, createdAt: string}>
      */
-    public function rewardAdjustments(string $customerKey, int $limit): array;
+    public function rewardHistory(string $customerKey, int $limit, int $offset = 0): array;
 
-    /**
-     * @return list<array{
-     *     pointsDelta: int,
-     *     reason: string,
-     *     actorId: string,
-     *     createdAt: string
-     * }>
-     */
-    public function rewardRedemptions(string $customerKey, int $limit, int $offset = 0): array;
+    public function rewardHistoryCount(string $customerKey): int;
 
-    public function rewardRedemptionCount(string $customerKey): int;
+    public function activityCount(string $customerKey): int;
 
     public function addRewardAdjustment(
         string $customerKey,
         int $pointsDelta,
         string $reason,
         string $actorId,
+        string $actorName = '',
     ): CustomerProfile;
 }

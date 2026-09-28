@@ -640,41 +640,33 @@ final class DemoCustomerRepository implements CustomerRepository
         }
     }
 
-    public function rewardAdjustments(string $customerKey, int $limit): array
+    public function rewardHistory(string $customerKey, int $limit, int $offset = 0): array
     {
         $adjustments = $_SESSION[self::REWARDS_SESSION_KEY] ?? [];
-        $adjustments = is_array($adjustments) ? $adjustments : [];
-        $customerAdjustments = array_values(array_filter(
-            $adjustments,
-            static fn (mixed $adjustment): bool => is_array($adjustment)
-                && ($adjustment['customerKey'] ?? '') === $customerKey,
-        ));
-
-        return array_slice(array_reverse($customerAdjustments), 0, max(1, min($limit, 50)));
-    }
-
-    public function rewardRedemptions(string $customerKey, int $limit, int $offset = 0): array
-    {
-        $adjustments = $_SESSION[self::REWARDS_SESSION_KEY] ?? [];
-        $adjustments = is_array($adjustments) ? $adjustments : [];
-        $redemptions = array_values(array_filter(
-            $adjustments,
-            static fn (mixed $adjustment): bool => is_array($adjustment)
-                && ($adjustment['customerKey'] ?? '') === $customerKey
-                && (int) ($adjustment['pointsDelta'] ?? 0) < 0,
-        ));
-
-        return array_slice(array_reverse($redemptions), max(0, $offset), max(1, min($limit, 50)));
-    }
-
-    public function rewardRedemptionCount(string $customerKey): int
-    {
-        $adjustments = $_SESSION[self::REWARDS_SESSION_KEY] ?? [];
-        return count(array_filter(
+        $history = array_values(array_filter(
             is_array($adjustments) ? $adjustments : [],
-            static fn (mixed $adjustment): bool => is_array($adjustment)
-                && ($adjustment['customerKey'] ?? '') === $customerKey
-                && (int) ($adjustment['pointsDelta'] ?? 0) < 0,
+            static fn (mixed $adjustment): bool => is_array($adjustment) && ($adjustment['customerKey'] ?? '') === $customerKey,
+        ));
+
+        return array_map(static fn (array $adjustment): array => [
+            'pointsDelta' => (int) ($adjustment['pointsDelta'] ?? 0),
+            'reason' => (string) ($adjustment['reason'] ?? ''),
+            'actorId' => (string) ($adjustment['actorId'] ?? ''),
+            'actorName' => (string) ($adjustment['actorName'] ?? ''),
+            'createdAt' => (string) ($adjustment['createdAt'] ?? ''),
+        ], array_slice(array_reverse($history), max(0, $offset), max(1, min($limit, 50))));
+    }
+
+    public function rewardHistoryCount(string $customerKey): int
+    {
+        return count($this->rewardHistory($customerKey, PHP_INT_MAX));
+    }
+
+    public function activityCount(string $customerKey): int
+    {
+        return count(array_filter(
+            $this->allActivities(),
+            static fn (array $activity): bool => ($activity['customerKey'] ?? '') === $customerKey,
         ));
     }
 
@@ -683,6 +675,7 @@ final class DemoCustomerRepository implements CustomerRepository
         int $pointsDelta,
         string $reason,
         string $actorId,
+        string $actorName = '',
     ): CustomerProfile
     {
         $customer = $this->find($customerKey);
@@ -700,6 +693,7 @@ final class DemoCustomerRepository implements CustomerRepository
             'pointsDelta' => $pointsDelta,
             'reason' => $reason,
             'actorId' => $actorId,
+            'actorName' => $actorName,
             'createdAt' => gmdate('Y-m-d H:i:s'),
         ];
         $_SESSION[self::REWARDS_SESSION_KEY] = $adjustments;

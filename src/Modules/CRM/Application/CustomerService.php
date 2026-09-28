@@ -268,41 +268,32 @@ final class CustomerService
         ];
     }
 
-    /** @return list<array{pointsDelta: int, reason: string, actorId: string, createdAt: string}> */
-    public function rewardAdjustments(string $customerKey, int $limit = 20): array
-    {
-        if (preg_match('/^[a-f0-9]{64}$/', $customerKey) !== 1) {
-            return [];
-        }
-        return $this->repository->rewardAdjustments($customerKey, max(1, min($limit, 50)));
-    }
-
-    /** @return list<array{pointsDelta: int, reason: string, actorId: string, createdAt: string}> */
-    public function rewardRedemptions(string $customerKey, int $limit = 20): array
-    {
-        if (preg_match('/^[a-f0-9]{64}$/', $customerKey) !== 1) {
-            return [];
-        }
-        return $this->repository->rewardRedemptions($customerKey, max(1, min($limit, 50)));
-    }
-
-    /** @return array{items: list<array{pointsDelta: int, reason: string, actorId: string, createdAt: string}>, page: int, perPage: int, totalRecords: int, totalPages: int} */
-    public function paginatedRewardRedemptions(string $customerKey, int $page = 1, int $perPage = 10): array
+    /**
+     * Bonuses and redemptions together, newest first.
+     *
+     * @return array{items: list<array{pointsDelta: int, reason: string, actorId: string, actorName: string, createdAt: string}>, page: int, perPage: int, totalRecords: int, totalPages: int}
+     */
+    public function paginatedRewardHistory(string $customerKey, int $page = 1, int $perPage = 10): array
     {
         if (preg_match('/^[a-f0-9]{64}$/', $customerKey) !== 1) {
             return $this->emptyPage($perPage);
         }
         $perPage = max(1, min($perPage, 50));
-        $totalRecords = $this->repository->rewardRedemptionCount($customerKey);
+        $totalRecords = $this->repository->rewardHistoryCount($customerKey);
         $totalPages = max(1, (int) ceil($totalRecords / $perPage));
         $page = max(1, min($page, $totalPages));
         return [
-            'items' => $this->repository->rewardRedemptions($customerKey, $perPage, ($page - 1) * $perPage),
+            'items' => $this->repository->rewardHistory($customerKey, $perPage, ($page - 1) * $perPage),
             'page' => $page,
             'perPage' => $perPage,
             'totalRecords' => $totalRecords,
             'totalPages' => $totalPages,
         ];
+    }
+
+    public function activityCount(string $customerKey): int
+    {
+        return preg_match('/^[a-f0-9]{64}$/', $customerKey) === 1 ? $this->repository->activityCount($customerKey) : 0;
     }
 
     public function adjustRewards(
@@ -311,6 +302,7 @@ final class CustomerService
         mixed $points,
         mixed $reason,
         string $actorId,
+        string $actorName = '',
     ): CustomerProfile
     {
         if (preg_match('/^[a-f0-9]{24}$/', $actorId) !== 1) {
@@ -333,7 +325,7 @@ final class CustomerService
         }
 
         $pointsDelta = $operation === 'bonus' ? (int) $points : -(int) $points;
-        if ($customer->rewardBalance() + $pointsDelta < 0) {
+        if ($pointsDelta < 0 && $customer->rewardBalance() + $pointsDelta < 0) {
             throw new InvalidArgumentException('A redemption cannot exceed the available reward balance.');
         }
 
@@ -342,6 +334,7 @@ final class CustomerService
             $pointsDelta,
             $reason,
             $actorId,
+            $this->text($actorName, 160),
         );
     }
 

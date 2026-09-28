@@ -776,35 +776,13 @@ final class MysqlCustomerRepository implements CustomerRepository
         }
     }
 
-    public function rewardAdjustments(string $customerKey, int $limit): array
+    public function rewardHistory(string $customerKey, int $limit, int $offset = 0): array
     {
         $this->ensureSchema();
         $statement = $this->connection->prepare(
-            'SELECT points_delta, reason, actor_id, created_at
+            'SELECT points_delta, reason, actor_id, actor_name, created_at
              FROM pickup_customer_reward_adjustments
              WHERE customer_key = :customer_key
-             ORDER BY created_at DESC, id DESC
-             LIMIT :limit',
-        );
-        $statement->bindValue(':customer_key', $customerKey);
-        $statement->bindValue(':limit', max(1, min($limit, 50)), PDO::PARAM_INT);
-        $statement->execute();
-
-        return array_map(static fn (array $row): array => [
-            'pointsDelta' => (int) $row['points_delta'],
-            'reason' => (string) $row['reason'],
-            'actorId' => (string) $row['actor_id'],
-            'createdAt' => (string) $row['created_at'],
-        ], $statement->fetchAll());
-    }
-
-    public function rewardRedemptions(string $customerKey, int $limit, int $offset = 0): array
-    {
-        $this->ensureSchema();
-        $statement = $this->connection->prepare(
-            'SELECT points_delta, reason, actor_id, created_at
-             FROM pickup_customer_reward_adjustments
-             WHERE customer_key = :customer_key AND points_delta < 0
              ORDER BY created_at DESC, id DESC
              LIMIT :limit OFFSET :offset',
         );
@@ -817,18 +795,23 @@ final class MysqlCustomerRepository implements CustomerRepository
             'pointsDelta' => (int) $row['points_delta'],
             'reason' => (string) $row['reason'],
             'actorId' => (string) $row['actor_id'],
+            'actorName' => (string) ($row['actor_name'] ?? ''),
             'createdAt' => (string) $row['created_at'],
         ], $statement->fetchAll());
     }
 
-    public function rewardRedemptionCount(string $customerKey): int
+    public function rewardHistoryCount(string $customerKey): int
     {
         $this->ensureSchema();
-        $statement = $this->connection->prepare(
-            'SELECT COUNT(*)
-             FROM pickup_customer_reward_adjustments
-             WHERE customer_key = :customer_key AND points_delta < 0',
-        );
+        $statement = $this->connection->prepare('SELECT COUNT(*) FROM pickup_customer_reward_adjustments WHERE customer_key = :customer_key');
+        $statement->execute(['customer_key' => $customerKey]);
+        return (int) $statement->fetchColumn();
+    }
+
+    public function activityCount(string $customerKey): int
+    {
+        $this->ensureSchema();
+        $statement = $this->connection->prepare('SELECT COUNT(*) FROM pickup_customer_activities WHERE customer_key = :customer_key');
         $statement->execute(['customer_key' => $customerKey]);
         return (int) $statement->fetchColumn();
     }
@@ -838,6 +821,7 @@ final class MysqlCustomerRepository implements CustomerRepository
         int $pointsDelta,
         string $reason,
         string $actorId,
+        string $actorName = '',
     ): CustomerProfile
     {
         $this->ensureSchema();
@@ -877,14 +861,15 @@ final class MysqlCustomerRepository implements CustomerRepository
 
             $statement = $this->connection->prepare(
                 'INSERT INTO pickup_customer_reward_adjustments
-                    (customer_key, points_delta, reason, actor_id, created_at)
-                 VALUES (:customer_key, :points_delta, :reason, :actor_id, UTC_TIMESTAMP())',
+                    (customer_key, points_delta, reason, actor_id, actor_name, created_at)
+                 VALUES (:customer_key, :points_delta, :reason, :actor_id, :actor_name, UTC_TIMESTAMP())',
             );
             $statement->execute([
                 'customer_key' => $customerKey,
                 'points_delta' => $pointsDelta,
                 'reason' => $reason,
                 'actor_id' => $actorId,
+                'actor_name' => $this->nullable($actorName),
             ]);
             $this->connection->commit();
         } catch (Throwable $exception) {
@@ -1133,6 +1118,7 @@ final class MysqlCustomerRepository implements CustomerRepository
                 points_delta INT NOT NULL,
                 reason VARCHAR(255) NOT NULL,
                 actor_id CHAR(24) NOT NULL,
+                actor_name VARCHAR(160) NULL,
                 created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
                 INDEX pickup_customer_rewards_customer_time_idx (customer_key, created_at),
                 INDEX pickup_customer_rewards_actor_time_idx (actor_id, created_at),
@@ -1192,6 +1178,11 @@ final class MysqlCustomerRepository implements CustomerRepository
                 last_shipment_id BIGINT UNSIGNED NOT NULL DEFAULT 0,
                 updated_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP
             ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci',
+        );
+        $this->ensureColumn(
+            'actor_name',
+            'ALTER TABLE pickup_customer_reward_adjustments ADD COLUMN actor_name VARCHAR(160) NULL AFTER actor_id',
+            'pickup_customer_reward_adjustments',
         );
         $this->ensureColumn(
             'dismissed_at',

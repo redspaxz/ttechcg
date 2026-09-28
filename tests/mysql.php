@@ -144,8 +144,10 @@ $crm()->synchronize();
 $shortfall = $crm()->existingCustomer('Shortfall Traders')['customer'];
 $crm()->adjustRewards($shortfall->customerKey, 'redeem', '50', 'Redeemed', $actor);
 $pickups->delete($rewardRef, $actor);
-$afterBonus = $crm()->adjustRewards($shortfall->customerKey, 'bonus', '20', 'Recovery', $actor);
+$afterBonus = $crm()->adjustRewards($shortfall->customerKey, 'bonus', '20', 'Recovery', $actor, 'Integration Admin');
 $check($afterBonus->rewardShortfall() === 30 && $afterBonus->rewardBalance() === 0, 'a bonus is accepted and first covers a points shortfall');
+$pointsHistory = $crm()->paginatedRewardHistory($shortfall->customerKey, 1, 10);
+$check($pointsHistory['totalRecords'] === 2 && $pointsHistory['items'][0]['pointsDelta'] === 20 && $pointsHistory['items'][0]['actorName'] === 'Integration Admin' && $pointsHistory['items'][1]['pointsDelta'] === -50, 'points history lists bonuses and redemptions together, newest first, with names');
 
 // Activities, owners, optimistic locking, deletion.
 $lead = $crm()->save(null, ['display_name' => 'Lead Only Company', 'status' => 'lead', 'next_follow_up_on' => '2026-01-10'], $actor);

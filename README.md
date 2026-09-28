@@ -308,6 +308,8 @@ Merge history is stored in `pickup_customer_merges`, with a JSON snapshot per me
 
 ### CRM operations
 
+**Profile layout.** A customer profile opens with a summary line under the name (status, owner, next follow-up with an Overdue badge, last shipment) and Call / Email buttons, then Customer details (Organization, Relationship, Primary contact), Activity, shipment figures and history, Reward points, and, for administrators, Delete customer. Activity shows the latest 10 entries with a "Show all" link. Reward points have one paginated Points history of bonuses and redemptions showing who made each change (migration 023 stores the name; older entries fall back to the matching account), and the adjustment form sits behind "Adjust points". Edit details shows only the form, straight under the heading.
+
 **Activity and follow-ups.** The Activity section on a customer profile logs calls, visits, emails, meetings and notes with a date and summary (no future dates). The same form sets the next follow-up: change it to reschedule, or clear it to close the follow-up. Anyone with `crm_update` can log activity. The "Follow-ups due" figure on the CRM page links to the matching filtered list.
 
 **Directory.** Filter by search text (including merged-away names), status, follow-up (due, scheduled later, not scheduled) and owner (mine, unassigned), and sort by priority, name, latest shipment, shipment value or reward points. `%` and `_` in the search box are matched literally. "Export to Excel" downloads the filtered list, up to 5,000 customers; it needs the `export` permission and is rate limited and logged.
