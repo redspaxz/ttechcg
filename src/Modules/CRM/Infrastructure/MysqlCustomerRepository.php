@@ -113,6 +113,30 @@ final class MysqlCustomerRepository implements CustomerRepository
         return array_map(fn (array $row): CustomerProfile => $this->profile($row), $statement->fetchAll());
     }
 
+    public function suggestions(string $query, int $limit): array
+    {
+        $this->ensureSchema();
+        $query = trim($query);
+        $statement = $this->connection->prepare(
+            'SELECT display_name
+             FROM pickup_customers
+             WHERE LEFT(LOWER(TRIM(display_name)), CHAR_LENGTH(LOWER(:query_length))) = LOWER(:query_prefix)
+             ORDER BY CASE WHEN LOWER(TRIM(display_name)) = LOWER(:query_exact) THEN 0 ELSE 1 END,
+                      CHAR_LENGTH(TRIM(display_name)), LOWER(TRIM(display_name)), display_name
+             LIMIT :limit',
+        );
+        $statement->bindValue(':query_length', $query);
+        $statement->bindValue(':query_prefix', $query);
+        $statement->bindValue(':query_exact', $query);
+        $statement->bindValue(':limit', max(1, min($limit, 20)), PDO::PARAM_INT);
+        $statement->execute();
+
+        return array_values(array_filter(array_map(
+            static fn (mixed $name): string => trim((string) $name),
+            $statement->fetchAll(PDO::FETCH_COLUMN),
+        ), static fn (string $name): bool => $name !== ''));
+    }
+
     public function find(string $customerKey): ?CustomerProfile
     {
         $this->ensureSchema();
@@ -170,10 +194,14 @@ final class MysqlCustomerRepository implements CustomerRepository
         $this->connection->beginTransaction();
         try {
             $existingStatement = $this->connection->prepare(
-                'SELECT display_name FROM pickup_customers WHERE customer_key = :customer_key LIMIT 1 FOR UPDATE',
+                'SELECT id, display_name FROM pickup_customers WHERE customer_key = :customer_key LIMIT 1 FOR UPDATE',
             );
             $existingStatement->execute(['customer_key' => $customer->customerKey]);
-            $previousDisplayName = $existingStatement->fetchColumn();
+            $existingRow = $existingStatement->fetch();
+            if ($customer->id === null && is_array($existingRow)) {
+                throw new InvalidArgumentException('A customer profile already uses this organization name.');
+            }
+            $previousDisplayName = is_array($existingRow) ? (string) $existingRow['display_name'] : false;
 
             $collisionStatement = $this->connection->prepare(
                 'SELECT customer_key
@@ -202,20 +230,7 @@ final class MysqlCustomerRepository implements CustomerRepository
                 ]);
             }
 
-            $statement = $this->connection->prepare(
-                'INSERT INTO pickup_customers
-                    (customer_key, display_name, contact_name, email, phone, address, city, country_code,
-                     status, notes, next_follow_up_on, source, assigned_role, created_by, updated_by, created_at, updated_at)
-                 VALUES
-                    (:customer_key, :display_name, :contact_name, :email, :phone, :address, :city, :country_code,
-                     :status, :notes, :next_follow_up_on, :source, :assigned_role, :created_by, :updated_by, UTC_TIMESTAMP(), UTC_TIMESTAMP())
-                 ON DUPLICATE KEY UPDATE
-                    display_name = VALUES(display_name), contact_name = VALUES(contact_name), email = VALUES(email),
-                    phone = VALUES(phone), address = VALUES(address), city = VALUES(city), country_code = VALUES(country_code),
-                    status = VALUES(status), notes = VALUES(notes), next_follow_up_on = VALUES(next_follow_up_on),
-                    source = VALUES(source), assigned_role = VALUES(assigned_role), updated_by = VALUES(updated_by), updated_at = UTC_TIMESTAMP()',
-            );
-            $statement->execute([
+            $parameters = [
                 'customer_key' => $customer->customerKey,
                 'display_name' => $customer->displayName,
                 'contact_name' => $this->nullable($customer->contactName),
@@ -229,13 +244,37 @@ final class MysqlCustomerRepository implements CustomerRepository
                 'next_follow_up_on' => $customer->nextFollowUpOn,
                 'source' => $customer->source,
                 'assigned_role' => 'admin',
-                'created_by' => $actorId,
                 'updated_by' => $actorId,
-            ]);
+            ];
+            if ($customer->id === null) {
+                $statement = $this->connection->prepare(
+                    'INSERT INTO pickup_customers
+                        (customer_key, display_name, contact_name, email, phone, address, city, country_code,
+                         status, notes, next_follow_up_on, source, assigned_role, created_by, updated_by, created_at, updated_at)
+                     VALUES
+                        (:customer_key, :display_name, :contact_name, :email, :phone, :address, :city, :country_code,
+                         :status, :notes, :next_follow_up_on, :source, :assigned_role, :created_by, :updated_by, UTC_TIMESTAMP(), UTC_TIMESTAMP())',
+                );
+                $parameters['created_by'] = $actorId;
+            } else {
+                $statement = $this->connection->prepare(
+                    'UPDATE pickup_customers
+                     SET display_name = :display_name, contact_name = :contact_name, email = :email,
+                         phone = :phone, address = :address, city = :city, country_code = :country_code,
+                         status = :status, notes = :notes, next_follow_up_on = :next_follow_up_on,
+                         source = :source, assigned_role = :assigned_role, updated_by = :updated_by,
+                         updated_at = UTC_TIMESTAMP()
+                     WHERE customer_key = :customer_key',
+                );
+            }
+            $statement->execute($parameters);
             $this->connection->commit();
         } catch (Throwable $exception) {
             if ($this->connection->inTransaction()) {
                 $this->connection->rollBack();
+            }
+            if ($exception instanceof PDOException && (int) ($exception->errorInfo[1] ?? 0) === 1062) {
+                throw new InvalidArgumentException('A customer profile already uses this organization name.', 0, $exception);
             }
             throw $exception;
         }
@@ -473,7 +512,7 @@ final class MysqlCustomerRepository implements CustomerRepository
                 created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
                 updated_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
                 UNIQUE INDEX pickup_customers_key_idx (customer_key),
-                INDEX pickup_customers_name_idx (display_name),
+                UNIQUE INDEX pickup_customers_name_unique_idx (display_name),
                 INDEX pickup_customers_status_follow_up_idx (status, next_follow_up_on),
                 INDEX pickup_customers_email_idx (email)
             ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci",

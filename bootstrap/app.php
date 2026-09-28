@@ -322,6 +322,7 @@ $router->post('/dhl/pickupsheet/admin/backup/restore', fn (Request $request): Re
 $router->get('/dhl/pickupsheet/customers', fn (Request $request): Response => $customerController->index($request));
 $router->get('/dhl/pickupsheet/customers/page', fn (Request $request): Response => $customerController->page($request));
 $router->get('/dhl/pickupsheet/customers/new', fn (Request $request): Response => $customerController->create($request));
+$router->get('/dhl/pickupsheet/customers/search', fn (Request $request): Response => $customerController->search($request));
 $router->get('/dhl/pickupsheet/customers/edit', fn (Request $request): Response => $customerController->edit($request));
 $router->get('/dhl/pickupsheet/customers/shipments/page', fn (Request $request): Response => $customerController->shipmentPage($request));
 $router->get('/dhl/pickupsheet/customers/redemptions/page', fn (Request $request): Response => $customerController->redemptionPage($request));

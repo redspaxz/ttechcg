@@ -126,6 +126,23 @@ final class DemoCustomerRepository implements CustomerRepository
         return array_slice($profiles, 0, max(1, min($limit, 10)));
     }
 
+    public function suggestions(string $query, int $limit): array
+    {
+        $normalizedQuery = strtolower(trim($query));
+        $names = array_values(array_filter(array_map(
+            static fn (array $profile): string => trim((string) ($profile['displayName'] ?? '')),
+            array_values($this->profiles()),
+        ), static fn (string $name): bool => $name !== '' && str_starts_with(strtolower($name), $normalizedQuery)));
+        usort($names, static function (string $left, string $right) use ($normalizedQuery): int {
+            $leftExact = strtolower($left) === $normalizedQuery;
+            $rightExact = strtolower($right) === $normalizedQuery;
+            return ($rightExact <=> $leftExact)
+                ?: (strlen($left) <=> strlen($right))
+                ?: (strcasecmp($left, $right) ?: strcmp($left, $right));
+        });
+        return array_slice($names, 0, max(1, min($limit, 20)));
+    }
+
     public function find(string $customerKey): ?CustomerProfile
     {
         $profile = $this->profiles()[$customerKey] ?? null;
@@ -170,6 +187,9 @@ final class DemoCustomerRepository implements CustomerRepository
     {
         $profiles = $this->profiles();
         $existing = $profiles[$customer->customerKey] ?? null;
+        if ($customer->id === null && is_array($existing)) {
+            throw new InvalidArgumentException('A customer profile already uses this organization name.');
+        }
         foreach ($profiles as $key => $profile) {
             if ($key !== $customer->customerKey
                 && is_array($profile)

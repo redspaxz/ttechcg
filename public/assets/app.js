@@ -62,7 +62,8 @@ if ('IntersectionObserver' in window && !window.matchMedia('(prefers-reduced-mot
     revealItems.forEach((item) => item.setAttribute('data-visible', ''));
 }
 
-const pickupForm = document.querySelector('[data-pickup-form]');
+const pickupForm = document.querySelector('[data-pickup-form]')
+    ?? document.querySelector('[data-customer-autocomplete-form]');
 if (pickupForm) {
     const rowsContainer = pickupForm.querySelector('[data-shipment-rows]');
     const rowTemplate = document.querySelector('[data-shipment-template]');
@@ -97,6 +98,7 @@ if (pickupForm) {
         .filter(Boolean)
         .sort(compareConsignorSuggestions);
     const consignorSearchEndpoint = consignorSuggestionList?.dataset?.searchEndpoint || '';
+    const consignorSuggestionLabel = consignorSuggestionList?.dataset?.suggestionLabel || 'Consignor suggestions';
     const maximumRows = 50;
     const fieldLabels = {
         consignor: 'consignor',
@@ -368,7 +370,7 @@ if (pickupForm) {
         consignorPopup.id = 'consignor-autocomplete-listbox';
         consignorPopup.className = 'consignor-autocomplete-popup';
         consignorPopup.setAttribute('role', 'listbox');
-        consignorPopup.setAttribute('aria-label', 'Consignor suggestions');
+        consignorPopup.setAttribute('aria-label', consignorSuggestionLabel);
         consignorPopup.setAttribute('aria-hidden', 'true');
         consignorPopup.setAttribute('aria-busy', 'false');
         document.body.append(consignorPopup);

@@ -17,6 +17,9 @@ interface CustomerRepository
     /** @return list<CustomerProfile> */
     public function topByRewardPoints(int $limit): array;
 
+    /** @return list<string> */
+    public function suggestions(string $query, int $limit): array;
+
     public function find(string $customerKey): ?CustomerProfile;
 
     /**

@@ -1043,6 +1043,21 @@ $assert($renamedCustomer->customerKey === $renameCustomerKey && $renamedCustomer
 $assert($renamedCustomer->countryCode === 'CM' && $renamedCustomer->phone === '+237 670 000 000', 'CRM profiles should default to Cameroon and automatically add +237 to a local phone number.');
 $assert(($renameCustomerService->recentShipments($renameCustomerKey)[0]['referenceNumber'] ?? '') === $renameSheet->referenceNumber, 'A renamed CRM profile should retain its existing shipment history.');
 $assert($renamePickupService->consignorSuggestions('Ren', 10) === ['Renamed Customer Company'], 'Consignor autocomplete should immediately use a customer name changed in CRM.');
+$assert($renameCustomerService->suggestions('renamed') === ['Renamed Customer Company'], 'CRM autocomplete should suggest existing customer profiles by a case-insensitive prefix.');
+
+$duplicateRejected = false;
+try {
+    $renameCustomerService->save(null, [
+        'display_name' => '  Renamed   Customer Company  ',
+        'contact_name' => 'Duplicate Contact',
+        'phone' => '671000000',
+        'status' => 'active',
+    ], str_repeat('b', 24));
+} catch (InvalidArgumentException $exception) {
+    $duplicateRejected = str_contains($exception->getMessage(), 'already uses this organization name');
+}
+$assert($duplicateRejected, 'CRM should reject a duplicate organization name instead of overwriting the existing profile.');
+$assert($renameCustomerService->find($renameCustomerKey)?->contactName === 'Customer Contact', 'A rejected duplicate CRM submission should leave the existing profile unchanged.');
 
 $_SESSION = [];
 $leaderboardPickupRepository = new DemoPickupSheetRepository();
@@ -1793,6 +1808,11 @@ $assert(str_contains($updatedCustomerProfile->body(), '<dt>Assigned to</dt><dd>A
 $assert(str_contains($updatedCustomerProfile->body(), 'Needs attention') && str_contains($updatedCustomerProfile->body(), 'Confirm the next collection schedule.'), 'Saved CRM relationship status and notes should persist.');
 $newCustomerPage = $customerController->create(new Request('GET', '/dhl/pickupsheet/customers/new'));
 $assert($newCustomerPage->status() === 200 && str_contains($newCustomerPage->body(), 'Add customer') && str_contains($newCustomerPage->body(), 'New relationship'), 'Administrators should be able to open a prospective-customer form.');
+$assert(str_contains($newCustomerPage->body(), 'data-customer-autocomplete-form') && str_contains($newCustomerPage->body(), 'list="customer-name-suggestions"') && str_contains($newCustomerPage->body(), 'data-search-endpoint="/dhl/pickupsheet/customers/search"'), 'The add-customer name field should expose accessible existing-customer autocomplete.');
+$customerSearch = $customerController->search(new Request('GET', '/dhl/pickupsheet/customers/search', ['q' => 'controller'], [], '', $recordsServer));
+$customerSearchPayload = json_decode($customerSearch->body(), true);
+$assert($customerSearch->status() === 200 && ($customerSearchPayload['suggestions'] ?? []) === ['Controller Client'], 'Authenticated CRM autocomplete should return matching customer names.');
+$assert(($customerSearch->headers()['Cache-Control'] ?? '') === 'private, no-store, max-age=0', 'CRM autocomplete results should not be cached.');
 $invalidRewardCsrf = $customerController->adjustRewards(new Request('POST', '/dhl/pickupsheet/customers/rewards', [], [
     '_token' => 'invalid-token',
     'customer_key' => $customerKey,
@@ -2625,6 +2645,8 @@ $assert(is_string($customerMigration) && str_contains($customerMigration, 'CREAT
 $assert(is_string($customerMigration) && str_contains($customerMigration, 'next_follow_up_on DATE') && str_contains($customerMigration, 'updated_by CHAR(24)'), 'CRM storage should support follow-up scheduling and pseudonymous administrator attribution.');
 $customerAssignmentMigration = file_get_contents(dirname(__DIR__) . '/database/migrations/016_assign_pickup_customers.sql');
 $assert(is_string($customerAssignmentMigration) && str_contains($customerAssignmentMigration, 'assigned_role VARCHAR(20)') && str_contains($customerAssignmentMigration, "SET country_code = 'CM', assigned_role = 'admin'") && str_contains($customerAssignmentMigration, "DEFAULT 'CM'"), 'CRM migration 016 should assign every customer to administrators and enforce Cameroon as the default country.');
+$customerDuplicateMigration = file_get_contents(dirname(__DIR__) . '/database/migrations/018_prevent_duplicate_crm_customers.sql');
+$assert(is_string($customerDuplicateMigration) && str_contains($customerDuplicateMigration, 'UNIQUE INDEX pickup_customers_name_unique_idx (display_name)'), 'CRM organization names should be protected by a database uniqueness constraint.');
 $customerRepositorySource = file_get_contents(dirname(__DIR__) . '/src/Modules/CRM/Infrastructure/MysqlCustomerRepository.php');
 $assert(is_string($customerRepositorySource) && str_contains($customerRepositorySource, 'SHA2(LOWER(TRIM(ps.consignor)), 256)'), 'CRM should connect normalized shipment consignors to customer profiles.');
 $assert(is_string($customerRepositorySource) && str_contains($customerRepositorySource, 'UPDATE pickup_shipments') && str_contains($customerRepositorySource, 'SET consignor = :display_name') && str_contains($customerRepositorySource, 'beginTransaction()'), 'MySQL CRM name changes should update existing shipment consignors inside a transaction.');

@@ -22,7 +22,7 @@ $analyticsPageView = $isPickupsheet ? 'disabled' : 'enabled';
     <title><?= $e($pageTitle ?? 'T&Tech Consulting Group') ?> | T&amp;Tech</title>
     <link rel="icon" href="<?= $e($assetBase) ?>/ttechcg-mark.svg" type="image/svg+xml">
     <link rel="stylesheet" href="<?= $e($assetBase) ?>/styles.css?v=20260925-app-gaps">
-    <script src="<?= $e($assetBase) ?>/app.js?v=20260925-mobile-gaps" defer></script>
+    <script src="<?= $e($assetBase) ?>/app.js?v=20260925-mobile-gaps-crm-autocomplete" defer></script>
     <script src="<?= $e($assetBase) ?>/analytics.js?v=20260825-security-hardening" defer></script>
 </head>
 <body>

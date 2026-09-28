@@ -57,6 +57,17 @@ final class CustomerService
         return $this->repository->topByRewardPoints(max(1, min($limit, 10)));
     }
 
+    /** @return list<string> */
+    public function suggestions(string $query, int $limit = 12): array
+    {
+        $query = $this->text($query, 100);
+        if ($query === '') {
+            return [];
+        }
+        $this->repository->synchronizeFromShipments();
+        return $this->repository->suggestions($query, max(1, min($limit, 20)));
+    }
+
     public function find(string $customerKey): ?CustomerProfile
     {
         if (preg_match('/^[a-f0-9]{64}$/', $customerKey) !== 1) {
@@ -190,6 +201,7 @@ final class CustomerService
         if (strlen($displayName) < 2 || $this->containsControlCharacters($displayName)) {
             throw new InvalidArgumentException('Provide a customer or organization name.');
         }
+        $displayName = preg_replace('/[\t ]+/', ' ', $displayName) ?? $displayName;
         $contactName = $this->text($input['contact_name'] ?? '', 100);
         $email = strtolower($this->text($input['email'] ?? '', 254));
         $phone = $this->text($input['phone'] ?? '', 32);

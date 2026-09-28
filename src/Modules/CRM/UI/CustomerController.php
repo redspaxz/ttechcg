@@ -95,6 +95,28 @@ final class CustomerController
         return $this->form($request, $principal, null);
     }
 
+    public function search(Request $request): Response
+    {
+        $principal = $this->authorize($request, 'crm_view', false);
+        if ($principal instanceof Response) {
+            return $principal;
+        }
+        try {
+            $retryAfter = $this->rateLimiter->consume('pickup-crm-search', $request->clientIdentifier(), 180, 300);
+            if ($retryAfter > 0) {
+                return Response::json(['suggestions' => []], 429, $this->privateHeaders() + ['Retry-After' => (string) $retryAfter]);
+            }
+            return Response::json([
+                'suggestions' => $this->service->suggestions($request->queryString('q'), 12),
+            ], 200, $this->privateHeaders());
+        } catch (InvalidArgumentException $exception) {
+            return Response::json(['suggestions' => [], 'message' => $exception->getMessage()], 422, $this->privateHeaders());
+        } catch (RuntimeException $exception) {
+            error_log('CRM customer search failed: ' . $exception->getMessage());
+            return Response::json(['suggestions' => []], 503, $this->privateHeaders());
+        }
+    }
+
     public function edit(Request $request): Response
     {
         $principal = $this->authorize($request, 'crm_view');
