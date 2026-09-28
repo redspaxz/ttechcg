@@ -1801,6 +1801,7 @@ $adminUpdate = $pickupController->updatePickupSheet(new Request('POST', '/dhl/pi
     ]],
 ]));
 $assert($adminEdit->status() === 200 && str_contains($adminEdit->body(), 'Records Administrator · admin'), 'An administrator should open the audited record editor with the account name.');
+$assert(str_contains($adminEdit->body(), '<div class="pickup-submit-actions"><a class="pickup-cancel" href="/dhl/pickupsheet/submissions">Cancel</a><button class="button button-red pickup-submit" type="submit">'), 'The record editor should offer a Cancel button beside Save that returns to the submitted sheets without saving.');
 $assert($adminUpdate->status() === 303, 'An administrator should save an audited pickup-sheet correction.');
 $adminUpdatedSheet = (new PickupSheetService(new DemoPickupSheetRepository()))->findByReference($savedReference);
 $assert($adminUpdatedSheet?->totalCashReceivedXaf === 14000 && !$adminUpdatedSheet->isPaid(), 'An administrator edit should persist while retaining open status.');

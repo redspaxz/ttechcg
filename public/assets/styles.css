@@ -2294,6 +2294,9 @@ button, a, input, select, textarea { -webkit-tap-highlight-color: transparent; }
 }
 .pickup-submit-row p { max-width: 540px; margin: 0; color: #655000; font-size: 0.75rem; line-height: 1.6; }
 .pickup-submit { min-width: 230px; justify-content: space-between; }
+.pickup-submit-actions { display: flex; flex-wrap: wrap; align-items: center; justify-content: flex-end; gap: 12px; }
+.pickup-cancel { display: inline-flex; align-items: center; justify-content: center; min-height: 48px; padding: 0 24px; border: 1px solid #493800; background: #fff; color: #352900; font-size: 0.8rem; font-weight: 850; text-decoration: none; }
+.pickup-cancel:hover, .pickup-cancel:focus-visible { border-color: var(--dhl-red); color: var(--dhl-red); outline: 2px solid rgba(212, 5, 17, 0.12); }
 
 @media (max-width: 900px) {
     .pickup-form-heading { grid-template-columns: 1fr; gap: 24px; }
@@ -2362,6 +2365,7 @@ button, a, input, select, textarea { -webkit-tap-highlight-color: transparent; }
     .pickup-summary > div { min-height: 74px; padding: 18px 16px; }
     .pickup-submit-row { align-items: stretch; flex-direction: column; }
     .pickup-submit { width: 100%; min-width: 0; }
+    .pickup-submit-actions { flex-direction: column-reverse; align-items: stretch; }
 }
 
 /* Pickup-sheet records */
