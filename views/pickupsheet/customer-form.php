@@ -15,6 +15,13 @@ $value = static fn (string $field, mixed $fallback = ''): mixed => array_key_exi
 $status = (string) $value('status', $customer?->status ?? 'lead');
 $phoneValue = (string) $value('phone', $customer?->phone ?? '');
 $phoneValue = preg_replace('/^(?:\+237|00237)[\s.-]*/', '', trim($phoneValue)) ?? '';
+$editing = $customer === null || (bool) ($editing ?? false);
+$canUpdateCustomer = (bool) ($canUpdateCustomer ?? false);
+$profileUrl = $customer === null ? '' : $basePath . '/dhl/pickupsheet/customers/edit?customer=' . rawurlencode($customer->customerKey);
+$statusLabels = ['lead' => 'Lead', 'active' => 'Active', 'attention' => 'Needs attention', 'inactive' => 'Inactive'];
+$detail = static fn (?string $text): string => $text === null || trim($text) === ''
+    ? '<span class="pickup-customer-detail-empty">Not recorded</span>'
+    : htmlspecialchars($text, ENT_QUOTES, 'UTF-8');
 ?>
 <section class="pickup-view-workspace pickup-crm-workspace">
     <div class="container pickup-workspace-header">
@@ -82,6 +89,27 @@ $phoneValue = preg_replace('/^(?:\+237|00237)[\s.-]*/', '', trim($phoneValue)) ?
         <?php endif; ?>
 
         <div class="pickup-customer-layout">
+            <?php if (!$editing && $customer !== null): ?>
+            <section class="pickup-customer-details" aria-labelledby="customer-details-title">
+                <div class="pickup-customer-details-heading"><h2 id="customer-details-title">Customer details</h2><?php if ($canUpdateCustomer): ?><a class="button" href="<?= $e($profileUrl) ?>&amp;mode=edit">Edit details</a><?php endif; ?></div>
+                <h3 class="pickup-customer-detail-group">Organization</h3>
+                <dl>
+                    <div class="pickup-field-wide"><dt>Customer or organization name</dt><dd><?= $detail($customer->displayName) ?></dd></div>
+                    <div><dt>Relationship status</dt><dd><?= $detail($statusLabels[$customer->status] ?? ucfirst($customer->status)) ?></dd></div>
+                    <div><dt>Country</dt><dd>Cameroon</dd></div>
+                    <div><dt>City</dt><dd><?= $detail($customer->city) ?></dd></div>
+                    <div class="pickup-field-wide"><dt>Address</dt><dd><?= $detail($customer->address) ?></dd></div>
+                </dl>
+                <h3 class="pickup-customer-detail-group">Primary contact</h3>
+                <dl>
+                    <div><dt>Contact name</dt><dd><?= $detail($customer->contactName) ?></dd></div>
+                    <div><dt>Email</dt><dd><?= $detail($customer->email) ?></dd></div>
+                    <div><dt>Phone</dt><dd><?= $detail($customer->phone) ?></dd></div>
+                    <div><dt>Next follow-up</dt><dd><?= $detail($customer->nextFollowUpOn) ?></dd></div>
+                    <div class="pickup-field-wide"><dt>Internal notes</dt><dd class="pickup-customer-detail-notes"><?= $detail($customer->notes) ?></dd></div>
+                </dl>
+            </section>
+            <?php else: ?>
             <form class="pickup-customer-form" method="post" action="<?= $e($basePath) ?>/dhl/pickupsheet/customers/save" <?= $customer === null ? 'data-customer-autocomplete-form' : '' ?>>
                 <input type="hidden" name="_token" value="<?= $e($csrfToken) ?>">
                 <input type="hidden" name="customer_key" value="<?= $e($customer?->customerKey ?? '') ?>">
@@ -100,8 +128,9 @@ $phoneValue = preg_replace('/^(?:\+237|00237)[\s.-]*/', '', trim($phoneValue)) ?
                     <label class="pickup-field"><span>Next follow-up</span><input type="date" name="next_follow_up_on" value="<?= $e($value('next_follow_up_on', $customer?->nextFollowUpOn ?? '')) ?>"></label>
                     <label class="pickup-field pickup-field-wide"><span>Internal notes</span><textarea name="notes" maxlength="2000" rows="7" placeholder="Relationship context, preferences, follow-up outcome, or service opportunity"><?= $e($value('notes', $customer?->notes ?? '')) ?></textarea><small>Visible to operators and administrators.</small></label>
                 </fieldset>
-                <div class="pickup-customer-form-actions"><button class="button" type="submit">Save customer</button><a href="<?= $e($basePath) ?>/dhl/pickupsheet/customers">Cancel</a></div>
+                <div class="pickup-customer-form-actions"><button class="button" type="submit">Save customer</button><a href="<?= $e($customer === null ? $basePath . '/dhl/pickupsheet/customers' : $profileUrl) ?>">Cancel</a></div>
             </form>
+            <?php endif; ?>
 
             <aside class="pickup-customer-context">
                 <h2>Customer context</h2>

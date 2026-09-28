@@ -2830,6 +2830,19 @@ button, a, input, select, textarea { -webkit-tap-highlight-color: transparent; }
 .pickup-customer-form label small { color: #806d24; font-size: 0.68rem; }
 .pickup-customer-form-actions { display: flex; align-items: center; justify-content: flex-end; gap: 18px; }
 .pickup-customer-form-actions > a { color: #493800; font-size: 0.74rem; font-weight: 850; }
+.pickup-customer-details { padding: 28px; border: 1px solid rgba(69, 50, 0, 0.32); background: #fff; }
+.pickup-customer-details-heading { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 12px 18px; margin-bottom: 22px; }
+.pickup-customer-details-heading h2 { margin: 0; font-size: 1.35rem; }
+.pickup-customer-details-heading .button { background: var(--dhl-red); color: #fff; }
+.pickup-customer-details dl { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 18px 24px; margin: 0; }
+.pickup-customer-details dl > div { min-width: 0; padding-bottom: 14px; border-bottom: 1px solid rgba(69, 50, 0, 0.14); }
+.pickup-customer-details dl > .pickup-field-wide { grid-column: 1 / -1; }
+.pickup-customer-details dl + .pickup-customer-detail-group { margin-top: 28px; }
+.pickup-customer-detail-group { margin: 0 0 16px; color: var(--dhl-red); font-size: 0.7rem; font-weight: 900; letter-spacing: 0.08em; text-transform: uppercase; }
+.pickup-customer-details dt { color: #493800; font-size: 0.65rem; font-weight: 850; letter-spacing: 0.07em; text-transform: uppercase; }
+.pickup-customer-details dd { margin: 6px 0 0; color: #241b00; font-weight: 750; overflow-wrap: anywhere; }
+.pickup-customer-detail-notes { font-weight: 500; line-height: 1.6; white-space: pre-line; }
+.pickup-customer-detail-empty { color: #806d24; font-weight: 500; font-style: italic; }
 .pickup-customer-context { padding: 26px; border: 1px solid rgba(69, 50, 0, 0.32); background: #fff7d1; }
 .pickup-customer-context h2 { margin: 0 0 14px; font-size: 1.35rem; }
 .pickup-customer-context p { color: #655000; line-height: 1.65; }
@@ -2906,6 +2919,8 @@ button, a, input, select, textarea { -webkit-tap-highlight-color: transparent; }
     .pickup-crm-duplicate-list article { grid-template-columns: 70px minmax(0, 1fr) auto minmax(0, 1fr); }
     .pickup-crm-duplicate-actions { grid-column: 2 / -1; grid-template-columns: repeat(2, minmax(0, 1fr)); }
     .pickup-customer-layout { grid-template-columns: 1fr; }
+    .pickup-customer-details { padding: 20px; }
+    .pickup-customer-details dl { grid-template-columns: 1fr; }
     .pickup-reward-layout { grid-template-columns: 1fr; }
     .pickup-reward-form { border-right: 0; border-bottom: 1px solid rgba(69, 50, 0, 0.22); }
     .pickup-redemption-log-content { grid-template-columns: 1fr; }

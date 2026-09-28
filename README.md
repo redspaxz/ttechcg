@@ -203,7 +203,7 @@ Protected operational workspace for:
 Customer-facing operational recordkeeping and profile data:
 
 - customer directories and profiles
-- organization and contact details
+- organization and contact details, shown read-only until a user with `crm_update` clicks Edit details (`?mode=edit`); a rejected save reopens the form with the entered values
 - relationship history and follow-up state
 - shipment history and reward summaries
 - duplicate prevention, reviewed duplicate merges, and merge undo

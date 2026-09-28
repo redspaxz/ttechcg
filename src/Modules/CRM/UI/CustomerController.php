@@ -111,7 +111,7 @@ final class CustomerController
         } catch (RuntimeException $exception) {
             error_log($exception->__toString());
         }
-        return $this->form($request, $principal, null);
+        return $this->form($request, $principal, null, true);
     }
 
     public function search(Request $request): Response
@@ -155,7 +155,8 @@ final class CustomerController
             if ($customer === null) {
                 return Response::html('Customer profile not found.', 404, $this->privateHeaders());
             }
-            return $this->form($request, $principal, $customer);
+            // Profiles open as read-only details; ?mode=edit switches to the form.
+            return $this->form($request, $principal, $customer, $request->queryString('mode') === 'edit');
         } catch (RuntimeException $exception) {
             error_log($exception->__toString());
             return Response::html('Customer data is temporarily unavailable.', 503, $this->privateHeaders());
@@ -419,12 +420,14 @@ final class CustomerController
         return Response::redirect($location);
     }
 
-    private function form(Request $request, RecordsPrincipal $principal, ?CustomerProfile $customer): Response
+    private function form(Request $request, RecordsPrincipal $principal, ?CustomerProfile $customer, bool $editing): Response
     {
         $old = $_SESSION['_crm_old'] ?? [];
         $errors = $_SESSION['_crm_errors'] ?? [];
         $flash = $_SESSION['_crm_flash'] ?? null;
         $existingCustomer = $_SESSION['_crm_existing_customer'] ?? null;
+        // A rejected save returns with the submitted values, so reopen the form to show them.
+        $editing = $editing || (is_array($old) && $old !== []);
         unset($_SESSION['_crm_old'], $_SESSION['_crm_errors'], $_SESSION['_crm_flash'], $_SESSION['_crm_existing_customer']);
         $shipments = $this->emptyPage();
         $rewardAdjustments = [];
@@ -458,6 +461,8 @@ final class CustomerController
             'errors' => is_array($errors) ? $errors : [],
             'flash' => is_string($flash) ? $flash : null,
             'existingCustomer' => is_array($existingCustomer) ? $existingCustomer : null,
+            'editing' => $editing && $principal->can('crm_update'),
+            'canUpdateCustomer' => $principal->can('crm_update'),
             'canCreateCustomers' => $principal->can('crm'),
             'canEditCustomerNames' => $principal->can('crm'),
             'canAdjustRewards' => $principal->can('crm'),

@@ -1914,6 +1914,10 @@ $saveCustomer = $customerController->save(new Request('POST', '/dhl/pickupsheet/
 $assert($saveCustomer->status() === 303 && str_contains((string) ($saveCustomer->headers()['Location'] ?? ''), $customerKey), 'An administrator should save an enriched CRM customer profile.');
 $updatedCustomerProfile = $customerController->edit(new Request('GET', '/dhl/pickupsheet/customers/edit', ['customer' => $customerKey]));
 $assert(str_contains($updatedCustomerProfile->body(), 'Camille Customer') && str_contains($updatedCustomerProfile->body(), 'camille@example.com') && str_contains($updatedCustomerProfile->body(), '670 000 000'), 'Saved CRM contact details should persist.');
+$assert(str_contains($updatedCustomerProfile->body(), 'class="pickup-customer-details"') && !str_contains($updatedCustomerProfile->body(), 'class="pickup-customer-form"') && !str_contains($updatedCustomerProfile->body(), 'name="email"'), 'A customer profile should open with read-only details instead of editable fields.');
+$assert(str_contains($updatedCustomerProfile->body(), '<a class="button" href="/dhl/pickupsheet/customers/edit?customer=' . $customerKey . '&amp;mode=edit">Edit details</a>'), 'The read-only customer details should offer an Edit details button.');
+$updatedCustomerProfile = $customerController->edit(new Request('GET', '/dhl/pickupsheet/customers/edit', ['customer' => $customerKey, 'mode' => 'edit']));
+$assert(str_contains($updatedCustomerProfile->body(), 'class="pickup-customer-form"') && str_contains($updatedCustomerProfile->body(), 'name="email" value="camille@example.com"') && str_contains($updatedCustomerProfile->body(), 'href="/dhl/pickupsheet/customers/edit?customer=' . $customerKey . '">Cancel</a>'), 'Edit mode should show the editable form, with Cancel returning to the read-only profile.');
 $assert(str_contains($updatedCustomerProfile->body(), 'value="Cameroon"') && str_contains($updatedCustomerProfile->body(), 'value="CM"') && !str_contains($updatedCustomerProfile->body(), '>Nigeria<'), 'CRM customer profiles should default to Cameroon as their only country option.');
 $assert(str_contains($updatedCustomerProfile->body(), 'Cameroon calling code') && str_contains($updatedCustomerProfile->body(), '+237') && str_contains($updatedCustomerProfile->body(), 'calling code is added automatically'), 'CRM phone entry should show the automatic Cameroon calling code beside the local number.');
 $assert(str_contains($updatedCustomerProfile->body(), '<dt>Assigned to</dt><dd>Administrator</dd>'), 'Every CRM customer profile should be assigned to the administrator role.');
@@ -2025,7 +2029,7 @@ $assert($viewerCustomerDirectory->status() === 403 && $viewerCustomerPage->statu
 $recordsSession->login($operatorPrincipal);
 $operatorCustomerDirectory = $customerController->index(new Request('GET', '/dhl/pickupsheet/customers'));
 $operatorCustomerPage = $customerController->page(new Request('GET', '/dhl/pickupsheet/customers/page'));
-$operatorCustomerProfile = $customerController->edit(new Request('GET', '/dhl/pickupsheet/customers/edit', ['customer' => $customerKey]));
+$operatorCustomerProfile = $customerController->edit(new Request('GET', '/dhl/pickupsheet/customers/edit', ['customer' => $customerKey, 'mode' => 'edit']));
 $operatorCustomerShipments = $customerController->shipmentPage(new Request('GET', '/dhl/pickupsheet/customers/shipments/page', ['customer' => $customerKey]));
 $assert($operatorCustomerDirectory->status() === 200 && $operatorCustomerPage->status() === 200 && $operatorCustomerProfile->status() === 200 && $operatorCustomerShipments->status() === 200, 'An operator should access the CRM directory, profiles, and shipment history.');
 $assert(!str_contains($operatorCustomerDirectory->body(), '/dhl/pickupsheet/customers/new'), 'An operator should not receive the administrator-only new-customer control.');
@@ -2056,6 +2060,16 @@ $operatorCustomerSave = $customerController->save(new Request('POST', '/dhl/pick
 ]));
 $operatorUpdatedProfile = $customerController->edit(new Request('GET', '/dhl/pickupsheet/customers/edit', ['customer' => $customerKey]));
 $assert($operatorCustomerSave->status() === 303, 'An operator should save changes to an existing customer profile.');
+$assert(str_contains($operatorUpdatedProfile->body(), 'class="pickup-customer-details"') && str_contains($operatorUpdatedProfile->body(), '&amp;mode=edit">Edit details</a>'), 'Operators should see read-only details with an Edit details button after saving.');
+$operatorInvalidSave = $customerController->save(new Request('POST', '/dhl/pickupsheet/customers/save', [], [
+    '_token' => $pickupCsrf->token(),
+    'customer_key' => $customerKey,
+    'email' => 'not-an-email',
+    'country_code' => 'CM',
+    'status' => 'active',
+]));
+$operatorInvalidProfile = $customerController->edit(new Request('GET', '/dhl/pickupsheet/customers/edit', ['customer' => $customerKey]));
+$assert($operatorInvalidSave->status() === 303 && str_contains($operatorInvalidProfile->body(), 'class="pickup-customer-form"') && str_contains($operatorInvalidProfile->body(), 'value="not-an-email"') && str_contains($operatorInvalidProfile->body(), 'valid customer email'), 'A rejected save should reopen the edit form with the submitted values and the error.');
 $assert(str_contains($operatorUpdatedProfile->body(), 'Controller Client') && str_contains($operatorUpdatedProfile->body(), 'Camille Customer') && !str_contains($operatorUpdatedProfile->body(), 'Forged Organization Name') && !str_contains($operatorUpdatedProfile->body(), 'Forged Contact Name'), 'The server must preserve both customer and contact names when an operator submits forged name fields.');
 $assert(str_contains($operatorUpdatedProfile->body(), 'operator-updated@example.com') && str_contains($operatorUpdatedProfile->body(), '+237') && str_contains($operatorUpdatedProfile->body(), '699 111 222') && str_contains($operatorUpdatedProfile->body(), 'Bonapriso Business District') && str_contains($operatorUpdatedProfile->body(), 'Douala') && str_contains($operatorUpdatedProfile->body(), 'Operator updated the customer profile details.') && str_contains($operatorUpdatedProfile->body(), '2026-09-15'), 'An operator should update all permitted customer profile details.');
 $recordsSession->login($adminPrincipal);
