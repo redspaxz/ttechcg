@@ -343,6 +343,30 @@ final class DemoPickupSheetRepository implements PickupSheetRepository
         ];
     }
 
+    public function awbUses(array $awbNumbers, string $fromDate, string $toDate, ?string $excludeReference = null): array
+    {
+        $wanted = array_fill_keys($awbNumbers, true);
+        $uses = [];
+        foreach ($this->recent(PHP_INT_MAX) as $sheet) {
+            if (!$sheet instanceof PickupSheet
+                || $sheet->referenceNumber === $excludeReference
+                || $sheet->collectionDate < $fromDate
+                || $sheet->collectionDate > $toDate) {
+                continue;
+            }
+            foreach ($sheet->shipments as $shipment) {
+                if (isset($wanted[$shipment->awbNumber])) {
+                    $uses[] = [
+                        'awbNumber' => $shipment->awbNumber,
+                        'referenceNumber' => $sheet->referenceNumber,
+                        'collectionDate' => $sheet->collectionDate,
+                    ];
+                }
+            }
+        }
+        return $uses;
+    }
+
     public function consignorSuggestions(string $query, int $limit): array
     {
         $senders = [];

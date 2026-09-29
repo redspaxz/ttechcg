@@ -51,4 +51,13 @@ interface PickupSheetRepository
     public function consignorSuggestions(string $query, int $limit): array;
 
     public function findByReference(string $referenceNumber): ?PickupSheet;
+
+    /**
+     * Uses of the given AWB numbers on active (not deleted) sheets collected between the two dates,
+     * inclusive, excluding the sheet being edited.
+     *
+     * @param list<string> $awbNumbers
+     * @return list<array{awbNumber: string, referenceNumber: string, collectionDate: string}>
+     */
+    public function awbUses(array $awbNumbers, string $fromDate, string $toDate, ?string $excludeReference = null): array;
 }

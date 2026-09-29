@@ -2769,6 +2769,15 @@ button, a, input, select, textarea { -webkit-tap-highlight-color: transparent; }
 .pickup-crm-duplicate-actions form { margin: 0; }
 .pickup-crm-duplicate-actions button { width: 100%; min-height: 34px; padding: 7px 10px; border: 1px solid #493800; background: #fff; color: #352900; cursor: pointer; font: inherit; font-size: 0.64rem; font-weight: 850; text-align: left; }
 .pickup-crm-duplicate-actions button:hover, .pickup-crm-duplicate-actions button:focus { border-color: var(--dhl-red); color: var(--dhl-red); outline: 2px solid rgba(212, 5, 17, 0.12); }
+.pickup-awb-warning { display: grid; gap: 10px; margin: 0 30px 8px; padding: 18px 20px; border: 1px solid var(--dhl-red); background: #fff0f1; color: #3d0004; }
+.pickup-awb-warning > strong { color: #a6000a; font-size: 0.9rem; }
+.pickup-awb-warning p { margin: 0; font-size: 0.78rem; line-height: 1.55; }
+.pickup-awb-warning ul { display: grid; gap: 6px; margin: 0; padding-left: 18px; font-size: 0.78rem; }
+.pickup-awb-warning a { color: #a6000a; font-weight: 850; }
+.pickup-awb-confirm { display: flex; align-items: flex-start; gap: 10px; font-size: 0.8rem; font-weight: 750; }
+.pickup-awb-confirm input { width: 18px; height: 18px; margin: 2px 0 0; accent-color: var(--dhl-red); }
+.pickup-awb-expired { color: #655000; white-space: nowrap; }
+.pickup-awb-expired small { margin-left: 4px; padding: 1px 5px; border: 1px solid rgba(69, 50, 0, 0.35); color: #806d24; font-size: 0.6rem; font-weight: 850; letter-spacing: 0.04em; text-transform: uppercase; }
 .pickup-crm-merge-list { display: grid; }
 .pickup-crm-merge-list article { display: flex; flex-wrap: wrap; gap: 12px 20px; align-items: center; justify-content: space-between; padding: 14px 20px; border-bottom: 1px solid rgba(69, 50, 0, 0.14); }
 .pickup-crm-merge-list article:last-child { border-bottom: 0; }

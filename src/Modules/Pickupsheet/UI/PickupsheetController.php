@@ -23,6 +23,8 @@ use App\Shared\Security\SecurityLogger;
 use App\Shared\Spreadsheet\XlsxWriter;
 use App\Shared\View\View;
 use DateTimeImmutable;
+use App\Modules\Pickupsheet\Application\AwbReuseException;
+use App\Modules\Pickupsheet\Domain\AwbReusePolicy;
 use InvalidArgumentException;
 use RuntimeException;
 use Throwable;
@@ -72,7 +74,8 @@ final class PickupsheetController
         $flash = $_SESSION['_pickup_flash'] ?? null;
         $errors = $_SESSION['_pickup_errors'] ?? [];
         $old = $_SESSION['_pickup_old'] ?? [];
-        unset($_SESSION['_pickup_flash'], $_SESSION['_pickup_errors'], $_SESSION['_pickup_old']);
+        $awbConflicts = $_SESSION['_pickup_awb_conflicts'] ?? [];
+        unset($_SESSION['_pickup_flash'], $_SESSION['_pickup_errors'], $_SESSION['_pickup_old'], $_SESSION['_pickup_awb_conflicts']);
 
         $consignorSuggestions = [];
         if ($this->pickupOperational) {
@@ -104,6 +107,8 @@ final class PickupsheetController
             'recordsIdentityProvider' => $authorization->identityProvider,
             'canCrmView' => $authorization->can('crm_view'),
             'consignorSuggestions' => $consignorSuggestions,
+            'awbConflicts' => is_array($awbConflicts) ? $awbConflicts : [],
+            'awbReuseDays' => AwbReusePolicy::days(),
         ]);
 
         return Response::html($body, 200, $this->privateHeaders());
@@ -154,6 +159,7 @@ final class PickupsheetController
             'collection_date' => $request->input('collection_date'),
             'shipments' => $this->shipmentsCheckedByPrincipal($request->arrayInput('shipments'), $authorization),
             'privacy_consent' => $request->input('privacy_consent'),
+            'confirmed_awb_reuse' => $request->input('confirmed_awb_reuse'),
         ];
 
         if (!$this->pickupOperational) {
@@ -188,6 +194,7 @@ final class PickupsheetController
             $this->securityLogger->event('pickupsheet.submission', $request, 'accepted', [
                 'resource_id' => substr(hash('sha256', $pickupSheet->referenceNumber), 0, 24),
                 'shipment_count' => $pickupSheet->shipmentCount(),
+                'awb_reuse_confirmed' => $this->confirmedAwbCount($input['confirmed_awb_reuse']),
             ]);
             $_SESSION['_pickup_flash'] = sprintf(
                 'Pickup sheet %s saved with %d shipment%s and a total of %s XAF.',
@@ -197,6 +204,11 @@ final class PickupsheetController
                 number_format($pickupSheet->totalCashReceivedXaf),
             );
             $_SESSION['_last_pickup_sheet_at'] = time();
+        } catch (AwbReuseException $exception) {
+            $this->securityLogger->event('pickupsheet.awb_reuse', $request, 'denied', ['awb_count' => count($exception->awbNumbers())]);
+            $_SESSION['_pickup_errors'] = [$exception->getMessage()];
+            $_SESSION['_pickup_awb_conflicts'] = $exception->conflicts;
+            $_SESSION['_pickup_old'] = $input;
         } catch (InvalidArgumentException $exception) {
             $this->securityLogger->event('pickupsheet.validation', $request, 'denied');
             $_SESSION['_pickup_errors'] = [$exception->getMessage()];
@@ -470,7 +482,8 @@ final class PickupsheetController
         $flash = $_SESSION['_pickup_edit_flash'] ?? null;
         $errors = $_SESSION['_pickup_edit_errors'] ?? [];
         $old = $_SESSION['_pickup_edit_old'] ?? [];
-        unset($_SESSION['_pickup_edit_flash'], $_SESSION['_pickup_edit_errors'], $_SESSION['_pickup_edit_old']);
+        $awbConflicts = $_SESSION['_pickup_edit_awb_conflicts'] ?? [];
+        unset($_SESSION['_pickup_edit_flash'], $_SESSION['_pickup_edit_errors'], $_SESSION['_pickup_edit_old'], $_SESSION['_pickup_edit_awb_conflicts']);
 
         $body = $this->view->render('pickupsheet/edit', [
             'pageTitle' => 'Edit ' . $pickupSheet->referenceNumber,
@@ -485,6 +498,8 @@ final class PickupsheetController
             'flash' => is_string($flash) ? $flash : null,
             'errors' => is_array($errors) ? $errors : [],
             'old' => is_array($old) ? $old : [],
+            'awbConflicts' => is_array($awbConflicts) ? $awbConflicts : [],
+            'awbReuseDays' => AwbReusePolicy::days(),
             'recordsUsername' => $authorization->username,
             'recordsRole' => $authorization->role,
             'recordsFullName' => $authorization->fullName(),
@@ -514,6 +529,7 @@ final class PickupsheetController
             'agent_name' => $request->input('agent_name'),
             'collection_date' => $request->input('collection_date'),
             'shipments' => $this->shipmentsCheckedByPrincipal($request->arrayInput('shipments'), $authorization),
+            'confirmed_awb_reuse' => $request->input('confirmed_awb_reuse'),
         ];
 
         try {
@@ -527,7 +543,13 @@ final class PickupsheetController
                 'actor_id' => substr(hash('sha256', $authorization->username), 0, 24),
                 'resource_id' => substr(hash('sha256', $updated->referenceNumber), 0, 24),
                 'shipment_count' => $updated->shipmentCount(),
+                'awb_reuse_confirmed' => $this->confirmedAwbCount($input['confirmed_awb_reuse']),
             ]);
+        } catch (AwbReuseException $exception) {
+            $_SESSION['_pickup_edit_errors'] = [$exception->getMessage()];
+            $_SESSION['_pickup_edit_awb_conflicts'] = $exception->conflicts;
+            $_SESSION['_pickup_edit_old'] = $input;
+            $this->securityLogger->event('pickupsheet.awb_reuse', $request, 'denied', ['awb_count' => count($exception->awbNumbers())]);
         } catch (InvalidArgumentException $exception) {
             $_SESSION['_pickup_edit_errors'] = [$exception->getMessage()];
             $_SESSION['_pickup_edit_old'] = $input;
@@ -1174,6 +1196,11 @@ final class PickupsheetController
             'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
             $pickupSheet->referenceNumber . '.xlsx',
         );
+    }
+
+    private function confirmedAwbCount(string $confirmedAwbs): int
+    {
+        return count(preg_split('/[^0-9]+/', $confirmedAwbs, -1, PREG_SPLIT_NO_EMPTY) ?: []);
     }
 
     /** @return array<string, string> */

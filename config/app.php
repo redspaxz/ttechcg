@@ -19,6 +19,8 @@ return [
     'local_login_enabled' => $localLoginEnabled,
     'security_event_retention_days' => (int) (getenv('SECURITY_EVENT_RETENTION_DAYS') ?: 365),
     'session_activity_retention_days' => (int) (getenv('SESSION_ACTIVITY_RETENTION_DAYS') ?: 365),
+    // DHL reissues AWB numbers after roughly three months; see AwbReusePolicy.
+    'awb_reuse_days' => (int) (getenv('PICKUPSHEET_AWB_REUSE_DAYS') ?: 90),
     'locations' => [
         [
             'city' => 'Bamenda',

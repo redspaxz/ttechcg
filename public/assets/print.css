@@ -118,6 +118,7 @@ body { margin: 0; background: #5b5b5b; color: #151515; }
     vertical-align: middle;
 }
 .paper-shipment-table tbody tr { break-inside: avoid; page-break-inside: avoid; }
+.pickup-awb-expired small { margin-left: 3px; font-size: 7pt; font-weight: 700; text-transform: uppercase; }
 .pickup-awb-link {
     color: #000;
     font-weight: inherit;

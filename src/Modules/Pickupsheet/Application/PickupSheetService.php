@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 namespace App\Modules\Pickupsheet\Application;
 
+use App\Modules\Pickupsheet\Domain\AwbReusePolicy;
 use App\Modules\Pickupsheet\Domain\ConsignorDirectory;
 use App\Modules\Pickupsheet\Domain\PickupSheet;
 use App\Modules\Pickupsheet\Domain\PickupSheetRepository;
@@ -186,7 +187,9 @@ final class PickupSheetService
     /** @param array<string, mixed> $input */
     public function submit(array $input): PickupSheet
     {
-        return $this->repository->create($this->pickupSheetFromInput($input));
+        $pickupSheet = $this->pickupSheetFromInput($input);
+        $this->guardAwbReuse($pickupSheet, $input['confirmed_awb_reuse'] ?? '', null);
+        return $this->repository->create($pickupSheet);
     }
 
     /** @param array<string, mixed> $input */
@@ -198,7 +201,9 @@ final class PickupSheetService
         }
         $this->validateActor($actorId);
 
-        return $this->repository->update($this->pickupSheetFromInput($input, $existing), $actorId);
+        $pickupSheet = $this->pickupSheetFromInput($input, $existing);
+        $this->guardAwbReuse($pickupSheet, $input['confirmed_awb_reuse'] ?? '', $existing->referenceNumber);
+        return $this->repository->update($pickupSheet, $actorId);
     }
 
     public function markPaid(string $referenceNumber, mixed $receiptNumber, string $actorId): PickupSheet
@@ -231,6 +236,38 @@ final class PickupSheetService
     }
 
     /** @param array<string, mixed> $input */
+    /**
+     * DHL reissues AWB numbers after a few months. The same AWB twice on one sheet is always a mistake;
+     * an AWB already on another active sheet inside the reuse window needs the operator to confirm that
+     * DHL reissued it. Confirmation covers only the numbers the operator was warned about.
+     */
+    private function guardAwbReuse(PickupSheet $pickupSheet, mixed $confirmedAwbs, ?string $excludeReference): void
+    {
+        $linesByAwb = [];
+        foreach ($pickupSheet->shipments as $shipment) {
+            $linesByAwb[$shipment->awbNumber][] = $shipment->lineNumber;
+        }
+        foreach ($linesByAwb as $awbNumber => $lineNumbers) {
+            if (count($lineNumbers) > 1) {
+                throw new InvalidArgumentException(sprintf(
+                    'Shipments %s use the same AWB number %s. Each shipment needs its own AWB.',
+                    implode(' and ', $lineNumbers),
+                    $awbNumber,
+                ));
+            }
+        }
+
+        [$fromDate, $toDate] = AwbReusePolicy::window($pickupSheet->collectionDate);
+        $confirmed = array_fill_keys(preg_split('/[^0-9]+/', is_string($confirmedAwbs) ? $confirmedAwbs : '', -1, PREG_SPLIT_NO_EMPTY) ?: [], true);
+        $conflicts = array_values(array_filter(
+            $this->repository->awbUses(array_map('strval', array_keys($linesByAwb)), $fromDate, $toDate, $excludeReference),
+            static fn (array $use): bool => !isset($confirmed[$use['awbNumber']]),
+        ));
+        if ($conflicts !== []) {
+            throw new AwbReuseException($conflicts, AwbReusePolicy::days());
+        }
+    }
+
     private function pickupSheetFromInput(array $input, ?PickupSheet $existing = null): PickupSheet
     {
         $agentName = $this->stringValue($input['agent_name'] ?? '');

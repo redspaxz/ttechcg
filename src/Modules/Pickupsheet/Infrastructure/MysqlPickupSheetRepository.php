@@ -711,6 +711,42 @@ final class MysqlPickupSheetRepository implements PickupSheetRepository
         ));
     }
 
+    public function awbUses(array $awbNumbers, string $fromDate, string $toDate, ?string $excludeReference = null): array
+    {
+        $awbNumbers = array_values(array_unique(array_filter($awbNumbers, static fn (string $awb): bool => $awb !== '')));
+        if ($awbNumbers === []) {
+            return [];
+        }
+        $this->ensureLifecycleSchema();
+        $placeholders = [];
+        $parameters = [
+            'from_date' => $fromDate,
+            'to_date' => $toDate,
+            'exclude_reference' => $excludeReference ?? '',
+        ];
+        foreach ($awbNumbers as $index => $awbNumber) {
+            $placeholders[] = ':awb_' . $index;
+            $parameters['awb_' . $index] = $awbNumber;
+        }
+        $statement = $this->connection->prepare(
+            'SELECT ps.awb_number, p.reference_number, p.collection_date
+             FROM pickup_shipments ps
+             INNER JOIN pickup_sheets p ON p.id = ps.pickup_sheet_id
+             WHERE ps.awb_number IN (' . implode(', ', $placeholders) . ')
+               AND p.deleted_at IS NULL
+               AND p.collection_date BETWEEN :from_date AND :to_date
+               AND p.reference_number <> :exclude_reference
+             ORDER BY p.collection_date DESC, p.reference_number, ps.line_number',
+        );
+        $statement->execute($parameters);
+
+        return array_map(static fn (array $row): array => [
+            'awbNumber' => (string) $row['awb_number'],
+            'referenceNumber' => (string) $row['reference_number'],
+            'collectionDate' => substr((string) $row['collection_date'], 0, 10),
+        ], $statement->fetchAll());
+    }
+
     public function findByReference(string $referenceNumber): ?PickupSheet
     {
         $this->ensureLifecycleSchema();

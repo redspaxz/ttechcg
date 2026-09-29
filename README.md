@@ -136,6 +136,7 @@ Key variables include:
 | `JUMPCLOUD_OIDC_*` | JumpCloud SSO configuration |
 | `CLOUDFLARE_ACCESS_*` | optional Cloudflare Access configuration |
 | `RUN_MIGRATIONS` | explicitly allow migration execution |
+| `PICKUPSHEET_AWB_REUSE_DAYS` | days before DHL may reissue an AWB number; sets the duplicate-check window and tracking-link expiry (default 90) |
 
 Important:
 
@@ -273,6 +274,15 @@ The Reports tab builds a printable A4 report at `/dhl/pickupsheet/dashboard/repo
 - a new `report` permission restricts it to the `admin` role, and each generation is recorded in the security log as records access with action `report`
 
 Cash settlement always covers the last 3 months. Trend, destination, sender and repeat-sender figures always cover a rolling 12 months. The report labels these bases.
+
+### AWB number reuse
+
+DHL recycles AWB numbers after about three months, so an AWB only identifies a shipment within that window around its collection date. The window is `PICKUPSHEET_AWB_REUSE_DAYS` (default 90); confirm the exact period with DHL, and whether it counts from the label date or the collection date.
+
+- the same AWB twice on one sheet is always refused
+- when a new or edited sheet uses an AWB that is already on another active sheet collected within the window either side of its date, the save stops with a warning naming the other sheet and its collection date. The operator either corrects the number or ticks "I confirm DHL reissued…" and saves again. The confirmation covers only the AWBs listed in that warning, and the security log records how many were confirmed (`awb_reuse_confirmed`) and every warning (`pickupsheet.awb_reuse`)
+- once a shipment is older than the window, its AWB is shown as plain text marked "tracking expired" instead of a DHL tracking link, on submitted sheets, printed sheets, and customer shipment history, because the link could now open another customer's shipment
+- nothing treats the AWB alone as a unique key; identify a shipment by its sheet and line, or by AWB plus collection date
 
 ### CRM duplicate customers
 

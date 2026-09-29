@@ -75,6 +75,11 @@ final class UnavailablePickupSheetRepository implements PickupSheetRepository
         throw new RuntimeException('Pickup-sheet storage is unavailable.');
     }
 
+    public function awbUses(array $awbNumbers, string $fromDate, string $toDate, ?string $excludeReference = null): array
+    {
+        throw new RuntimeException('Pickup-sheet storage is unavailable.');
+    }
+
     public function findByReference(string $referenceNumber): ?PickupSheet
     {
         throw new RuntimeException('Persistent pickup-sheet storage is unavailable.');

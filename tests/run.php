@@ -18,10 +18,13 @@ use App\Modules\CRM\Domain\CustomerMergePolicy;
 use App\Modules\CRM\Domain\CustomerProfile;
 use App\Modules\CRM\Infrastructure\DemoCustomerRepository;
 use App\Modules\CRM\UI\CustomerController;
+use App\Modules\Pickupsheet\Application\AwbReuseException;
 use App\Modules\Pickupsheet\Application\PickupSheetService;
+use App\Modules\Pickupsheet\Domain\AwbReusePolicy;
 use App\Modules\Pickupsheet\Domain\DhlTrackingUrl;
 use App\Modules\Pickupsheet\Infrastructure\DemoPickupSheetRepository;
 use App\Modules\Pickupsheet\Infrastructure\UnavailablePickupSheetRepository;
+use App\Modules\Pickupsheet\UI\AwbLink;
 use App\Modules\Pickupsheet\UI\PickupsheetAuthController;
 use App\Modules\Pickupsheet\UI\PickupsheetController;
 use App\Modules\Site\UI\SiteController;
@@ -65,6 +68,10 @@ $assert = static function (bool $condition, string $message): void {
         throw new RuntimeException($message);
     }
 };
+
+// Fixtures use fixed collection dates. A long AWB reuse window keeps their tracking links live as the
+// calendar moves on; the 90-day behaviour is tested explicitly with fixed dates.
+AwbReusePolicy::configure(3650);
 
 // Source checks compare against LF text; a Windows checkout with core.autocrlf stores files as CRLF.
 $readSource = static function (string $path): string|false {
@@ -1289,6 +1296,56 @@ $leadDirectoryPickups = new PickupSheetService($renamePickupRepository, new Cust
 $renameCustomerService->save(null, ['display_name' => 'Brand New Lead Company', 'status' => 'lead'], str_repeat('a', 24));
 $assert(in_array('Brand New Lead Company', $leadDirectoryPickups->consignorSuggestions('Brand', 10), true), 'New pickup sheets should suggest CRM customers that have no sheets yet.');
 
+AwbReusePolicy::configure(90);
+$assert(AwbReusePolicy::window('2026-09-29') === ['2026-07-02', '2026-12-27'], 'The AWB reuse window should cover 90 days either side of the collection date.');
+$assert(AwbReusePolicy::trackingIsLive('2026-07-02', '2026-09-29') && !AwbReusePolicy::trackingIsLive('2026-07-01', '2026-09-29'), 'AWB tracking should expire once the 90-day reuse window has passed.');
+$assert(str_contains(AwbLink::html('9876543210', '2020-01-01'), 'class="pickup-awb-expired"') && !str_contains(AwbLink::html('9876543210', '2020-01-01'), 'href=') && str_contains(AwbLink::html('9876543210', gmdate('Y-m-d')), 'class="pickup-awb-link" href="https://www.dhl.com/'), 'Expired AWBs should lose their tracking link while live AWBs keep it.');
+$awbSheet = static fn (string $date, array $awbs): array => [
+    'agent_name' => 'AWB Reuse Agent',
+    'collection_date' => $date,
+    'privacy_consent' => '1',
+    'shipments' => array_map(static fn (string $awb): array => [
+        'consignor' => 'AWB Reuse Customer',
+        'awb_number' => $awb,
+        'destination' => 'DLA',
+        'amount' => '1000',
+        'pieces' => '1',
+        'weight_kg' => '1',
+        'checked_by' => 'AWB Checker',
+    ], $awbs),
+];
+$sameSheetDuplicate = null;
+try {
+    $renamePickupService->submit($awbSheet('2026-09-20', ['7770000001', '7770000001']));
+} catch (InvalidArgumentException $exception) {
+    $sameSheetDuplicate = $exception;
+}
+$assert($sameSheetDuplicate !== null && !$sameSheetDuplicate instanceof AwbReuseException && str_contains($sameSheetDuplicate->getMessage(), 'Shipments 1 and 2 use the same AWB number 7770000001'), 'The same AWB twice on one sheet should always be refused.');
+$firstAwbSheet = $renamePickupService->submit($awbSheet('2026-09-20', ['7770000001']));
+$reuseWarning = null;
+try {
+    $renamePickupService->submit($awbSheet('2026-09-25', ['7770000002', '7770000001']));
+} catch (AwbReuseException $exception) {
+    $reuseWarning = $exception;
+}
+$assert($reuseWarning?->awbNumbers() === ['7770000001'] && ($reuseWarning->conflicts[0]['referenceNumber'] ?? '') === $firstAwbSheet->referenceNumber && str_contains($reuseWarning->getMessage(), 'already on another pickup sheet from the last 90 days'), 'An AWB already on another sheet within 90 days should stop the save with a warning naming that sheet.');
+$wrongConfirmation = null;
+try {
+    $renamePickupService->submit($awbSheet('2026-09-25', ['7770000002', '7770000001']) + ['confirmed_awb_reuse' => '7770000009']);
+} catch (AwbReuseException $exception) {
+    $wrongConfirmation = $exception;
+}
+$assert($wrongConfirmation !== null, 'Confirming a different AWB should not approve the one that clashes.');
+$confirmedAwbSheet = $renamePickupService->submit($awbSheet('2026-09-25', ['7770000002', '7770000001']) + ['confirmed_awb_reuse' => '7770000001']);
+$assert(count($confirmedAwbSheet->shipments) === 2, 'After the operator confirms the listed AWBs were reissued, the sheet should save.');
+$assert($renamePickupService->submit($awbSheet('2027-01-10', ['7770000001']))->collectionDate === '2027-01-10', 'An AWB outside the 90-day window should be accepted without a warning.');
+$ownAwbSheet = $renamePickupService->submit($awbSheet('2026-09-20', ['7770000004']));
+$selfEditInput = $awbSheet('2026-09-21', ['7770000004']);
+$selfEditInput['shipments'][0]['collection_time'] = '10:00';
+$selfEdit = $renamePickupService->update($ownAwbSheet->referenceNumber, $selfEditInput, str_repeat('a', 24));
+$assert($selfEdit->collectionDate === '2026-09-21' && $selfEdit->shipments[0]->awbNumber === '7770000004', 'Editing a sheet should not clash with its own AWB numbers.');
+AwbReusePolicy::configure(3650);
+
 $_SESSION = [];
 $leaderboardPickupRepository = new DemoPickupSheetRepository();
 $leaderboardPickupService = new PickupSheetService($leaderboardPickupRepository);
@@ -1909,6 +1966,27 @@ $assert($adminUpdate->status() === 303, 'An administrator should save an audited
 $adminUpdatedSheet = (new PickupSheetService(new DemoPickupSheetRepository()))->findByReference($savedReference);
 $assert($adminUpdatedSheet?->totalCashReceivedXaf === 14000 && !$adminUpdatedSheet->isPaid(), 'An administrator edit should persist while retaining open status.');
 $assert(($adminUpdatedSheet->shipments[0]->checkedBy ?? '') === 'Records Administrator', 'An administrator edit should stamp Check By with the administrator account name.');
+$duplicateAwbUpdate = $pickupController->updatePickupSheet(new Request('POST', '/dhl/pickupsheet/submissions/edit', [], [
+    '_token' => $pickupCsrf->token(),
+    'reference' => $savedReference,
+    'agent_name' => 'Controller Agent',
+    'collection_date' => '2026-07-29',
+    'shipments' => array_fill(0, 2, [
+        'consignor' => 'Controller Client',
+        'awb_number' => '1234567890',
+        'destination' => 'DLA',
+        'amount' => '7000',
+        'pieces' => '1',
+        'weight_kg' => '1',
+        'collection_time' => '10:15',
+        'checked_by' => 'Records Administrator',
+    ]),
+]));
+$duplicateAwbEdit = $pickupController->edit(new Request('GET', '/dhl/pickupsheet/submissions/edit', ['reference' => $savedReference]));
+$assert($duplicateAwbUpdate->status() === 303 && str_contains($duplicateAwbEdit->body(), 'use the same AWB number 1234567890') && (new PickupSheetService(new DemoPickupSheetRepository()))->findByReference($savedReference)?->totalCashReceivedXaf === 14000, 'A sheet edit repeating an AWB should be refused and leave the sheet unchanged.');
+$_SESSION['_pickup_edit_awb_conflicts'] = [['awbNumber' => '1234567890', 'referenceNumber' => 'PS-20260720-EXAMPLE', 'collectionDate' => '2026-07-20']];
+$awbWarningEdit = $pickupController->edit(new Request('GET', '/dhl/pickupsheet/submissions/edit', ['reference' => $savedReference]));
+$assert(str_contains($awbWarningEdit->body(), 'data-awb-reuse-warning') && str_contains($awbWarningEdit->body(), 'PS-20260720-EXAMPLE</a>, collected 2026-07-20') && str_contains($awbWarningEdit->body(), 'name="confirmed_awb_reuse" value="1234567890"'), 'The edit form should list clashing AWBs and ask the operator to confirm DHL reissued them.');
 $missingReceiptPayment = $pickupController->markPickupSheetPaid(new Request('POST', '/dhl/pickupsheet/submissions/paid', [], [
     '_token' => $pickupCsrf->token(),
     'reference' => $savedReference,
@@ -1948,7 +2026,7 @@ $invalidTabDashboard = $pickupController->dashboard(new Request('GET', '/dhl/pic
 $assert(str_contains($invalidTabDashboard->body(), 'data-dashboard-panel="market">') && !str_contains($invalidTabDashboard->body(), '"><script>'), 'An unknown tab value should fall back to market analysis without being reflected.');
 $assert(str_contains($adminDashboard->body(), 'id="dashboard-panel-reports"') && str_contains($adminDashboard->body(), 'action="/dhl/pickupsheet/dashboard/report" target="_blank"') && str_contains($adminDashboard->body(), 'name="period" value="90" checked') && substr_count($adminDashboard->body(), 'name="sections[]"') === 6, 'The Reports tab should offer a reporting period and six selectable report sections.');
 $fullReport = $pickupController->report(new Request('GET', '/dhl/pickupsheet/dashboard/report'));
-$assert($fullReport->status() === 200 && str_contains($fullReport->body(), 'Performance report') && str_contains($fullReport->body(), 'data-print-pickup') && str_contains($fullReport->body(), 'print.css?v=20260925-report-charts'), 'An administrator should open a printable performance report in the A4 print layout.');
+$assert($fullReport->status() === 200 && str_contains($fullReport->body(), 'Performance report') && str_contains($fullReport->body(), 'data-print-pickup') && str_contains($fullReport->body(), 'print.css?v=20260925-report-charts-awb-reuse'), 'An administrator should open a printable performance report in the A4 print layout.');
 $assert(str_contains($fullReport->body(), '1. KPI summary and cash settlement') && str_contains($fullReport->body(), '6. Customer loyalty leaders') && str_contains($fullReport->body(), '(90 days)') && str_contains($fullReport->body(), 'New baseline'), 'A report without explicit sections should include every section for the default 90-day period.');
 $assert(str_contains($fullReport->body(), '<td>Total cash recorded</td><td class="is-number">14,000</td>') && str_contains($fullReport->body(), 'Confidential · Internal operational data'), 'The report should reuse dashboard KPI figures and carry an internal-data footer.');
 $filteredReport = $pickupController->report(new Request('GET', '/dhl/pickupsheet/dashboard/report', ['period' => '30', 'sections' => ['destinations', 'bogus', 'market']]));
@@ -2491,7 +2569,7 @@ $printResponse = $pickupController->print(new Request('GET', '/dhl/pickupsheet/s
 $printStyles = $readSource(dirname(__DIR__) . '/public/assets/print.css');
 $printScript = $readSource(dirname(__DIR__) . '/public/assets/print.js');
 $assert($printResponse->status() === 200, 'A direct pickup sheet should render for printing.');
-$assert(str_contains($printResponse->body(), 'print.css?v=20260925-report-charts'), 'The print view should load its cache-safe external stylesheet.');
+$assert(str_contains($printResponse->body(), 'print.css?v=20260925-report-charts-awb-reuse'), 'The print view should load its cache-safe external stylesheet.');
 $assert(str_contains($printResponse->body(), 'print.js?v=20260825-print-dialog'), 'The print view should load its CSP-compatible external behavior.');
 $assert(str_contains($printResponse->body(), 'data-print-pickup'), 'The print view should provide a manual print-dialog trigger.');
 $assert(!str_contains($printResponse->body(), 'onclick='), 'The print view should not rely on CSP-blocked inline event handlers.');

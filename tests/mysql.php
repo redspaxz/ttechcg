@@ -15,6 +15,7 @@ use App\Modules\CRM\Application\CustomerConsignorDirectory;
 use App\Modules\CRM\Application\CustomerService;
 use App\Modules\CRM\Application\DuplicateCustomerException;
 use App\Modules\CRM\Infrastructure\MysqlCustomerRepository;
+use App\Modules\Pickupsheet\Application\AwbReuseException;
 use App\Modules\Pickupsheet\Application\PickupSheetService;
 use App\Modules\Pickupsheet\Infrastructure\MysqlPickupSheetRepository;
 use App\Shared\Infrastructure\MigrationRunner;
@@ -174,6 +175,26 @@ $phonePair = array_filter($crm()->duplicateSuggestions(20), static fn (array $su
 $check($phonePair !== [], 'profiles sharing a phone number are suggested as duplicates');
 $notesMerged = $crm()->merge($left->customerKey, $right->customerKey, $actor);
 $check(strlen($notesMerged->notes) <= 2000 && preg_match('//u', $notesMerged->notes) === 1, 'merged notes stay valid UTF-8 within 2,000 bytes');
+
+// AWB reuse window.
+$submit([$line('AWB Window Customer', '8880000001')]);
+try {
+    $submit([$line('AWB Window Customer', '8880000002'), $line('AWB Window Customer', '8880000001')]);
+    $check(false, 'an AWB already used within 90 days stops the save');
+} catch (AwbReuseException $exception) {
+    $check($exception->awbNumbers() === ['8880000001'], 'an AWB already used within 90 days stops the save');
+}
+$confirmedReference = $pickups->submit([
+    'agent_name' => 'Integration Agent', 'collection_date' => '2026-09-20', 'privacy_consent' => '1',
+    'shipments' => [$line('AWB Window Customer', '8880000002'), $line('AWB Window Customer', '8880000001')],
+    'confirmed_awb_reuse' => '8880000001',
+])->referenceNumber;
+$check($pickups->findByReference($confirmedReference)?->shipmentCount() === 2, 'a confirmed reissued AWB saves');
+$outside = $pickups->submit([
+    'agent_name' => 'Integration Agent', 'collection_date' => '2027-01-15', 'privacy_consent' => '1',
+    'shipments' => [$line('AWB Window Customer', '8880000001')],
+]);
+$check($outside->collectionDate === '2027-01-15', 'an AWB outside the reuse window saves without a warning');
 
 echo $failures === 0 ? "All MySQL integration checks passed.\n" : "{$failures} MySQL integration check(s) failed.\n";
 exit($failures === 0 ? 0 : 1);

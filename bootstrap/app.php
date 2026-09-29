@@ -18,6 +18,7 @@ use App\Modules\CRM\Infrastructure\DemoCustomerRepository;
 use App\Modules\CRM\Infrastructure\MysqlCustomerRepository;
 use App\Modules\CRM\Infrastructure\UnavailableCustomerRepository;
 use App\Modules\CRM\UI\CustomerController;
+use App\Modules\Pickupsheet\Domain\AwbReusePolicy;
 use App\Modules\Pickupsheet\Application\PickupSheetService;
 use App\Modules\Pickupsheet\Infrastructure\DemoPickupSheetRepository;
 use App\Modules\Pickupsheet\Infrastructure\MysqlPickupSheetRepository;
@@ -69,6 +70,7 @@ $root = dirname(__DIR__);
 Environment::load($root . '/.env');
 $config = require $root . '/config/app.php';
 date_default_timezone_set((string) $config['timezone']);
+AwbReusePolicy::configure((int) ($config['awb_reuse_days'] ?? AwbReusePolicy::DEFAULT_DAYS));
 $isProduction = $config['environment'] === 'production';
 $applicationUrlParts = parse_url((string) ($config['app_url'] ?? ''));
 if ($isProduction && (!is_array($applicationUrlParts)
