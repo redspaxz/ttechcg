@@ -222,11 +222,7 @@ final class PickupSheetService
             throw new InvalidArgumentException('Enter the amount received, in XAF, as shown on the receipt.');
         }
         if ((int) $amount !== $existing->totalCashReceivedXaf) {
-            throw new InvalidArgumentException(sprintf(
-                'Amount is incorrect. The receipt amount of %s XAF does not match the sheet total of %s XAF.',
-                number_format((int) $amount),
-                number_format($existing->totalCashReceivedXaf),
-            ));
+            throw new InvalidArgumentException('Amount is incorrect. It does not match the pickup sheet amount.');
         }
         $this->validateActor($actorId);
         return $this->repository->markPaid($referenceNumber, $receiptNumber, $actorId);
@@ -256,8 +252,11 @@ final class PickupSheetService
         if ($receiptNumber === '') {
             throw new InvalidArgumentException('A receipt number is required as proof of payment.');
         }
-        if (preg_match('/^[A-Z0-9][A-Z0-9._\/-]{2,63}$/', $receiptNumber) !== 1) {
-            throw new InvalidArgumentException('Receipt number must be 3 to 64 characters using letters, numbers, dots, slashes, underscores, or hyphens.');
+        if (preg_match('/^[A-Z0-9][A-Z0-9._\/-]{5,63}$/', $receiptNumber) !== 1) {
+            throw new InvalidArgumentException('Receipt number must be 6 to 64 characters using letters, numbers, dots, slashes, underscores, or hyphens.');
+        }
+        if (preg_match_all('/[0-9]/', $receiptNumber) < 6) {
+            throw new InvalidArgumentException('Receipt number must contain at least 6 digits.');
         }
         return $receiptNumber;
     }

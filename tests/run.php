@@ -1217,7 +1217,16 @@ $spacedSheet = $renamePickupService->submit([
     ]],
 ]);
 $assert($spacedSheet->shipments[0]->consignor === 'Spaced Out Sender', 'Pickup sheets should collapse repeated spaces in consignor names so one sender maps to one CRM customer.');
-$renamePickupService->markPaid($spacedSheet->referenceNumber, 'RCPT-SPACED-1', (string) $spacedSheet->totalCashReceivedXaf, str_repeat('a', 24));
+foreach (['RCP-12345' => 'Receipt number must contain at least 6 digits.', 'ABCDEF' => 'Receipt number must contain at least 6 digits.', '12345' => 'Receipt number must be 6 to 64 characters using letters, numbers, dots, slashes, underscores, or hyphens.'] as $shortReceipt => $shortReceiptMessage) {
+    $shortReceiptError = null;
+    try {
+        $renamePickupService->markPaid($spacedSheet->referenceNumber, $shortReceipt, (string) $spacedSheet->totalCashReceivedXaf, str_repeat('a', 24));
+    } catch (InvalidArgumentException $exception) {
+        $shortReceiptError = $exception->getMessage();
+    }
+    $assert($shortReceiptError === $shortReceiptMessage, 'A receipt number with fewer than 6 digits should be refused: ' . $shortReceipt);
+}
+$renamePickupService->markPaid($spacedSheet->referenceNumber, 'RCPT-SPACED-100001', (string) $spacedSheet->totalCashReceivedXaf, str_repeat('a', 24));
 $renameCustomerService->synchronize();
 $spacedCustomer = $renameCustomerService->existingCustomer('Spaced Out Sender')['customer'];
 $renameCustomerService->save($spacedCustomer->customerKey, ['display_name' => 'Spaced Out Sender SARL', 'status' => 'active'], str_repeat('a', 24));
@@ -1882,7 +1891,7 @@ $assert(str_contains($openSubmissions->body(), 'data-payment-dialog-open="paymen
 $assert(preg_match('/<button class="pickup-record-paid" type="button" data-payment-dialog-open="[^"]+" aria-haspopup="dialog">Mark paid<\/button>/', $openSubmissions->body()) === 1 && !preg_match('/<button[^>]*data-payment-dialog-open[^>]*disabled/', $openSubmissions->body()), 'The Mark paid button should render active, never disabled.');
 $paidButtonStyles = $readSource(dirname(__DIR__) . '/public/assets/styles.css');
 $assert(is_string($paidButtonStyles) && str_contains($paidButtonStyles, '.pickup-record-actions .pickup-record-paid { background: #0b633a; color: #fff; border-color: #0b633a; }'), 'The Mark paid button should be green with white text.');
-$assert(str_contains($openSubmissions->body(), 'data-pickup-payment data-expected-amount="12000"') && str_contains($openSubmissions->body(), 'name="receipt_number"') && str_contains($openSubmissions->body(), 'name="receipt_amount" inputmode="numeric"') && str_contains($openSubmissions->body(), '<dt>Sheet total</dt><dd>12,000 XAF</dd>'), 'The payment modal should show the sheet total and require both the receipt number and the amount received.');
+$assert(str_contains($openSubmissions->body(), 'data-pickup-payment data-expected-amount="12000"') && str_contains($openSubmissions->body(), 'name="receipt_number"') && str_contains($openSubmissions->body(), 'name="receipt_amount" inputmode="numeric"') && !str_contains($openSubmissions->body(), 'Sheet total') && str_contains($openSubmissions->body(), 'name="receipt_number" minlength="6"'), 'The payment modal should hide the sheet total and require a receipt number of at least 6 digits and the amount received.');
 $assert(substr_count($openSubmissions->body(), 'class="pickup-payment-tick" data-field-tick') >= 2 && str_contains($openSubmissions->body(), 'data-result-icon="success"') && str_contains($openSubmissions->body(), 'data-result-icon="failure"') && str_contains($openSubmissions->body(), 'data-payment-result hidden role="status"'), 'The payment modal should include field ticks and hidden success and failure result icons.');
 $assert(str_contains($openSubmissions->body(), 'data-pickup-delete'), 'An administrator should receive the audited delete action.');
 $assert(str_contains($openSubmissions->body(), 'name="return_page"') && str_contains($openSubmissions->body(), 'name="return_search"'), 'Submitted-sheet actions should retain the current page and search context.');
@@ -2067,7 +2076,7 @@ $wrongAmountPayment = $pickupController->markPickupSheetPaid(new Request('POST',
     'receipt_number' => 'rcp-2026/0001',
     'receipt_amount' => '13,000',
 ]));
-$assert($wrongAmountPayment->status() === 303 && (new PickupSheetService(new DemoPickupSheetRepository()))->findByReference($savedReference)?->isPaid() === false && ($_SESSION['_pickup_records_errors'] ?? []) === ['Amount is incorrect. The receipt amount of 13,000 XAF does not match the sheet total of 14,000 XAF.'], 'A receipt amount that differs from the sheet total must leave the sheet open and explain the mismatch.');
+$assert($wrongAmountPayment->status() === 303 && (new PickupSheetService(new DemoPickupSheetRepository()))->findByReference($savedReference)?->isPaid() === false && ($_SESSION['_pickup_records_errors'] ?? []) === ['Amount is incorrect. It does not match the pickup sheet amount.'], 'A receipt amount that differs from the sheet total must leave the sheet open and explain the mismatch.');
 unset($_SESSION['_pickup_records_errors']);
 $missingAmountPayment = $pickupController->markPickupSheetPaid(new Request('POST', '/dhl/pickupsheet/submissions/paid', [], [
     '_token' => $pickupCsrf->token(),
@@ -2108,6 +2117,23 @@ $adminReceiptEdit = $pickupController->updatePickupSheetReceipt(new Request('POS
 $receiptCorrectedSheet = (new PickupSheetService(new DemoPickupSheetRepository()))->findByReference($savedReference);
 $assert($adminReceiptEdit->status() === 303 && $receiptCorrectedSheet?->paymentReceiptNumber === 'RCP-2026/0002' && $receiptCorrectedSheet->isPaid() && $receiptCorrectedSheet->paidAt === $paidControllerSheet->paidAt, 'An administrator should correct a paid sheet receipt number while keeping its paid status and time.');
 unset($_SESSION['_pickup_records_flash']);
+$receiptModalList = $pickupController->submissions(new Request('GET', '/dhl/pickupsheet/submissions', [], [], '', $recordsServer));
+$assert(str_contains($receiptModalList->body(), 'data-payment-dialog-open="receipt-' . $savedReference . '" aria-haspopup="dialog">Edit receipt</button>') && str_contains($receiptModalList->body(), '<dialog class="pickup-payment-dialog" id="receipt-' . $savedReference . '"') && str_contains($receiptModalList->body(), 'data-pickup-receipt-edit data-current-receipt="RCP-2026/0002"') && !str_contains($receiptModalList->body(), '<summary>Edit receipt</summary>'), 'Edit receipt should open a modal carrying the current receipt number.');
+$ajaxAdminServer = $recordsServer + ['HTTP_X_REQUESTED_WITH' => 'XMLHttpRequest'];
+$ajaxShortReceipt = $pickupController->updatePickupSheetReceipt(new Request('POST', '/dhl/pickupsheet/submissions/receipt', [], [
+    '_token' => $pickupCsrf->token(),
+    'reference' => $savedReference,
+    'receipt_number' => 'rcp-12345',
+], '', $ajaxAdminServer));
+$ajaxShortReceiptPayload = json_decode($ajaxShortReceipt->body(), true);
+$assert($ajaxShortReceipt->status() === 422 && ($ajaxShortReceiptPayload['message'] ?? '') === 'Receipt number must contain at least 6 digits.' && !isset($_SESSION['_pickup_records_errors']), 'An AJAX receipt correction with fewer than 6 digits should fail with a JSON reason for the red cross.');
+$ajaxReceiptEdit = $pickupController->updatePickupSheetReceipt(new Request('POST', '/dhl/pickupsheet/submissions/receipt', [], [
+    '_token' => $pickupCsrf->token(),
+    'reference' => $savedReference,
+    'receipt_number' => 'rcp-2026/0003',
+], '', $ajaxAdminServer));
+$ajaxReceiptEditPayload = json_decode($ajaxReceiptEdit->body(), true);
+$assert($ajaxReceiptEdit->status() === 200 && ($ajaxReceiptEditPayload['ok'] ?? null) === true && ($ajaxReceiptEditPayload['receiptNumber'] ?? '') === 'RCP-2026/0003' && !isset($_SESSION['_pickup_records_flash']) && (new PickupSheetService(new DemoPickupSheetRepository()))->findByReference($savedReference)?->paymentReceiptNumber === 'RCP-2026/0003', 'A successful AJAX receipt correction should return JSON for the green tick and save the new number.');
 
 $operatorPaidSheet = (new PickupSheetService(new DemoPickupSheetRepository()))->submit([
     'agent_name' => 'Operator Payment Agent',
@@ -2122,35 +2148,35 @@ $ajaxServer = $operatorServer + ['HTTP_X_REQUESTED_WITH' => 'XMLHttpRequest'];
 $ajaxWrongAmount = $pickupController->markPickupSheetPaid(new Request('POST', '/dhl/pickupsheet/submissions/paid', [], [
     '_token' => $pickupCsrf->token(),
     'reference' => $operatorPaidSheet->referenceNumber,
-    'receipt_number' => 'op-rcp-001',
+    'receipt_number' => 'op-rcp-100001',
     'receipt_amount' => '2,500',
 ], '', $ajaxServer));
 $ajaxWrongAmountPayload = json_decode($ajaxWrongAmount->body(), true);
-$assert($ajaxWrongAmount->status() === 422 && ($ajaxWrongAmountPayload['ok'] ?? null) === false && ($ajaxWrongAmountPayload['message'] ?? '') === 'Amount is incorrect. The receipt amount of 2,500 XAF does not match the sheet total of 3,000 XAF.' && !isset($_SESSION['_pickup_records_errors']), 'An AJAX payment with the wrong amount should fail with a JSON reason for the red cross, without a page flash.');
+$assert($ajaxWrongAmount->status() === 422 && ($ajaxWrongAmountPayload['ok'] ?? null) === false && ($ajaxWrongAmountPayload['message'] ?? '') === 'Amount is incorrect. It does not match the pickup sheet amount.' && !isset($_SESSION['_pickup_records_errors']), 'An AJAX payment with the wrong amount should fail with a JSON reason for the red cross, without a page flash.');
 $assert((new PickupSheetService(new DemoPickupSheetRepository()))->findByReference($operatorPaidSheet->referenceNumber)?->isPaid() === false, 'A failed AJAX payment must leave the sheet open.');
 $operatorConfirmsPaid = $pickupController->markPickupSheetPaid(new Request('POST', '/dhl/pickupsheet/submissions/paid', [], [
     '_token' => $pickupCsrf->token(),
     'reference' => $operatorPaidSheet->referenceNumber,
-    'receipt_number' => 'op-rcp-001',
+    'receipt_number' => 'op-rcp-100001',
     'receipt_amount' => '3000',
 ], '', $ajaxServer));
 $operatorConfirmsPaidPayload = json_decode($operatorConfirmsPaid->body(), true);
 $operatorConfirmedSheet = (new PickupSheetService(new DemoPickupSheetRepository()))->findByReference($operatorPaidSheet->referenceNumber);
-$assert($operatorConfirmsPaid->status() === 200 && ($operatorConfirmsPaidPayload['ok'] ?? null) === true && ($operatorConfirmsPaidPayload['receiptNumber'] ?? '') === 'OP-RCP-001' && !isset($_SESSION['_pickup_records_flash']), 'A successful AJAX payment should return JSON for the green tick instead of a redirect.');
-$assert($operatorConfirmedSheet?->isPaid() === true && $operatorConfirmedSheet->paymentReceiptNumber === 'OP-RCP-001', 'An operator should confirm an open pickup sheet as paid with its receipt number.');
+$assert($operatorConfirmsPaid->status() === 200 && ($operatorConfirmsPaidPayload['ok'] ?? null) === true && ($operatorConfirmsPaidPayload['receiptNumber'] ?? '') === 'OP-RCP-100001' && !isset($_SESSION['_pickup_records_flash']), 'A successful AJAX payment should return JSON for the green tick instead of a redirect.');
+$assert($operatorConfirmedSheet?->isPaid() === true && $operatorConfirmedSheet->paymentReceiptNumber === 'OP-RCP-100001', 'An operator should confirm an open pickup sheet as paid with its receipt number.');
 $operatorPaidList = $pickupController->submissions(new Request('GET', '/dhl/pickupsheet/submissions', ['q' => $operatorPaidSheet->referenceNumber], [], '', $operatorServer));
-$assert(str_contains($operatorPaidList->body(), 'Receipt OP-RCP-001') && !str_contains($operatorPaidList->body(), 'data-pickup-receipt-edit') && !str_contains($operatorPaidList->body(), 'Confirm paid'), 'An operator should see a paid sheet receipt without any way to change it.');
+$assert(str_contains($operatorPaidList->body(), 'Receipt OP-RCP-100001') && !str_contains($operatorPaidList->body(), 'data-pickup-receipt-edit') && !str_contains($operatorPaidList->body(), 'Confirm paid'), 'An operator should see a paid sheet receipt without any way to change it.');
 $operatorRemarkPaid = $pickupController->markPickupSheetPaid(new Request('POST', '/dhl/pickupsheet/submissions/paid', [], [
     '_token' => $pickupCsrf->token(),
     'reference' => $operatorPaidSheet->referenceNumber,
-    'receipt_number' => 'op-rcp-999',
+    'receipt_number' => 'op-rcp-100999',
 ]));
 $operatorReceiptEdit = $pickupController->updatePickupSheetReceipt(new Request('POST', '/dhl/pickupsheet/submissions/receipt', [], [
     '_token' => $pickupCsrf->token(),
     'reference' => $operatorPaidSheet->referenceNumber,
-    'receipt_number' => 'op-rcp-999',
+    'receipt_number' => 'op-rcp-100999',
 ]));
-$assert($operatorRemarkPaid->status() === 303 && $operatorReceiptEdit->status() === 403 && (new PickupSheetService(new DemoPickupSheetRepository()))->findByReference($operatorPaidSheet->referenceNumber)?->paymentReceiptNumber === 'OP-RCP-001', 'An operator must not change a paid sheet receipt number by re-marking it paid or by the correction route.');
+$assert($operatorRemarkPaid->status() === 303 && $operatorReceiptEdit->status() === 403 && (new PickupSheetService(new DemoPickupSheetRepository()))->findByReference($operatorPaidSheet->referenceNumber)?->paymentReceiptNumber === 'OP-RCP-100001', 'An operator must not change a paid sheet receipt number by re-marking it paid or by the correction route.');
 unset($_SESSION['_pickup_records_errors'], $_SESSION['_pickup_records_flash']);
 $_SESSION['_demo_pickup_sheets'] = array_values(array_filter($_SESSION['_demo_pickup_sheets'], static fn ($sheet): bool => $sheet->referenceNumber !== $operatorPaidSheet->referenceNumber));
 $recordsSession->login($adminPrincipal);
@@ -3137,11 +3163,12 @@ $assert(is_string($script) && str_contains($script, "spinner.hidden = !loading")
 $assert(is_string($script) && str_contains($script, "window.history.pushState"), 'AJAX pagination should preserve browser history.');
 $assert(is_string($script) && str_contains($script, 'needsLoad: (url) => stateSignature(url) !== currentState'), 'AJAX history should reload when a tracked filter changes without a page-number change.');
 $assert(is_string($script) && str_contains($script, "event.target.matches?.('[data-audit-log-entry]')") && str_contains($script, "querySelectorAll('[data-audit-log-entry][open]')"), 'Dynamically loaded audit-log accordions should keep one expanded entry at a time.');
-$assert(is_string($script) && str_contains($script, 'dialog.showModal()') && str_contains($script, '[data-payment-dialog-close]') && str_contains($script, "event.target.matches('[data-pickup-receipt-edit]')"), 'Marking a pickup sheet paid should use a confirmation modal, and correcting a receipt should still require browser confirmation.');
+$assert(is_string($script) && str_contains($script, 'dialog.showModal()') && str_contains($script, '[data-payment-dialog-close]') && str_contains($script, "event.target.matches('[data-pickup-payment], [data-pickup-receipt-edit]')") && !str_contains($script, 'Change the receipt number for'), 'Marking a pickup sheet paid and correcting a receipt should both use modals that submit in the background.');
+$assert(is_string($script) && str_contains($script, 'This is the current receipt number. Enter the corrected number.') && str_contains($script, "success: 'Receipt number updated'"), 'The receipt modal should require a changed number and show a green tick when the change is saved.');
 $assert(is_string($script) && str_contains($script, 'Number(entered) !== Number(expected)') && str_contains($script, "blocked = blocked || state !== 'match'"), 'Confirm paid should stay disabled until the receipt amount matches the sheet total.');
-$assert(is_string($script) && str_contains($script, 'const syncReceiptSubmit') && str_contains($script, "const receiptValid = receiptValue !== '' && receipt.checkValidity();") && str_contains($script, 'let blocked = !receiptValid;'), 'Confirm paid should stay disabled until a valid receipt number is entered.');
+$assert(is_string($script) && str_contains($script, 'const syncReceiptSubmit') && str_contains($script, '&& digitCount >= 6;') && str_contains($script, 'let blocked = !receiptValid || unchanged;'), 'Confirm paid should stay disabled until a valid receipt number is entered.');
 $assert(is_string($script) && str_contains($script, "field.dataset.valid = state === 'match' ? 'true' : 'false'") && str_contains($script, 'Receipt number is valid.') && str_contains($script, 'Amount is incorrect.'), 'The payment modal should show a live green tick beside a valid receipt number and a matching amount, and say when the amount is incorrect.');
-$assert(is_string($script) && str_contains($script, "headers: { 'X-Requested-With': 'XMLHttpRequest' }") && str_contains($script, "showPaymentResult(dialog, true, 'Payment confirmed'") && str_contains($script, "showPaymentResult(dialog, false, 'Payment not confirmed'"), 'The payment modal should submit in the background and show a big tick on success or a big cross on failure.');
+$assert(is_string($script) && str_contains($script, "headers: { 'X-Requested-With': 'XMLHttpRequest' }") && str_contains($script, 'showPaymentResult(dialog, true, text.success') && str_contains($script, 'showPaymentResult(dialog, false, text.failure') && str_contains($script, "success: 'Payment confirmed'") && str_contains($script, "failure: 'Payment not confirmed'"), 'The payment modal should submit in the background and show a big tick on success or a big cross on failure.');
 $assert(is_string($script) && str_contains($script, "document.querySelectorAll('[data-user-edit-toggle]')") && str_contains($script, 'preventScroll: true'), 'Local account editors should open on demand without moving the viewport.');
 $assert(is_string($script) && str_contains($script, "event.target.matches('[data-user-delete-form]')") && str_contains($script, 'Permanently delete'), 'Local account deletion should require an explicit browser confirmation.');
 $assert(is_string($script) && str_contains($script, "event.target.matches('[data-user-status-form]')") && str_contains($script, 'Their current session and future local sign-ins will be blocked') && str_contains($script, "confirmation.value = '1'"), 'Direct managed-account disabling should require explicit browser confirmation.');

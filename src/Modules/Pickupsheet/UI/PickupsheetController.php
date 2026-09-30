@@ -632,25 +632,42 @@ final class PickupsheetController
         }
 
         $reference = $request->input('reference');
+        $ajax = strcasecmp($request->header('X-Requested-With'), 'XMLHttpRequest') === 0;
         try {
             $corrected = $this->service->updateReceipt(
                 $reference,
                 $request->input('receipt_number'),
                 $this->actorId($authorization),
             );
-            $_SESSION['_pickup_records_flash'] = 'Receipt number for pickup sheet ' . $corrected->referenceNumber . ' changed to ' . $corrected->paymentReceiptNumber . '.';
+            $message = 'Receipt number for pickup sheet ' . $corrected->referenceNumber . ' changed to ' . $corrected->paymentReceiptNumber . '.';
             $this->securityLogger->event('pickupsheet.record_receipt_edit', $request, 'accepted', [
                 'actor_id' => $this->actorId($authorization),
                 'resource_id' => substr(hash('sha256', $corrected->referenceNumber), 0, 24),
                 'receipt_id' => substr(hash('sha256', (string) $corrected->paymentReceiptNumber), 0, 24),
             ]);
+            if ($ajax) {
+                return Response::json([
+                    'ok' => true,
+                    'message' => $message,
+                    'referenceNumber' => $corrected->referenceNumber,
+                    'receiptNumber' => $corrected->paymentReceiptNumber,
+                ], 200, $this->privateHeaders());
+            }
+            $_SESSION['_pickup_records_flash'] = $message;
         } catch (InvalidArgumentException $exception) {
-            $_SESSION['_pickup_records_errors'] = [$exception->getMessage()];
             $this->securityLogger->event('pickupsheet.record_receipt_edit', $request, 'denied');
+            if ($ajax) {
+                return Response::json(['ok' => false, 'message' => $exception->getMessage()], 422, $this->privateHeaders());
+            }
+            $_SESSION['_pickup_records_errors'] = [$exception->getMessage()];
         } catch (RuntimeException $exception) {
             error_log($exception->__toString());
-            $_SESSION['_pickup_records_errors'] = ['The receipt number could not be changed. Check MySQL and try again.'];
+            $message = 'The receipt number could not be changed. Check MySQL and try again.';
             $this->securityLogger->event('pickupsheet.record_receipt_edit', $request, 'failed');
+            if ($ajax) {
+                return Response::json(['ok' => false, 'message' => $message], 503, $this->privateHeaders());
+            }
+            $_SESSION['_pickup_records_errors'] = [$message];
         }
 
         return Response::redirect($this->submissionReturnPath($request));
