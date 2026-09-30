@@ -695,15 +695,6 @@ if (dashboardTabs) {
     if (initialTab) revealTab(initialTab);
 }
 
-document.addEventListener('toggle', (event) => {
-    if (!event.target.matches?.('[data-audit-log-entry]') || !event.target.open) return;
-    event.target.closest('[data-audit-log-accordion]')
-        ?.querySelectorAll('[data-audit-log-entry][open]')
-        .forEach((entry) => {
-            if (entry !== event.target) entry.open = false;
-        });
-}, true);
-
 // Payment and receipt forms can only be submitted once a valid receipt number is entered.
 const syncReceiptSubmit = (form) => {
     const receipt = form?.querySelector('[name="receipt_number"]');
@@ -711,11 +702,21 @@ const syncReceiptSubmit = (form) => {
     if (!receipt || !submit) return;
     submit.disabled = receipt.value.trim() === '' || !receipt.checkValidity();
 };
+
 document.addEventListener('toggle', (event) => {
-    if (!event.target.matches?.('.pickup-record-payment') || !event.target.open) return;
-    const form = event.target.querySelector('[data-pickup-payment], [data-pickup-receipt-edit]');
-    syncReceiptSubmit(form);
-    form?.querySelector('[name="receipt_number"]')?.focus();
+    if (!event.target.open) return;
+    if (event.target.matches?.('.pickup-record-payment')) {
+        const form = event.target.querySelector('[data-pickup-payment], [data-pickup-receipt-edit]');
+        syncReceiptSubmit(form);
+        form?.querySelector('[name="receipt_number"]')?.focus();
+        return;
+    }
+    if (!event.target.matches?.('[data-audit-log-entry]')) return;
+    event.target.closest('[data-audit-log-accordion]')
+        ?.querySelectorAll('[data-audit-log-entry][open]')
+        .forEach((entry) => {
+            if (entry !== event.target) entry.open = false;
+        });
 }, true);
 document.addEventListener('input', (event) => {
     if (event.target.matches?.('[data-pickup-payment] [name="receipt_number"], [data-pickup-receipt-edit] [name="receipt_number"]')) {
