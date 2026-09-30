@@ -731,6 +731,46 @@ const showFieldState = (form, input, statusSelector, state, message) => {
     if (field) field.dataset.valid = state === 'match' ? 'true' : 'false';
     input.setAttribute('aria-invalid', state === 'mismatch' ? 'true' : 'false');
 };
+// Each modal answers a single-use security question fetched from the server when it opens.
+const applyRecordCaptcha = (form, captcha) => {
+    const nonce = form.querySelector('[data-captcha-nonce]');
+    const question = form.querySelector('[data-captcha-question]');
+    const answer = form.querySelector('[data-captcha-answer]');
+    const status = form.querySelector('[data-captcha-status]');
+    if (!nonce || !question || !answer) return;
+    const ready = typeof captcha?.nonce === 'string' && typeof captcha?.question === 'string';
+    nonce.value = ready ? captcha.nonce : '';
+    question.textContent = ready ? captcha.question : '…';
+    answer.value = '';
+    answer.disabled = !ready;
+    if (status) {
+        status.textContent = ready ? 'Answer the calculation to confirm you are human.' : 'The security check could not be loaded. Close this window and try again.';
+        status.dataset.state = ready ? '' : 'mismatch';
+    }
+    delete form.dataset.captchaStale;
+    syncReceiptSubmit(form);
+};
+const loadRecordCaptcha = async (form) => {
+    const endpoint = form?.dataset.captchaEndpoint;
+    if (!endpoint || !form.querySelector('[data-captcha-nonce]')) return;
+    applyRecordCaptcha(form, null);
+    const status = form.querySelector('[data-captcha-status]');
+    if (status) {
+        status.textContent = 'Loading security check...';
+        status.dataset.state = '';
+    }
+    try {
+        const response = await fetch(endpoint, {
+            credentials: 'same-origin',
+            headers: { 'X-Requested-With': 'XMLHttpRequest' },
+        });
+        const result = await response.json();
+        applyRecordCaptcha(form, response.ok && result?.ok === true ? result.captcha : null);
+    } catch {
+        applyRecordCaptcha(form, null);
+    }
+};
+
 const syncReceiptSubmit = (form) => {
     const receipt = form?.querySelector('[name="receipt_number"]');
     const submit = form?.querySelector('button[type="submit"]');
@@ -771,6 +811,11 @@ const syncReceiptSubmit = (form) => {
         }
         showFieldState(form, amount, '[data-payment-amount-status]', state, message);
         blocked = blocked || state !== 'match';
+    }
+    const captchaAnswer = form.querySelector('[data-captcha-answer]');
+    if (captchaAnswer) {
+        const captchaNonce = form.querySelector('[data-captcha-nonce]')?.value || '';
+        blocked = blocked || captchaNonce === '' || !/^[0-9]{1,2}$/.test(captchaAnswer.value.trim());
     }
     submit.disabled = blocked;
 };
@@ -823,8 +868,14 @@ const submitPayment = async (form) => {
             showPaymentResult(dialog, true, text.success, result.message || text.done);
             return;
         }
+        if (result?.captcha) {
+            applyRecordCaptcha(form, result.captcha);
+        } else {
+            form.dataset.captchaStale = '1';
+        }
         showPaymentResult(dialog, false, text.failure, result?.message || paymentFailureMessage(response.status, text));
     } catch {
+        form.dataset.captchaStale = '1';
         showPaymentResult(dialog, false, text.failure, paymentFailureMessage(0, text));
     } finally {
         submit.removeAttribute('data-submitting');
@@ -851,6 +902,7 @@ document.addEventListener('click', (event) => {
         form?.querySelector('button[type="submit"]')?.removeAttribute('data-submitting');
         syncReceiptSubmit(form);
         dialog.showModal();
+        loadRecordCaptcha(form);
         const receipt = form?.querySelector('[name="receipt_number"]');
         receipt?.focus();
         receipt?.select?.();
@@ -858,6 +910,7 @@ document.addEventListener('click', (event) => {
     }
     if (event.target.closest?.('[data-payment-retry]')) {
         const form = resetPaymentDialog(event.target.closest('dialog'));
+        if (form?.dataset.captchaStale === '1') loadRecordCaptcha(form);
         form?.querySelector('[aria-invalid="true"], [name="receipt_number"]')?.focus();
         return;
     }
@@ -884,7 +937,7 @@ document.addEventListener('toggle', (event) => {
         });
 }, true);
 document.addEventListener('input', (event) => {
-    if (event.target.matches?.('[data-pickup-payment] [name="receipt_number"], [data-pickup-payment] [name="receipt_amount"], [data-pickup-receipt-edit] [name="receipt_number"]')) {
+    if (event.target.matches?.('[data-pickup-payment] [name="receipt_number"], [data-pickup-payment] [name="receipt_amount"], [data-pickup-receipt-edit] [name="receipt_number"], [data-captcha-answer]')) {
         syncReceiptSubmit(event.target.form);
     }
 });

@@ -17,6 +17,17 @@ $search = trim(is_string($search ?? null) ? $search : '');
 $page = max(1, (int) ($pagination['page'] ?? 1));
 $totalPages = max(1, (int) ($pagination['totalPages'] ?? 1));
 $totalRecords = max(0, (int) ($pagination['totalRecords'] ?? 0));
+// Paid times are stored in UTC; show them in the application's time zone.
+$formatPaidAt = static function (?string $paidAt): string {
+    if ($paidAt === null || trim($paidAt) === '') {
+        return '';
+    }
+    try {
+        return (new DateTimeImmutable($paidAt, new DateTimeZone('UTC')))->setTimezone(new DateTimeZone(date_default_timezone_get()))->format('j M Y, H:i');
+    } catch (Exception) {
+        return $paidAt;
+    }
+};
 $pageUrl = static function (int $target) use ($basePath, $search): string {
     $query = ['page' => $target];
     if ($search !== '') {
@@ -65,6 +76,9 @@ $pageUrl = static function (int $target) use ($basePath, $search): string {
                         <?php if ($canMarkPaid && !$isPaid): ?>
                             <button class="pickup-record-paid" type="button" data-payment-dialog-open="payment-<?= $e($pickupSheet->referenceNumber) ?>" aria-haspopup="dialog">Mark paid</button>
                         <?php endif; ?>
+                        <?php if ($canMarkPaid && !$canEditReceipt && $isPaid): ?>
+                            <button class="pickup-record-view-receipt" type="button" data-payment-dialog-open="view-receipt-<?= $e($pickupSheet->referenceNumber) ?>" aria-haspopup="dialog">View receipt</button>
+                        <?php endif; ?>
                         <?php if ($canEditReceipt && $isPaid): ?>
                             <button class="pickup-record-paid" type="button" data-payment-dialog-open="receipt-<?= $e($pickupSheet->referenceNumber) ?>" aria-haspopup="dialog">Edit receipt</button>
                         <?php endif; ?>
@@ -76,7 +90,7 @@ $pageUrl = static function (int $target) use ($basePath, $search): string {
                 <?php if ($canMarkPaid && !$isPaid): ?>
                     <?php $paymentDialogId = 'payment-' . $pickupSheet->referenceNumber; ?>
                     <dialog class="pickup-payment-dialog" id="<?= $e($paymentDialogId) ?>" aria-labelledby="<?= $e($paymentDialogId) ?>-title">
-                        <form method="post" action="<?= $e($basePath) ?>/dhl/pickupsheet/submissions/paid" data-pickup-payment data-expected-amount="<?= $e($pickupSheet->totalCashReceivedXaf) ?>">
+                        <form method="post" action="<?= $e($basePath) ?>/dhl/pickupsheet/submissions/paid" data-pickup-payment data-captcha-endpoint="<?= $e($basePath) ?>/dhl/pickupsheet/submissions/captcha" data-expected-amount="<?= $e($pickupSheet->totalCashReceivedXaf) ?>">
                             <input type="hidden" name="_token" value="<?= $e($csrfToken) ?>"><input type="hidden" name="reference" value="<?= $e($pickupSheet->referenceNumber) ?>"><input type="hidden" name="return_page" value="<?= $e($page) ?>"><input type="hidden" name="return_search" value="<?= $e($search) ?>">
                             <header>
                                 <p>Confirm payment</p>
@@ -84,13 +98,17 @@ $pageUrl = static function (int $target) use ($basePath, $search): string {
                             </header>
                             <dl class="pickup-payment-summary">
                                 <div><dt>Collected</dt><dd><?= $e($pickupSheet->collectionDate) ?></dd></div>
-                                <div><dt>Agent</dt><dd><?= $e($pickupSheet->agentName) ?></dd></div>
                                 <div><dt>Shipments</dt><dd><?= $e($pickupSheet->shipmentCount()) ?></dd></div>
                             </dl>
                             <label><span>Receipt number</span><span class="pickup-payment-field"><input type="text" name="receipt_number" minlength="6" maxlength="64" pattern="(?=(?:[^0-9]*[0-9]){6})[A-Za-z0-9][A-Za-z0-9._\/\-]{5,63}" placeholder="e.g. RCP-123456" autocomplete="off" required aria-describedby="<?= $e($paymentDialogId) ?>-receipt-status"><svg class="pickup-payment-tick" data-field-tick viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="12" r="11"/><path d="M7 12.5l3.2 3.2L17 9"/></svg></span></label>
                             <p class="pickup-payment-status" id="<?= $e($paymentDialogId) ?>-receipt-status" data-payment-receipt-status aria-live="polite">At least 6 digits. Letters, dots, slashes, underscores, and hyphens are also allowed.</p>
                             <label><span>Amount received (XAF)</span><span class="pickup-payment-field"><input type="text" name="receipt_amount" inputmode="numeric" maxlength="16" pattern="[0-9][0-9, ]{0,15}" placeholder="As shown on the receipt" autocomplete="off" required aria-describedby="<?= $e($paymentDialogId) ?>-amount-status"><svg class="pickup-payment-tick" data-field-tick viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="12" r="11"/><path d="M7 12.5l3.2 3.2L17 9"/></svg></span></label>
                             <p class="pickup-payment-status" id="<?= $e($paymentDialogId) ?>-amount-status" data-payment-amount-status aria-live="polite">Enter the amount shown on the receipt.</p>
+                            <div class="pickup-payment-captcha" data-record-captcha>
+                                <input type="hidden" name="captcha_nonce" value="" data-captcha-nonce>
+                                <label><span>Security check: what is <span data-captcha-question>…</span>?</span><span class="pickup-payment-field"><input type="text" name="captcha_answer" inputmode="numeric" pattern="[0-9]{1,2}" maxlength="2" required autocomplete="off" aria-describedby="<?= $e($paymentDialogId) ?>-captcha-status" data-captcha-answer></span></label>
+                                <p class="pickup-payment-status" id="<?= $e($paymentDialogId) ?>-captcha-status" data-captcha-status aria-live="polite">Answer the calculation to confirm you are human.</p>
+                            </div>
                             <p class="pickup-payment-note">Paid status cannot be reversed. Only an administrator can change the receipt number afterwards.</p>
                             <div class="pickup-payment-actions">
                                 <button type="button" data-payment-dialog-close>Cancel</button>
@@ -109,10 +127,31 @@ $pageUrl = static function (int $target) use ($basePath, $search): string {
                         </div>
                     </dialog>
                 <?php endif; ?>
+                <?php if ($canMarkPaid && !$canEditReceipt && $isPaid): ?>
+                    <?php $viewReceiptDialogId = 'view-receipt-' . $pickupSheet->referenceNumber; ?>
+                    <dialog class="pickup-payment-dialog" id="<?= $e($viewReceiptDialogId) ?>" aria-labelledby="<?= $e($viewReceiptDialogId) ?>-title">
+                        <div class="app-confirm-body">
+                            <header>
+                                <p>Payment receipt</p>
+                                <h2 id="<?= $e($viewReceiptDialogId) ?>-title"><?= $e($pickupSheet->referenceNumber) ?></h2>
+                            </header>
+                            <dl class="pickup-payment-summary">
+                                <div><dt>Receipt number</dt><dd><?= $e($pickupSheet->paymentReceiptNumber ?? '') ?></dd></div>
+                                <div><dt>Paid on</dt><dd><?= $e($formatPaidAt($pickupSheet->paidAt)) ?></dd></div>
+                                <div><dt>Collected</dt><dd><?= $e($pickupSheet->collectionDate) ?></dd></div>
+                                <div><dt>Shipments</dt><dd><?= $e($pickupSheet->shipmentCount()) ?></dd></div>
+                            </dl>
+                            <p class="pickup-payment-note">Only an administrator can change a receipt number.</p>
+                            <div class="pickup-payment-actions">
+                                <button class="pickup-payment-confirm" type="button" data-payment-dialog-close>Close</button>
+                            </div>
+                        </div>
+                    </dialog>
+                <?php endif; ?>
                 <?php if ($canEditReceipt && $isPaid): ?>
                     <?php $receiptDialogId = 'receipt-' . $pickupSheet->referenceNumber; ?>
                     <dialog class="pickup-payment-dialog" id="<?= $e($receiptDialogId) ?>" aria-labelledby="<?= $e($receiptDialogId) ?>-title">
-                        <form method="post" action="<?= $e($basePath) ?>/dhl/pickupsheet/submissions/receipt" data-pickup-receipt-edit data-current-receipt="<?= $e($pickupSheet->paymentReceiptNumber ?? '') ?>">
+                        <form method="post" action="<?= $e($basePath) ?>/dhl/pickupsheet/submissions/receipt" data-pickup-receipt-edit data-captcha-endpoint="<?= $e($basePath) ?>/dhl/pickupsheet/submissions/captcha" data-current-receipt="<?= $e($pickupSheet->paymentReceiptNumber ?? '') ?>">
                             <input type="hidden" name="_token" value="<?= $e($csrfToken) ?>"><input type="hidden" name="reference" value="<?= $e($pickupSheet->referenceNumber) ?>"><input type="hidden" name="return_page" value="<?= $e($page) ?>"><input type="hidden" name="return_search" value="<?= $e($search) ?>">
                             <header>
                                 <p>Edit receipt number</p>
@@ -124,6 +163,11 @@ $pageUrl = static function (int $target) use ($basePath, $search): string {
                             </dl>
                             <label><span>New receipt number</span><span class="pickup-payment-field"><input type="text" name="receipt_number" value="<?= $e($pickupSheet->paymentReceiptNumber ?? '') ?>" minlength="6" maxlength="64" pattern="(?=(?:[^0-9]*[0-9]){6})[A-Za-z0-9][A-Za-z0-9._\/\-]{5,63}" autocomplete="off" required aria-describedby="<?= $e($receiptDialogId) ?>-receipt-status"><svg class="pickup-payment-tick" data-field-tick viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="12" r="11"/><path d="M7 12.5l3.2 3.2L17 9"/></svg></span></label>
                             <p class="pickup-payment-status" id="<?= $e($receiptDialogId) ?>-receipt-status" data-payment-receipt-status aria-live="polite">At least 6 digits. Letters, dots, slashes, underscores, and hyphens are also allowed.</p>
+                            <div class="pickup-payment-captcha" data-record-captcha>
+                                <input type="hidden" name="captcha_nonce" value="" data-captcha-nonce>
+                                <label><span>Security check: what is <span data-captcha-question>…</span>?</span><span class="pickup-payment-field"><input type="text" name="captcha_answer" inputmode="numeric" pattern="[0-9]{1,2}" maxlength="2" required autocomplete="off" aria-describedby="<?= $e($receiptDialogId) ?>-captcha-status" data-captcha-answer></span></label>
+                                <p class="pickup-payment-status" id="<?= $e($receiptDialogId) ?>-captcha-status" data-captcha-status aria-live="polite">Answer the calculation to confirm you are human.</p>
+                            </div>
                             <p class="pickup-payment-note">The previous receipt number is kept in the audit log. The paid status and paid time do not change.</p>
                             <div class="pickup-payment-actions">
                                 <button type="button" data-payment-dialog-close>Cancel</button>

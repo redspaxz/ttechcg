@@ -569,6 +569,10 @@ final class PickupsheetController
         if ($denied !== null) {
             return $denied;
         }
+        $captchaDenied = $this->recordCaptchaGuard($request, 'pickupsheet.record_paid');
+        if ($captchaDenied !== null) {
+            return $captchaDenied;
+        }
 
         $reference = $request->input('reference');
         $ajax = strcasecmp($request->header('X-Requested-With'), 'XMLHttpRequest') === 0;
@@ -597,7 +601,7 @@ final class PickupsheetController
         } catch (InvalidArgumentException $exception) {
             $this->securityLogger->event('pickupsheet.record_paid', $request, 'denied');
             if ($ajax) {
-                return Response::json(['ok' => false, 'message' => $exception->getMessage()], 422, $this->privateHeaders());
+                return Response::json(['ok' => false, 'message' => $exception->getMessage(), 'captcha' => $this->recordCaptcha()->issue()], 422, $this->privateHeaders());
             }
             $_SESSION['_pickup_records_errors'] = [$exception->getMessage()];
         } catch (RuntimeException $exception) {
@@ -605,7 +609,7 @@ final class PickupsheetController
             $message = 'The pickup sheet could not be marked paid. Check MySQL and try again.';
             $this->securityLogger->event('pickupsheet.record_paid', $request, 'failed');
             if ($ajax) {
-                return Response::json(['ok' => false, 'message' => $message], 503, $this->privateHeaders());
+                return Response::json(['ok' => false, 'message' => $message, 'captcha' => $this->recordCaptcha()->issue()], 503, $this->privateHeaders());
             }
             $_SESSION['_pickup_records_errors'] = [$message];
         }
@@ -623,6 +627,10 @@ final class PickupsheetController
         $denied = $this->pickupLifecycleWriteGuard($request, 'receipt-edit');
         if ($denied !== null) {
             return $denied;
+        }
+        $captchaDenied = $this->recordCaptchaGuard($request, 'pickupsheet.record_receipt_edit');
+        if ($captchaDenied !== null) {
+            return $captchaDenied;
         }
 
         $reference = $request->input('reference');
@@ -651,7 +659,7 @@ final class PickupsheetController
         } catch (InvalidArgumentException $exception) {
             $this->securityLogger->event('pickupsheet.record_receipt_edit', $request, 'denied');
             if ($ajax) {
-                return Response::json(['ok' => false, 'message' => $exception->getMessage()], 422, $this->privateHeaders());
+                return Response::json(['ok' => false, 'message' => $exception->getMessage(), 'captcha' => $this->recordCaptcha()->issue()], 422, $this->privateHeaders());
             }
             $_SESSION['_pickup_records_errors'] = [$exception->getMessage()];
         } catch (RuntimeException $exception) {
@@ -659,7 +667,7 @@ final class PickupsheetController
             $message = 'The receipt number could not be changed. Check MySQL and try again.';
             $this->securityLogger->event('pickupsheet.record_receipt_edit', $request, 'failed');
             if ($ajax) {
-                return Response::json(['ok' => false, 'message' => $message], 503, $this->privateHeaders());
+                return Response::json(['ok' => false, 'message' => $message, 'captcha' => $this->recordCaptcha()->issue()], 503, $this->privateHeaders());
             }
             $_SESSION['_pickup_records_errors'] = [$message];
         }
@@ -1260,6 +1268,42 @@ final class PickupsheetController
             'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
             $pickupSheet->referenceNumber . '.xlsx',
         );
+    }
+
+    /** Shared by the Mark paid and Edit receipt modals; separate from the new-sheet form's challenge. */
+    private function recordCaptcha(): Captcha
+    {
+        return new Captcha('pickup-record-payment');
+    }
+
+    public function recordCaptchaChallenge(Request $request): Response
+    {
+        $authorization = $this->authorizeRecords($request, 'list', false);
+        if ($authorization instanceof Response) {
+            return $authorization;
+        }
+        if (!$authorization->can('mark_paid') && !$authorization->can('edit_receipt')) {
+            return Response::json(['ok' => false, 'message' => 'You do not have permission to change payment records.'], 403, $this->privateHeaders());
+        }
+        $rateLimitResponse = $this->rateLimit($request, 'pickup-record-captcha', 60, 3600);
+        if ($rateLimitResponse !== null) {
+            return $rateLimitResponse;
+        }
+        return Response::json(['ok' => true, 'captcha' => $this->recordCaptcha()->issue()], 200, $this->privateHeaders());
+    }
+
+    private function recordCaptchaGuard(Request $request, string $event): ?Response
+    {
+        if ($this->recordCaptcha()->validate($request->input('captcha_nonce'), $request->input('captcha_answer'))) {
+            return null;
+        }
+        $this->securityLogger->event($event . '_captcha', $request, 'denied');
+        $message = 'The security check answer is incorrect. Answer the new question and try again.';
+        if (strcasecmp($request->header('X-Requested-With'), 'XMLHttpRequest') === 0) {
+            return Response::json(['ok' => false, 'message' => $message, 'captcha' => $this->recordCaptcha()->issue()], 422, $this->privateHeaders());
+        }
+        $_SESSION['_pickup_records_errors'] = [$message];
+        return Response::redirect($this->submissionReturnPath($request));
     }
 
     /** @return list<string> */

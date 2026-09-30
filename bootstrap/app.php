@@ -347,6 +347,7 @@ $router->get('/dhl/pickupsheet/submissions/edit', fn (Request $request): Respons
 $router->post('/dhl/pickupsheet/submissions/edit', fn (Request $request): Response => $pickupsheetController->updatePickupSheet($request));
 $router->post('/dhl/pickupsheet/submissions/paid', fn (Request $request): Response => $pickupsheetController->markPickupSheetPaid($request));
 $router->post('/dhl/pickupsheet/submissions/receipt', fn (Request $request): Response => $pickupsheetController->updatePickupSheetReceipt($request));
+$router->get('/dhl/pickupsheet/submissions/captcha', fn (Request $request): Response => $pickupsheetController->recordCaptchaChallenge($request));
 $router->post('/dhl/pickupsheet/submissions/delete', fn (Request $request): Response => $pickupsheetController->deletePickupSheet($request));
 $router->get('/dhl/pickupsheet/submissions/users', fn (Request $request): Response => $pickupsheetController->users($request));
 $router->post('/dhl/pickupsheet/submissions/users', fn (Request $request): Response => $pickupsheetController->createUser($request));

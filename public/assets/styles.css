@@ -2500,6 +2500,9 @@ button, a, input, select, textarea { -webkit-tap-highlight-color: transparent; }
 .pickup-record-actions .pickup-record-paid:not(:disabled):hover { background: #084d2d; border-color: #084d2d; }
 .pickup-record-actions .pickup-record-paid:focus-visible { outline: 3px solid rgba(11, 99, 58, 0.35); outline-offset: 2px; }
 .pickup-record-actions .pickup-record-paid:disabled { cursor: not-allowed; opacity: 0.5; }
+.pickup-record-actions .pickup-record-view-receipt { background: #ecebe7; color: #3b3a36; border-color: #d3d1ca; }
+.pickup-record-actions .pickup-record-view-receipt:hover { background: #e0dfda; border-color: #c4c2ba; }
+.pickup-record-actions .pickup-record-view-receipt:focus-visible { outline: 3px solid rgba(59, 58, 54, 0.25); outline-offset: 2px; }
 .pickup-payment-dialog {
     width: min(440px, calc(100vw - 32px));
     max-height: calc(100dvh - 32px);
@@ -2560,6 +2563,11 @@ button, a, input, select, textarea { -webkit-tap-highlight-color: transparent; }
 .pickup-payment-result[data-outcome="failure"] h3 { color: var(--dhl-red); }
 .pickup-payment-result p { max-width: 36ch; margin: 0; color: #493800; font-size: 0.8rem; }
 .pickup-payment-result .pickup-payment-actions { justify-content: center; margin-top: 8px; }
+.pickup-payment-captcha { display: grid; gap: 6px; padding-top: 12px; border-top: 1px dashed rgba(69, 50, 0, 0.3); }
+.pickup-payment-captcha label { display: grid; gap: 6px; }
+.pickup-payment-captcha [data-captcha-question] { color: #241b00; font-size: 0.78rem; letter-spacing: 0; text-transform: none; }
+.pickup-payment-captcha input { max-width: 120px; }
+.pickup-payment-captcha input:disabled { background: #f3efe2; cursor: progress; }
 .app-confirm-body { display: grid; gap: 14px; padding: 22px; }
 .app-confirm-dialog header p { color: #493800; }
 .app-confirm-dialog[data-tone="danger"] header p { color: var(--dhl-red); }

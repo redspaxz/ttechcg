@@ -1891,7 +1891,7 @@ $assert(str_contains($openSubmissions->body(), 'data-payment-dialog-open="paymen
 $assert(preg_match('/<button class="pickup-record-paid" type="button" data-payment-dialog-open="[^"]+" aria-haspopup="dialog">Mark paid<\/button>/', $openSubmissions->body()) === 1 && !preg_match('/<button[^>]*data-payment-dialog-open[^>]*disabled/', $openSubmissions->body()), 'The Mark paid button should render active, never disabled.');
 $paidButtonStyles = $readSource(dirname(__DIR__) . '/public/assets/styles.css');
 $assert(is_string($paidButtonStyles) && str_contains($paidButtonStyles, '.pickup-record-actions .pickup-record-paid { background: #0b633a; color: #fff; border-color: #0b633a; }'), 'The Mark paid button should be green with white text.');
-$assert(str_contains($openSubmissions->body(), 'data-pickup-payment data-expected-amount="12000"') && str_contains($openSubmissions->body(), 'name="receipt_number"') && str_contains($openSubmissions->body(), 'name="receipt_amount" inputmode="numeric"') && !str_contains($openSubmissions->body(), 'Sheet total') && str_contains($openSubmissions->body(), 'name="receipt_number" minlength="6"'), 'The payment modal should hide the sheet total and require a receipt number of at least 6 digits and the amount received.');
+$assert(str_contains($openSubmissions->body(), 'data-pickup-payment data-captcha-endpoint="/dhl/pickupsheet/submissions/captcha" data-expected-amount="12000"') && str_contains($openSubmissions->body(), 'name="receipt_number"') && str_contains($openSubmissions->body(), 'name="receipt_amount" inputmode="numeric"') && !str_contains($openSubmissions->body(), 'Sheet total') && str_contains($openSubmissions->body(), 'name="receipt_number" minlength="6"'), 'The payment modal should hide the sheet total and require a receipt number of at least 6 digits and the amount received.');
 $assert(substr_count($openSubmissions->body(), 'class="pickup-payment-tick" data-field-tick') >= 2 && str_contains($openSubmissions->body(), 'data-result-icon="success"') && str_contains($openSubmissions->body(), 'data-result-icon="failure"') && str_contains($openSubmissions->body(), 'data-payment-result hidden role="status"'), 'The payment modal should include field ticks and hidden success and failure result icons.');
 $assert(str_contains($openSubmissions->body(), 'data-pickup-delete'), 'An administrator should receive the audited delete action.');
 $assert(str_contains($openSubmissions->body(), 'name="return_page"') && str_contains($openSubmissions->body(), 'name="return_search"'), 'Submitted-sheet actions should retain the current page and search context.');
@@ -1918,6 +1918,12 @@ $deniedPageFragment = $pickupController->submissionsPage(new Request('GET', '/dh
 ]));
 $assert($deniedPageFragment->status() === 302, 'The AJAX pagination endpoint should redirect an expired session to the login portal.');
 
+// The Mark paid and Edit receipt actions need a solved single-use security question.
+$recordCaptchaFields = static function (): array {
+    $challenge = (new Captcha('pickup-record-payment'))->issue();
+    $key = '_captcha_challenge_' . substr(hash('sha256', 'pickup-record-payment'), 0, 12);
+    return ['captcha_nonce' => $challenge['nonce'], 'captcha_answer' => (string) ($_SESSION[$key]['answer'] ?? '')];
+};
 $recordsSession->login($viewerPrincipal);
 $viewerSubmissions = $pickupController->submissions(new Request('GET', '/dhl/pickupsheet/submissions', [], [], '', $viewerServer));
 $viewerPageFragment = $pickupController->submissionsPage(new Request('GET', '/dhl/pickupsheet/submissions/page', ['page' => '1'], [], '', $viewerServer));
@@ -1933,6 +1939,8 @@ $viewerPaid = $pickupController->markPickupSheetPaid(new Request('POST', '/dhl/p
     '_token' => $pickupCsrf->token(),
     'reference' => $savedReference,
 ]));
+$viewerCaptcha = $pickupController->recordCaptchaChallenge(new Request('GET', '/dhl/pickupsheet/submissions/captcha', [], [], '', $viewerServer));
+$assert($viewerCaptcha->status() === 403, 'Viewers should not receive payment security questions.');
 $viewerDelete = $pickupController->deletePickupSheet(new Request('POST', '/dhl/pickupsheet/submissions/delete', [], [
     '_token' => $pickupCsrf->token(),
     'reference' => $savedReference,
@@ -2004,6 +2012,7 @@ $updatedControllerSheet = (new PickupSheetService(new DemoPickupSheetRepository(
 $assert($updatedControllerSheet?->totalCashReceivedXaf === $operatorOriginalSheet?->totalCashReceivedXaf && $updatedControllerSheet?->status === $operatorOriginalSheet?->status, 'A denied operator edit must leave the pickup sheet unchanged.');
 $markPaidByOperator = $pickupController->markPickupSheetPaid(new Request('POST', '/dhl/pickupsheet/submissions/paid', [], [
     '_token' => $pickupCsrf->token(),
+    ...$recordCaptchaFields(),
     'reference' => $savedReference,
 ]));
 $assert($markPaidByOperator->status() === 303, 'An operator should be allowed to confirm a pickup sheet as paid.');
@@ -2065,6 +2074,7 @@ $assert(str_contains($awbWarningEdit->body(), 'data-awb-reuse-warning') && str_c
 $assert(str_contains($awbWarningEdit->body(), '<datalist id="consignor-suggestions" data-consignor-suggestions data-search-endpoint="/dhl/pickupsheet/consignors/search">') && str_contains($awbWarningEdit->body(), 'data-field="consignor" data-consignor-input') && str_contains($awbWarningEdit->body(), '<option value="Controller Client"></option>') && str_contains($awbWarningEdit->body(), 'id="consignor-suggestion-help"'), 'Editing a pickup sheet should offer the same consignor autocomplete as a new sheet.');
 $missingReceiptPayment = $pickupController->markPickupSheetPaid(new Request('POST', '/dhl/pickupsheet/submissions/paid', [], [
     '_token' => $pickupCsrf->token(),
+    ...$recordCaptchaFields(),
     'reference' => $savedReference,
 ]));
 $missingReceiptSheet = (new PickupSheetService(new DemoPickupSheetRepository()))->findByReference($savedReference);
@@ -2073,6 +2083,7 @@ $assert($missingReceiptPayment->status() === 303 && $missingReceiptSheet?->statu
 $assert(str_contains($missingReceiptSubmissions->body(), 'A receipt number is required as proof of payment.') && str_contains($missingReceiptSubmissions->body(), 'notice-error'), 'The submitted-sheet page should explain the rejected payment proof requirement as an error.');
 $wrongAmountPayment = $pickupController->markPickupSheetPaid(new Request('POST', '/dhl/pickupsheet/submissions/paid', [], [
     '_token' => $pickupCsrf->token(),
+    ...$recordCaptchaFields(),
     'reference' => $savedReference,
     'receipt_number' => 'rcp-2026/0001',
     'receipt_amount' => '13,000',
@@ -2081,6 +2092,7 @@ $assert($wrongAmountPayment->status() === 303 && (new PickupSheetService(new Dem
 unset($_SESSION['_pickup_records_errors']);
 $missingAmountPayment = $pickupController->markPickupSheetPaid(new Request('POST', '/dhl/pickupsheet/submissions/paid', [], [
     '_token' => $pickupCsrf->token(),
+    ...$recordCaptchaFields(),
     'reference' => $savedReference,
     'receipt_number' => 'rcp-2026/0001',
 ]));
@@ -2088,6 +2100,7 @@ $assert($missingAmountPayment->status() === 303 && (new PickupSheetService(new D
 unset($_SESSION['_pickup_records_errors']);
 $markPaidByAdmin = $pickupController->markPickupSheetPaid(new Request('POST', '/dhl/pickupsheet/submissions/paid', [], [
     '_token' => $pickupCsrf->token(),
+    ...$recordCaptchaFields(),
     'reference' => $savedReference,
     'receipt_number' => 'rcp-2026/0001',
     'receipt_amount' => '14,000',
@@ -2103,8 +2116,10 @@ $assert(str_contains($paidSubmissions->body(), 'data-status="paid">Paid</small>'
 $receiptSearch = $pickupController->submissions(new Request('GET', '/dhl/pickupsheet/submissions', ['q' => 'rcp-2026/0001'], [], '', $recordsServer));
 $assert(str_contains($receiptSearch->body(), $savedReference), 'Submitted-sheet search should locate a paid record by receipt number.');
 $assert(str_contains($paidSubmissions->body(), 'action="/dhl/pickupsheet/submissions/receipt" data-pickup-receipt-edit') && str_contains($paidSubmissions->body(), 'name="receipt_number" value="RCP-2026/0001"'), 'An administrator should receive a receipt-correction form prefilled with the paid sheet receipt.');
+$assert(!str_contains($paidSubmissions->body(), 'pickup-record-view-receipt'), 'Administrators should keep Edit receipt instead of the read-only View receipt button.');
 $unchangedReceipt = $pickupController->updatePickupSheetReceipt(new Request('POST', '/dhl/pickupsheet/submissions/receipt', [], [
     '_token' => $pickupCsrf->token(),
+    ...$recordCaptchaFields(),
     'reference' => $savedReference,
     'receipt_number' => 'rcp-2026/0001',
 ]));
@@ -2112,6 +2127,7 @@ $assert($unchangedReceipt->status() === 303 && ($_SESSION['_pickup_records_error
 unset($_SESSION['_pickup_records_errors']);
 $adminReceiptEdit = $pickupController->updatePickupSheetReceipt(new Request('POST', '/dhl/pickupsheet/submissions/receipt', [], [
     '_token' => $pickupCsrf->token(),
+    ...$recordCaptchaFields(),
     'reference' => $savedReference,
     'receipt_number' => 'rcp-2026/0002',
 ]));
@@ -2119,10 +2135,11 @@ $receiptCorrectedSheet = (new PickupSheetService(new DemoPickupSheetRepository()
 $assert($adminReceiptEdit->status() === 303 && $receiptCorrectedSheet?->paymentReceiptNumber === 'RCP-2026/0002' && $receiptCorrectedSheet->isPaid() && $receiptCorrectedSheet->paidAt === $paidControllerSheet->paidAt, 'An administrator should correct a paid sheet receipt number while keeping its paid status and time.');
 unset($_SESSION['_pickup_records_flash']);
 $receiptModalList = $pickupController->submissions(new Request('GET', '/dhl/pickupsheet/submissions', [], [], '', $recordsServer));
-$assert(str_contains($receiptModalList->body(), 'data-payment-dialog-open="receipt-' . $savedReference . '" aria-haspopup="dialog">Edit receipt</button>') && str_contains($receiptModalList->body(), '<dialog class="pickup-payment-dialog" id="receipt-' . $savedReference . '"') && str_contains($receiptModalList->body(), 'data-pickup-receipt-edit data-current-receipt="RCP-2026/0002"') && !str_contains($receiptModalList->body(), '<summary>Edit receipt</summary>'), 'Edit receipt should open a modal carrying the current receipt number.');
+$assert(str_contains($receiptModalList->body(), 'data-payment-dialog-open="receipt-' . $savedReference . '" aria-haspopup="dialog">Edit receipt</button>') && str_contains($receiptModalList->body(), '<dialog class="pickup-payment-dialog" id="receipt-' . $savedReference . '"') && str_contains($receiptModalList->body(), 'data-pickup-receipt-edit data-captcha-endpoint="/dhl/pickupsheet/submissions/captcha" data-current-receipt="RCP-2026/0002"') && !str_contains($receiptModalList->body(), '<summary>Edit receipt</summary>'), 'Edit receipt should open a modal carrying the current receipt number.');
 $ajaxAdminServer = $recordsServer + ['HTTP_X_REQUESTED_WITH' => 'XMLHttpRequest'];
 $ajaxShortReceipt = $pickupController->updatePickupSheetReceipt(new Request('POST', '/dhl/pickupsheet/submissions/receipt', [], [
     '_token' => $pickupCsrf->token(),
+    ...$recordCaptchaFields(),
     'reference' => $savedReference,
     'receipt_number' => 'rcp-12345',
 ], '', $ajaxAdminServer));
@@ -2130,6 +2147,7 @@ $ajaxShortReceiptPayload = json_decode($ajaxShortReceipt->body(), true);
 $assert($ajaxShortReceipt->status() === 422 && ($ajaxShortReceiptPayload['message'] ?? '') === 'Receipt number must contain at least 6 digits.' && !isset($_SESSION['_pickup_records_errors']), 'An AJAX receipt correction with fewer than 6 digits should fail with a JSON reason for the red cross.');
 $ajaxReceiptEdit = $pickupController->updatePickupSheetReceipt(new Request('POST', '/dhl/pickupsheet/submissions/receipt', [], [
     '_token' => $pickupCsrf->token(),
+    ...$recordCaptchaFields(),
     'reference' => $savedReference,
     'receipt_number' => 'rcp-2026/0003',
 ], '', $ajaxAdminServer));
@@ -2145,9 +2163,32 @@ $operatorPaidSheet = (new PickupSheetService(new DemoPickupSheetRepository()))->
 $recordsSession->login($operatorPrincipal);
 $operatorOpenList = $pickupController->submissions(new Request('GET', '/dhl/pickupsheet/submissions', ['q' => $operatorPaidSheet->referenceNumber], [], '', $operatorServer));
 $assert(str_contains($operatorOpenList->body(), 'Confirm paid') && !str_contains($operatorOpenList->body(), 'data-pickup-receipt-edit'), 'An operator should see the paid confirmation on open sheets but no receipt-correction form.');
+$captchaChallenge = $pickupController->recordCaptchaChallenge(new Request('GET', '/dhl/pickupsheet/submissions/captcha', [], [], '', $operatorServer));
+$captchaChallengePayload = json_decode($captchaChallenge->body(), true);
+$assert($captchaChallenge->status() === 200 && is_string($captchaChallengePayload['captcha']['question'] ?? null) && preg_match('/^[a-f0-9]{32}$/', (string) ($captchaChallengePayload['captcha']['nonce'] ?? '')) === 1, 'Operators should receive a fresh security question for the payment modal.');
+$wrongCaptchaPayment = $pickupController->markPickupSheetPaid(new Request('POST', '/dhl/pickupsheet/submissions/paid', [], [
+    '_token' => $pickupCsrf->token(),
+    'reference' => $operatorPaidSheet->referenceNumber,
+    'receipt_number' => 'op-rcp-100001',
+    'receipt_amount' => '3000',
+    'captcha_nonce' => (string) ($captchaChallengePayload['captcha']['nonce'] ?? ''),
+    'captcha_answer' => '99',
+], '', $operatorServer + ['HTTP_X_REQUESTED_WITH' => 'XMLHttpRequest']));
+$wrongCaptchaPayload = json_decode($wrongCaptchaPayment->body(), true);
+$assert($wrongCaptchaPayment->status() === 422 && str_contains((string) ($wrongCaptchaPayload['message'] ?? ''), 'security check answer is incorrect') && is_string($wrongCaptchaPayload['captcha']['nonce'] ?? null) && ($wrongCaptchaPayload['captcha']['nonce'] ?? '') !== ($captchaChallengePayload['captcha']['nonce'] ?? ''), 'A wrong security answer should refuse the payment and return a new question.');
+$assert((new PickupSheetService(new DemoPickupSheetRepository()))->findByReference($operatorPaidSheet->referenceNumber)?->isPaid() === false, 'A payment with a wrong security answer must leave the sheet open.');
+$missingCaptchaPayment = $pickupController->markPickupSheetPaid(new Request('POST', '/dhl/pickupsheet/submissions/paid', [], [
+    '_token' => $pickupCsrf->token(),
+    'reference' => $operatorPaidSheet->referenceNumber,
+    'receipt_number' => 'op-rcp-100001',
+    'receipt_amount' => '3000',
+]));
+$assert($missingCaptchaPayment->status() === 303 && ($_SESSION['_pickup_records_errors'] ?? []) === ['The security check answer is incorrect. Answer the new question and try again.'] && (new PickupSheetService(new DemoPickupSheetRepository()))->findByReference($operatorPaidSheet->referenceNumber)?->isPaid() === false, 'A payment without the security answer must be refused.');
+unset($_SESSION['_pickup_records_errors']);
 $ajaxServer = $operatorServer + ['HTTP_X_REQUESTED_WITH' => 'XMLHttpRequest'];
 $ajaxWrongAmount = $pickupController->markPickupSheetPaid(new Request('POST', '/dhl/pickupsheet/submissions/paid', [], [
     '_token' => $pickupCsrf->token(),
+    ...$recordCaptchaFields(),
     'reference' => $operatorPaidSheet->referenceNumber,
     'receipt_number' => 'op-rcp-100001',
     'receipt_amount' => '2,500',
@@ -2157,6 +2198,7 @@ $assert($ajaxWrongAmount->status() === 422 && ($ajaxWrongAmountPayload['ok'] ?? 
 $assert((new PickupSheetService(new DemoPickupSheetRepository()))->findByReference($operatorPaidSheet->referenceNumber)?->isPaid() === false, 'A failed AJAX payment must leave the sheet open.');
 $operatorConfirmsPaid = $pickupController->markPickupSheetPaid(new Request('POST', '/dhl/pickupsheet/submissions/paid', [], [
     '_token' => $pickupCsrf->token(),
+    ...$recordCaptchaFields(),
     'reference' => $operatorPaidSheet->referenceNumber,
     'receipt_number' => 'op-rcp-100001',
     'receipt_amount' => '3000',
@@ -2167,8 +2209,11 @@ $assert($operatorConfirmsPaid->status() === 200 && ($operatorConfirmsPaidPayload
 $assert($operatorConfirmedSheet?->isPaid() === true && $operatorConfirmedSheet->paymentReceiptNumber === 'OP-RCP-100001', 'An operator should confirm an open pickup sheet as paid with its receipt number.');
 $operatorPaidList = $pickupController->submissions(new Request('GET', '/dhl/pickupsheet/submissions', ['q' => $operatorPaidSheet->referenceNumber], [], '', $operatorServer));
 $assert(str_contains($operatorPaidList->body(), 'Receipt OP-RCP-100001') && !str_contains($operatorPaidList->body(), 'data-pickup-receipt-edit') && !str_contains($operatorPaidList->body(), 'Confirm paid'), 'An operator should see a paid sheet receipt without any way to change it.');
+$assert(str_contains($operatorPaidList->body(), '<button class="pickup-record-view-receipt" type="button" data-payment-dialog-open="view-receipt-' . $operatorPaidSheet->referenceNumber . '" aria-haspopup="dialog">View receipt</button>') && !str_contains($operatorPaidList->body(), 'data-payment-dialog-open="payment-' . $operatorPaidSheet->referenceNumber . '"'), 'Once an operator confirms payment, Mark paid should become View receipt.');
+$assert(str_contains($operatorPaidList->body(), '<dialog class="pickup-payment-dialog" id="view-receipt-' . $operatorPaidSheet->referenceNumber . '"') && str_contains($operatorPaidList->body(), '<dt>Receipt number</dt><dd>OP-RCP-100001</dd>') && str_contains($operatorPaidList->body(), '<dt>Paid on</dt>'), 'View receipt should open a read-only modal with the receipt number and paid time.');
 $operatorRemarkPaid = $pickupController->markPickupSheetPaid(new Request('POST', '/dhl/pickupsheet/submissions/paid', [], [
     '_token' => $pickupCsrf->token(),
+    ...$recordCaptchaFields(),
     'reference' => $operatorPaidSheet->referenceNumber,
     'receipt_number' => 'op-rcp-100999',
 ]));
@@ -2871,8 +2916,8 @@ $assert(is_string($dhlAsset) && !str_contains($dhlAsset, '<text'), 'The disquali
 $partnerSources = $readSource(dirname(__DIR__) . '/public/assets/partners/README.md');
 $assert(is_string($partnerSources) && str_contains($partnerSources, 'www.dhl.com/content/dam/dhl/global/core/images/logos/dhl-logo.svg'), 'The official DHL artwork source should be documented.');
 $assert(!str_contains($home, 'href="/dhl/pickupsheet"'), 'Pickupsheet should not be discoverable from the public site chrome or homepage.');
-$assert(str_contains($home, 'styles.css?v=20260930-payment-modals-confirm-dialogs'), 'Market-performance dashboard styles and prior Pickupsheet refinements should use a cache-safe stylesheet version.');
-$assert(str_contains($home, 'app.js?v=20260930-payment-modals-confirm-dialogs'), 'AJAX audit-log accordions and prior OWASP-aligned interactions should use a cache-safe script version.');
+$assert(str_contains($home, 'styles.css?v=20260930-record-captcha'), 'Market-performance dashboard styles and prior Pickupsheet refinements should use a cache-safe stylesheet version.');
+$assert(str_contains($home, 'app.js?v=20260930-record-captcha'), 'AJAX audit-log accordions and prior OWASP-aligned interactions should use a cache-safe script version.');
 $assert(str_contains($home, 'analytics.js?v=20260825-security-hardening'), 'The current consent-aware Google Analytics loader should render on every page.');
 $assert(str_contains($home, 'data-analytics-accept'), 'The site should offer an explicit analytics acceptance control.');
 $assert(str_contains($home, 'data-analytics-decline'), 'The site should offer an explicit analytics decline control.');
@@ -3179,6 +3224,7 @@ $assert(is_string($script) && str_contains($script, "selector: '[data-self-mfa-r
 $assert(is_string($script) && substr_count($script, 'window.confirm(') === 1 && str_contains($script, "if (typeof HTMLDialogElement === 'undefined') {
         resolve(window.confirm(message));") && str_contains($script, 'confirmInModal(action.options(form))') && substr_count($script, "selector: '[data-") === 8, 'Every sensitive form confirmation should use the shared modal, keeping the browser prompt only for browsers without dialog support.');
 $assert(is_string($script) && str_contains($script, '[data-discard-pickup-sheet]') && str_contains($script, "title: 'Discard this pickup sheet?'"), 'Cancelling a new pickup sheet with entered data should ask for confirmation in the modal.');
+$assert(is_string($script) && str_contains($script, 'loadRecordCaptcha(form);') && str_contains($script, 'applyRecordCaptcha(form, result.captcha);') && str_contains($script, "captchaNonce === '' || !/^[0-9]{1,2}$/.test(captchaAnswer.value.trim())"), 'The payment and receipt modals should load a security question on open, replace it after a failure, and require an answer before submitting.');
 $assert(is_string($script) && str_contains($script, "document.querySelector('[data-login-method-form]')") && str_contains($script, "'X-Requested-With': 'XMLHttpRequest'"), 'Sign-in toggles should save asynchronously without refreshing account management.');
 $assert(is_string($script) && str_contains($script, 'consignorSuggestionNames') && str_contains($script, "input.removeAttribute('list')"), 'JavaScript should enhance the native consignor datalist without removing its no-script fallback from the HTML.');
 $assert(is_string($script) && str_contains($script, "event.key === 'ArrowDown'") && str_contains($script, "aria-activedescendant") && str_contains($script, 'selectConsignorSuggestion'), 'The animated consignor autocomplete should support accessible keyboard navigation and selection.');
