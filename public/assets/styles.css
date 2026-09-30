@@ -2521,7 +2521,9 @@ button, a, input, select, textarea { -webkit-tap-highlight-color: transparent; }
     text-align: center;
 }
 .pickup-record-actions a:first-child { background: #fff; color: var(--dhl-red); }
-.pickup-record-actions .pickup-record-paid { background: #fff; color: #0b633a; border-color: #0b633a; }
+.pickup-record-actions .pickup-record-paid { background: #0b633a; color: #fff; border-color: #0b633a; }
+.pickup-record-actions .pickup-record-paid:not(:disabled):hover { background: #084d2d; border-color: #084d2d; }
+.pickup-record-actions .pickup-record-paid:focus-visible { outline: 3px solid rgba(11, 99, 58, 0.35); outline-offset: 2px; }
 .pickup-record-actions .pickup-record-paid:disabled { cursor: not-allowed; opacity: 0.5; }
 .pickup-payment-dialog {
     width: min(460px, calc(100vw - 32px));
