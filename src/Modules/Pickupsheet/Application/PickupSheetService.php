@@ -206,7 +206,8 @@ final class PickupSheetService
         return $this->repository->update($pickupSheet, $actorId);
     }
 
-    public function markPaid(string $referenceNumber, mixed $receiptNumber, string $actorId): PickupSheet
+    /** The amount on the receipt must equal the sheet total, so a payment cannot be confirmed against the wrong value. */
+    public function markPaid(string $referenceNumber, mixed $receiptNumber, mixed $receiptAmount, string $actorId): PickupSheet
     {
         $existing = $this->findByReference($referenceNumber);
         if ($existing === null) {
@@ -216,6 +217,17 @@ final class PickupSheetService
             throw new InvalidArgumentException('This pickup sheet is already marked paid.');
         }
         $receiptNumber = $this->receiptNumber($receiptNumber);
+        $amount = str_replace([',', ' '], '', $this->stringValue($receiptAmount));
+        if (preg_match('/^[0-9]{1,12}$/', $amount) !== 1) {
+            throw new InvalidArgumentException('Enter the amount received, in XAF, as shown on the receipt.');
+        }
+        if ((int) $amount !== $existing->totalCashReceivedXaf) {
+            throw new InvalidArgumentException(sprintf(
+                'Amount is incorrect. The receipt amount of %s XAF does not match the sheet total of %s XAF.',
+                number_format((int) $amount),
+                number_format($existing->totalCashReceivedXaf),
+            ));
+        }
         $this->validateActor($actorId);
         return $this->repository->markPaid($referenceNumber, $receiptNumber, $actorId);
     }

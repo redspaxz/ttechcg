@@ -2523,6 +2523,69 @@ button, a, input, select, textarea { -webkit-tap-highlight-color: transparent; }
 .pickup-record-actions a:first-child { background: #fff; color: var(--dhl-red); }
 .pickup-record-actions .pickup-record-paid { background: #fff; color: #0b633a; border-color: #0b633a; }
 .pickup-record-actions .pickup-record-paid:disabled { cursor: not-allowed; opacity: 0.5; }
+.pickup-payment-dialog {
+    width: min(460px, calc(100vw - 32px));
+    max-height: calc(100dvh - 32px);
+    padding: 0;
+    overflow: auto;
+    border: 1px solid #0b633a;
+    border-top: 5px solid #0b633a;
+    background: #fffdf5;
+    color: #241b00;
+    box-shadow: 0 24px 60px rgba(36, 27, 0, 0.32);
+}
+.pickup-payment-dialog::backdrop { background: rgba(36, 27, 0, 0.55); }
+.pickup-payment-dialog form { display: grid; gap: 14px; padding: 22px; }
+.pickup-payment-dialog header p { margin: 0 0 4px; color: #0b633a; font-size: 0.66rem; font-weight: 850; letter-spacing: 0.08em; text-transform: uppercase; }
+.pickup-payment-dialog h2 { margin: 0; font-size: 1.05rem; overflow-wrap: anywhere; }
+.pickup-payment-summary { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 10px 16px; margin: 0; padding: 12px 14px; border: 1px dashed rgba(69, 50, 0, 0.42); background: #fff; }
+.pickup-payment-summary dt { color: #655000; font-size: 0.62rem; font-weight: 850; letter-spacing: 0.06em; text-transform: uppercase; }
+.pickup-payment-summary dd { margin: 2px 0 0; font-size: 0.8rem; font-weight: 750; overflow-wrap: anywhere; }
+.pickup-payment-summary div:first-child dd { color: #0b633a; font-size: 0.95rem; }
+.pickup-payment-dialog label { display: grid; gap: 6px; }
+.pickup-payment-dialog label > span { color: #493800; font-size: 0.66rem; font-weight: 850; letter-spacing: 0.06em; text-transform: uppercase; }
+.pickup-payment-dialog input { width: 100%; min-height: 44px; padding: 8px 11px; border: 1px solid #8b7626; background: #fff; color: #241b00; font: inherit; font-size: 0.85rem; }
+.pickup-payment-dialog input[name="receipt_number"] { text-transform: uppercase; }
+.pickup-payment-dialog input:focus { border-color: #0b633a; outline: 3px solid rgba(11, 99, 58, 0.18); outline-offset: 1px; }
+.pickup-payment-status { margin: -4px 0 0; color: #5c4a14; font-size: 0.74rem; }
+.pickup-payment-status[data-state="match"] { color: #0b633a; font-weight: 750; }
+.pickup-payment-status[data-state="mismatch"] { color: var(--dhl-red); font-weight: 750; }
+.pickup-payment-note { margin: 0; padding: 9px 11px; background: rgba(212, 5, 17, 0.06); color: #5c1a14; font-size: 0.72rem; }
+.pickup-payment-actions { display: flex; flex-wrap: wrap; justify-content: flex-end; gap: 8px; }
+.pickup-payment-actions button { min-height: 42px; padding: 9px 18px; border: 1px solid #241b00; background: #fff; color: #241b00; font: inherit; font-size: 0.74rem; font-weight: 800; cursor: pointer; }
+.pickup-payment-actions .pickup-payment-confirm { border-color: #0b633a; background: #0b633a; color: #fff; }
+.pickup-payment-actions .pickup-payment-confirm:disabled { cursor: not-allowed; opacity: 0.45; }
+.pickup-payment-field { position: relative; display: flex; align-items: center; gap: 10px; }
+.pickup-payment-field input { flex: 1 1 auto; min-width: 0; }
+.pickup-payment-field input[aria-invalid="true"] { border-color: var(--dhl-red); }
+.pickup-payment-tick { flex: 0 0 26px; width: 26px; height: 26px; opacity: 0; transform: scale(0.4); transition: opacity 160ms ease, transform 220ms cubic-bezier(0.34, 1.56, 0.64, 1); }
+.pickup-payment-tick circle { fill: #0b633a; }
+.pickup-payment-tick path { fill: none; stroke: #fff; stroke-width: 2.6; stroke-linecap: round; stroke-linejoin: round; stroke-dasharray: 16; stroke-dashoffset: 16; }
+.pickup-payment-field[data-valid="true"] .pickup-payment-tick { opacity: 1; transform: scale(1); }
+.pickup-payment-field[data-valid="true"] .pickup-payment-tick path { animation: pickup-draw 280ms 120ms ease-out forwards; }
+.pickup-payment-result { display: grid; justify-items: center; gap: 10px; padding: 30px 22px 22px; text-align: center; }
+.pickup-payment-result-icon { display: none; width: 96px; height: 96px; }
+.pickup-payment-result[data-outcome="success"] [data-result-icon="success"],
+.pickup-payment-result[data-outcome="failure"] [data-result-icon="failure"] { display: block; animation: pickup-pop 360ms cubic-bezier(0.34, 1.56, 0.64, 1); }
+.pickup-payment-result-icon circle { fill: none; stroke-width: 6; }
+.pickup-payment-result-icon path { fill: none; stroke-width: 8; stroke-linecap: round; stroke-linejoin: round; stroke-dasharray: 90; stroke-dashoffset: 90; animation: pickup-draw 420ms 200ms ease-out forwards; }
+[data-result-icon="success"] circle { stroke: #0b633a; fill: rgba(11, 99, 58, 0.1); }
+[data-result-icon="success"] path { stroke: #0b633a; }
+[data-result-icon="failure"] circle { stroke: var(--dhl-red); fill: rgba(212, 5, 17, 0.08); }
+[data-result-icon="failure"] path { stroke: var(--dhl-red); }
+.pickup-payment-result h3 { margin: 6px 0 0; font-size: 1.1rem; }
+.pickup-payment-result[data-outcome="success"] h3 { color: #0b633a; }
+.pickup-payment-result[data-outcome="failure"] h3 { color: var(--dhl-red); }
+.pickup-payment-result p { max-width: 36ch; margin: 0; color: #493800; font-size: 0.8rem; }
+.pickup-payment-result .pickup-payment-actions { justify-content: center; margin-top: 8px; }
+@keyframes pickup-draw { to { stroke-dashoffset: 0; } }
+@keyframes pickup-pop { from { opacity: 0; transform: scale(0.5); } to { opacity: 1; transform: scale(1); } }
+@media (prefers-reduced-motion: reduce) {
+    .pickup-payment-tick,
+    .pickup-payment-result-icon { transition: none; animation: none !important; }
+    .pickup-payment-tick path,
+    .pickup-payment-result-icon path { animation: none !important; stroke-dashoffset: 0; }
+}
 .pickup-record-actions .pickup-record-delete { background: #241b00; border-color: #241b00; }
 .pickup-record-table-wrap { overflow-x: auto; border: 1px solid rgba(69, 50, 0, 0.3); }
 .pickup-record-table { width: 100%; min-width: 940px; border-collapse: collapse; font-size: 0.74rem; }

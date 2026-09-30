@@ -577,25 +577,43 @@ final class PickupsheetController
         }
 
         $reference = $request->input('reference');
+        $ajax = strcasecmp($request->header('X-Requested-With'), 'XMLHttpRequest') === 0;
         try {
             $paid = $this->service->markPaid(
                 $reference,
                 $request->input('receipt_number'),
+                $request->input('receipt_amount'),
                 $this->actorId($authorization),
             );
-            $_SESSION['_pickup_records_flash'] = 'Pickup sheet ' . $paid->referenceNumber . ' marked paid with receipt ' . $paid->paymentReceiptNumber . '.';
+            $message = 'Pickup sheet ' . $paid->referenceNumber . ' marked paid with receipt ' . $paid->paymentReceiptNumber . '.';
             $this->securityLogger->event('pickupsheet.record_paid', $request, 'accepted', [
                 'actor_id' => $this->actorId($authorization),
                 'resource_id' => substr(hash('sha256', $paid->referenceNumber), 0, 24),
                 'receipt_id' => substr(hash('sha256', (string) $paid->paymentReceiptNumber), 0, 24),
             ]);
+            if ($ajax) {
+                return Response::json([
+                    'ok' => true,
+                    'message' => $message,
+                    'referenceNumber' => $paid->referenceNumber,
+                    'receiptNumber' => $paid->paymentReceiptNumber,
+                ], 200, $this->privateHeaders());
+            }
+            $_SESSION['_pickup_records_flash'] = $message;
         } catch (InvalidArgumentException $exception) {
-            $_SESSION['_pickup_records_errors'] = [$exception->getMessage()];
             $this->securityLogger->event('pickupsheet.record_paid', $request, 'denied');
+            if ($ajax) {
+                return Response::json(['ok' => false, 'message' => $exception->getMessage()], 422, $this->privateHeaders());
+            }
+            $_SESSION['_pickup_records_errors'] = [$exception->getMessage()];
         } catch (RuntimeException $exception) {
             error_log($exception->__toString());
-            $_SESSION['_pickup_records_errors'] = ['The pickup sheet could not be marked paid. Check MySQL and try again.'];
+            $message = 'The pickup sheet could not be marked paid. Check MySQL and try again.';
             $this->securityLogger->event('pickupsheet.record_paid', $request, 'failed');
+            if ($ajax) {
+                return Response::json(['ok' => false, 'message' => $message], 503, $this->privateHeaders());
+            }
+            $_SESSION['_pickup_records_errors'] = [$message];
         }
 
         return Response::redirect($this->submissionReturnPath($request));

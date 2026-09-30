@@ -695,13 +695,153 @@ if (dashboardTabs) {
     if (initialTab) revealTab(initialTab);
 }
 
-// Payment and receipt forms can only be submitted once a valid receipt number is entered.
+// Payment and receipt forms can only be submitted once a valid receipt number is entered. The payment
+// form also needs the receipt amount to equal the sheet total; the server repeats both checks.
+const formatXaf = (value) => Number(value).toLocaleString('en-US');
+// Shows the field's status text and its green tick once the value is correct.
+const showFieldState = (form, input, statusSelector, state, message) => {
+    const status = form.querySelector(statusSelector);
+    if (status) {
+        status.textContent = message;
+        status.dataset.state = state;
+    }
+    const field = input.closest('.pickup-payment-field');
+    if (field) field.dataset.valid = state === 'match' ? 'true' : 'false';
+    input.setAttribute('aria-invalid', state === 'mismatch' ? 'true' : 'false');
+};
 const syncReceiptSubmit = (form) => {
     const receipt = form?.querySelector('[name="receipt_number"]');
     const submit = form?.querySelector('button[type="submit"]');
     if (!receipt || !submit) return;
-    submit.disabled = receipt.value.trim() === '' || !receipt.checkValidity();
+    const receiptValue = receipt.value.trim();
+    const receiptValid = receiptValue !== '' && receipt.checkValidity();
+    let blocked = !receiptValid;
+    const amount = form.querySelector('[name="receipt_amount"]');
+    if (amount) {
+        if (receiptValue === '') {
+            showFieldState(form, receipt, '[data-payment-receipt-status]', '', '3 to 64 letters, numbers, dots, slashes, underscores, or hyphens.');
+        } else if (receiptValid) {
+            showFieldState(form, receipt, '[data-payment-receipt-status]', 'match', 'Receipt number is valid.');
+        } else {
+            showFieldState(form, receipt, '[data-payment-receipt-status]', 'mismatch', 'Receipt number is invalid. Use 3 to 64 letters, numbers, dots, slashes, underscores, or hyphens.');
+        }
+
+        const expected = form.dataset.expectedAmount || '';
+        const entered = amount.value.replace(/[\s,]/g, '');
+        let message = 'Enter the amount on the receipt. It must match the sheet total.';
+        let state = '';
+        if (entered !== '' && !/^[0-9]{1,12}$/.test(entered)) {
+            message = 'Amount is incorrect. Enter a whole number of XAF.';
+            state = 'mismatch';
+        } else if (entered !== '' && Number(entered) !== Number(expected)) {
+            message = `Amount is incorrect. ${formatXaf(entered)} XAF does not match the sheet total of ${formatXaf(expected)} XAF.`;
+            state = 'mismatch';
+        } else if (entered !== '') {
+            message = 'Amount matches the sheet total.';
+            state = 'match';
+        }
+        showFieldState(form, amount, '[data-payment-amount-status]', state, message);
+        blocked = blocked || state !== 'match';
+    }
+    submit.disabled = blocked;
 };
+
+const showPaymentResult = (dialog, success, title, message) => {
+    const form = dialog.querySelector('[data-pickup-payment]');
+    const result = dialog.querySelector('[data-payment-result]');
+    if (!form || !result) return;
+    result.dataset.outcome = success ? 'success' : 'failure';
+    result.querySelector('[data-payment-result-title]').textContent = title;
+    result.querySelector('[data-payment-result-message]').textContent = message;
+    result.querySelector('[data-payment-retry]').hidden = success;
+    form.hidden = true;
+    result.hidden = false;
+    result.querySelector(success ? '[data-payment-done]' : '[data-payment-retry]')?.focus();
+};
+const paymentFailureMessage = (status) => {
+    if (status === 419) return 'Your session form expired. Reload the page and try again.';
+    if (status === 403) return 'You do not have permission to confirm payments.';
+    if (status === 429) return 'Too many attempts. Wait a few minutes and try again.';
+    return 'The payment could not be confirmed. Check your connection and try again.';
+};
+const submitPayment = async (form) => {
+    const dialog = form.closest('dialog');
+    const submit = form.querySelector('button[type="submit"]');
+    if (!dialog || !submit || submit.disabled || submit.dataset.submitting === '1') return;
+    submit.dataset.submitting = '1';
+    submit.disabled = true;
+    submit.textContent = 'Confirming...';
+    try {
+        const response = await fetch(form.action, {
+            method: 'POST',
+            body: new FormData(form),
+            credentials: 'same-origin',
+            headers: { 'X-Requested-With': 'XMLHttpRequest' },
+        });
+        if (response.redirected && response.url && new URL(response.url).pathname.endsWith('/dhl/pickupsheet/login')) {
+            showPaymentResult(dialog, false, 'Payment not confirmed', 'Your session has ended. Sign in again, then confirm the payment.');
+            return;
+        }
+        let result = null;
+        try {
+            result = await response.json();
+        } catch {
+            result = null;
+        }
+        if (response.ok && result?.ok === true) {
+            dialog.dataset.paid = '1';
+            showPaymentResult(dialog, true, 'Payment confirmed', result.message || 'The pickup sheet is now marked paid.');
+            return;
+        }
+        showPaymentResult(dialog, false, 'Payment not confirmed', result?.message || paymentFailureMessage(response.status));
+    } catch {
+        showPaymentResult(dialog, false, 'Payment not confirmed', paymentFailureMessage(0));
+    } finally {
+        submit.removeAttribute('data-submitting');
+        submit.textContent = 'Confirm paid';
+        syncReceiptSubmit(form);
+    }
+};
+const resetPaymentDialog = (dialog) => {
+    const form = dialog.querySelector('[data-pickup-payment]');
+    const result = dialog.querySelector('[data-payment-result]');
+    if (result) result.hidden = true;
+    if (form) form.hidden = false;
+    return form;
+};
+
+document.addEventListener('click', (event) => {
+    const opener = event.target.closest?.('[data-payment-dialog-open]');
+    if (opener) {
+        const dialog = document.getElementById(opener.dataset.paymentDialogOpen);
+        if (!dialog || typeof dialog.showModal !== 'function') return;
+        const form = resetPaymentDialog(dialog);
+        delete dialog.dataset.paid;
+        form?.reset();
+        form?.querySelector('button[type="submit"]')?.removeAttribute('data-submitting');
+        syncReceiptSubmit(form);
+        dialog.showModal();
+        form?.querySelector('[name="receipt_number"]')?.focus();
+        return;
+    }
+    if (event.target.closest?.('[data-payment-retry]')) {
+        const form = resetPaymentDialog(event.target.closest('dialog'));
+        form?.querySelector('[aria-invalid="true"], [name="receipt_number"]')?.focus();
+        return;
+    }
+    if (event.target.closest?.('[data-payment-dialog-close], [data-payment-done]')) {
+        event.target.closest('dialog')?.close();
+        return;
+    }
+    // A click on the backdrop lands on the dialog element itself.
+    if (event.target.matches?.('.pickup-payment-dialog')) event.target.close();
+});
+// Once a payment is confirmed, closing the dialog reloads the list so the sheet shows as paid.
+document.addEventListener('close', (event) => {
+    if (event.target.matches?.('.pickup-payment-dialog') && event.target.dataset.paid === '1') {
+        window.location.reload();
+    }
+}, true);
 
 document.addEventListener('toggle', (event) => {
     if (!event.target.open) return;
@@ -719,7 +859,7 @@ document.addEventListener('toggle', (event) => {
         });
 }, true);
 document.addEventListener('input', (event) => {
-    if (event.target.matches?.('[data-pickup-payment] [name="receipt_number"], [data-pickup-receipt-edit] [name="receipt_number"]')) {
+    if (event.target.matches?.('[data-pickup-payment] [name="receipt_number"], [data-pickup-payment] [name="receipt_amount"], [data-pickup-receipt-edit] [name="receipt_number"]')) {
         syncReceiptSubmit(event.target.form);
     }
 });
@@ -904,12 +1044,10 @@ document.addEventListener('submit', (event) => {
         }
     }
     if (event.target.matches('[data-pickup-payment]')) {
-        const reference = event.target.querySelector('[name="reference"]')?.value || 'this pickup sheet';
-        const receipt = event.target.querySelector('[name="receipt_number"]')?.value.trim().toUpperCase() || '';
-        if (!window.confirm(`Mark ${reference} as paid using receipt ${receipt}? This status cannot be reversed, and only an administrator can change the receipt number afterwards.`)) {
-            event.preventDefault();
-            return;
-        }
+        // Submitted in the background so the modal can show the outcome; a second submit is ignored.
+        event.preventDefault();
+        submitPayment(event.target);
+        return;
     }
     if (event.target.matches('[data-pickup-receipt-edit]')) {
         const reference = event.target.querySelector('[name="reference"]')?.value || 'this pickup sheet';
