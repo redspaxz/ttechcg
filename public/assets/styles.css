@@ -3185,3 +3185,55 @@ button, a, input, select, textarea { -webkit-tap-highlight-color: transparent; }
     .pickup-profile-kpis article:nth-child(4) { border-left: 1px solid rgba(69, 50, 0, 0.14); }
     .pickup-profile-kpis article:last-child { grid-column: 1 / -1; border-left: 0; }
 }
+
+/* Customer directory: fits the card with no horizontal scroll; rows become cards on narrow screens */
+.pickup-crm-directory-content { padding: 5px; }
+.pickup-crm-directory-table-wrap { overflow: visible; }
+.pickup-crm-directory-table-wrap .pickup-crm-directory-table { width: 100%; min-width: 0; table-layout: fixed; border-collapse: collapse; }
+.pickup-crm-directory-table .col-id { width: 108px; }
+.pickup-crm-directory-table .col-customer { width: 21%; }
+.pickup-crm-directory-table .col-status { width: 122px; }
+.pickup-crm-directory-table .col-contact { width: 19%; }
+.pickup-crm-directory-table .col-shipments { width: 16%; }
+.pickup-crm-directory-table .col-rewards { width: 11%; }
+.pickup-crm-directory-table .col-follow-up { width: 12%; }
+.pickup-crm-directory-table .col-open { width: 70px; }
+.pickup-crm-directory .pickup-crm-directory-table th,
+.pickup-crm-directory .pickup-crm-directory-table td { padding: 11px 10px; font-size: 0.78rem; line-height: 1.4; overflow-wrap: anywhere; }
+.pickup-crm-directory .pickup-crm-directory-table th { font-size: 0.6rem; white-space: nowrap; }
+.pickup-crm-directory-table td > strong { display: block; color: #241b00; font-size: 0.8rem; }
+.pickup-crm-directory-table td > small { display: block; max-width: none; margin-top: 4px; overflow: hidden; color: #806d24; font-size: 0.7rem; text-overflow: ellipsis; white-space: nowrap; }
+.pickup-crm-directory-table .pickup-customer-status { padding: 4px 8px; border-radius: 999px; font-size: 0.58rem; white-space: nowrap; }
+.pickup-crm-directory-table .pickup-customer-id { font-size: 0.68rem; }
+.pickup-crm-directory-table tbody tr:hover td { background: #fffdf5; }
+.pickup-crm-muted { color: #806d24; }
+.pickup-crm-open-cell { text-align: right !important; }
+.pickup-crm-open-cell a { display: inline-flex; align-items: center; min-height: 32px; padding: 0 12px; border: 1px solid rgba(212, 5, 17, 0.4); border-radius: 8px; text-decoration: none; }
+.pickup-crm-open-cell a:hover, .pickup-crm-open-cell a:focus-visible { background: var(--dhl-red); color: #fff; outline: none; }
+@media (max-width: 1100px) {
+    .pickup-crm-directory-table .col-id { width: 96px; }
+    .pickup-crm-directory-table .col-status { width: 108px; }
+    .pickup-crm-directory-table .col-rewards { width: 10%; }
+}
+@media (max-width: 900px) {
+    .pickup-crm-directory-table,
+    .pickup-crm-directory-table tbody,
+    .pickup-crm-directory-table tr,
+    .pickup-crm-directory-table td { display: block; width: auto; }
+    .pickup-crm-directory-table colgroup,
+    .pickup-crm-directory-table thead { display: none; }
+    .pickup-crm-directory-table tbody { display: grid; gap: 10px; padding: 5px 0; }
+    .pickup-crm-directory-table tbody tr { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 10px 16px; padding: 14px; border: 1px solid rgba(69, 50, 0, 0.18); border-radius: 10px; }
+    .pickup-crm-directory .pickup-crm-directory-table td { padding: 0; border: 0; }
+    .pickup-crm-directory-table td[data-label]::before { content: attr(data-label); display: block; margin-bottom: 3px; color: #806d24; font-size: 0.58rem; font-weight: 850; letter-spacing: 0.08em; text-transform: uppercase; }
+    .pickup-crm-directory-table td[data-label="Customer"] { grid-column: 1 / -1; order: -1; }
+    .pickup-crm-directory-table td[data-label="Customer"]::before { display: none; }
+    .pickup-crm-directory-table td[data-label="Customer"] > strong { font-size: 0.95rem; }
+    .pickup-crm-directory-table td > small { white-space: normal; }
+    .pickup-crm-directory-table .pickup-crm-open-cell { grid-column: 1 / -1; text-align: left !important; }
+    .pickup-crm-open-cell a { justify-content: center; width: 100%; }
+    .pickup-crm-directory-table tbody tr:hover td { background: transparent; }
+}
+@media (max-width: 420px) {
+    .pickup-crm-directory-table tbody tr { grid-template-columns: 1fr; }
+}
