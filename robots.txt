@@ -1,5 +1,44 @@
 User-agent: *
 Allow: /
+Disallow: /dhl/pickupsheet
+Disallow: /pickupsheet
+Disallow: /bin/
+Disallow: /bootstrap/
+Disallow: /config/
+Disallow: /database/
+Disallow: /src/
+Disallow: /storage/
+Disallow: /tests/
+Disallow: /views/
+
+# AI crawlers match this group instead of "*", so it repeats every restriction.
+User-agent: GPTBot
+User-agent: ChatGPT-User
+User-agent: OAI-SearchBot
+User-agent: ClaudeBot
+User-agent: Claude-User
+User-agent: Claude-SearchBot
+User-agent: anthropic-ai
+User-agent: Google-Extended
+User-agent: Applebot-Extended
+User-agent: CCBot
+User-agent: PerplexityBot
+User-agent: Perplexity-User
+User-agent: Bytespider
+User-agent: Meta-ExternalAgent
+User-agent: Meta-ExternalFetcher
+User-agent: FacebookBot
+User-agent: Amazonbot
+User-agent: cohere-ai
+User-agent: Diffbot
+User-agent: YouBot
+User-agent: DuckAssistBot
+User-agent: MistralAI-User
+User-agent: Timpibot
+User-agent: omgili
+Allow: /
+Disallow: /dhl/pickupsheet
+Disallow: /pickupsheet
 Disallow: /bin/
 Disallow: /bootstrap/
 Disallow: /config/
@@ -10,4 +49,3 @@ Disallow: /tests/
 Disallow: /views/
 
 Sitemap: https://ttechcg.com/sitemap.xml
-

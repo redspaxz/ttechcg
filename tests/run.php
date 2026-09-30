@@ -488,6 +488,27 @@ $assert(($securityHeaderResponse->headers()['Cache-Control'] ?? '') === 'private
 $weakenedResponse = Response::html('Sensitive', 200, ['Cache-Control' => 'public, max-age=86400', 'X-Frame-Options' => 'SAMEORIGIN']);
 $hardenedResponse = (new SecurityHeaders(true))->apply($weakenedResponse, new Request('GET', '/dhl/pickupsheet'));
 $assert(($hardenedResponse->headers()['Cache-Control'] ?? '') === 'private, no-store, max-age=0' && ($hardenedResponse->headers()['X-Frame-Options'] ?? '') === 'DENY', 'The application security boundary should override weaker route-level headers for protected pages.');
+foreach (['/dhl/pickupsheet', '/dhl/pickupsheet/customers', '/dhl/pickupsheet/unknown', '/pickupsheet', '/pickupsheet/submissions'] as $noindexPath) {
+    $noindexResponse = (new SecurityHeaders(true))->apply(Response::html('Sensitive'), new Request('GET', $noindexPath));
+    $assert(($noindexResponse->headers()['X-Robots-Tag'] ?? '') === 'noindex, nofollow', 'Every Pickupsheet workspace path should tell search engines and AI crawlers not to index it: ' . $noindexPath);
+}
+foreach (['/', '/products', '/dhl/pickupsheetx'] as $indexablePath) {
+    $indexableResponse = (new SecurityHeaders(true))->apply(Response::html('Public'), new Request('GET', $indexablePath));
+    $assert(!isset($indexableResponse->headers()['X-Robots-Tag']), 'Public marketing pages should remain indexable: ' . $indexablePath);
+}
+$robotsTxt = $readSource(dirname(__DIR__) . '/robots.txt');
+$robotsGroups = is_string($robotsTxt) ? preg_split('/\R\s*\R/', trim($robotsTxt)) : [];
+$aiCrawlerGroup = '';
+foreach ($robotsGroups as $robotsGroup) {
+    if (str_contains($robotsGroup, 'User-agent: GPTBot')) {
+        $aiCrawlerGroup = $robotsGroup;
+    }
+}
+$assert(is_string($robotsTxt) && preg_match('/^Disallow: \/dhl\/pickupsheet$/m', $robotsTxt) === 1 && preg_match('/^Disallow: \/pickupsheet$/m', $robotsTxt) === 1, 'robots.txt should keep crawlers out of the Pickupsheet workspace.');
+foreach (['GPTBot', 'ClaudeBot', 'anthropic-ai', 'Google-Extended', 'CCBot', 'PerplexityBot', 'Bytespider', 'Applebot-Extended', 'Meta-ExternalAgent'] as $aiCrawler) {
+    $assert(preg_match('/^User-agent: ' . preg_quote($aiCrawler, '/') . '$/m', $aiCrawlerGroup) === 1,'robots.txt should name the AI crawler ' . $aiCrawler . '.');
+}
+$assert(str_contains($aiCrawlerGroup, 'Disallow: /dhl/pickupsheet') && str_contains($aiCrawlerGroup, 'Disallow: /pickupsheet') && str_contains($aiCrawlerGroup, 'Disallow: /storage/'), 'The AI crawler group should repeat the workspace restrictions because named groups override the wildcard group.');
 
 $rateLimitDirectory = sys_get_temp_dir() . DIRECTORY_SEPARATOR . 'ttechcg-rate-limit-' . bin2hex(random_bytes(8));
 $rateLimiterTest = new RateLimiter($rateLimitDirectory);
