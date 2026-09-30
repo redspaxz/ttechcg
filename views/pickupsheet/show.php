@@ -84,10 +84,18 @@ $renderShipmentRow = static function (int|string $index, mixed $row = []) use ($
                     <span>Agent name</span>
                     <input name="agent_name" value="<?= $e($old['agent_name'] ?? '') ?>" maxlength="100" required autocomplete="name" placeholder="Collection agent">
                 </label>
+                <?php if (!empty($canSetCollectionDate)): ?>
                 <label>
                     <span>Date</span>
                     <input type="date" name="collection_date" value="<?= $e($old['collection_date'] ?? date('Y-m-d')) ?>" required>
                 </label>
+                <?php else: ?>
+                <div class="pickup-reference-field pickup-date-locked">
+                    <span>Date</span>
+                    <strong><time datetime="<?= $e(date('Y-m-d')) ?>"><?= $e(date('j M Y')) ?></time></strong>
+                    <small>Set to today. Only an administrator can change it.</small>
+                </div>
+                <?php endif; ?>
                 <div class="pickup-reference-field">
                     <span>Reference number</span>
                     <strong>Assigned when saved</strong>

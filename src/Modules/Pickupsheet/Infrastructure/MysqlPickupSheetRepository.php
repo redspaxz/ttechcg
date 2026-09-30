@@ -253,6 +253,61 @@ final class MysqlPickupSheetRepository implements PickupSheetRepository
         }
     }
 
+    public function updateReceipt(string $referenceNumber, string $receiptNumber, string $actorId): PickupSheet
+    {
+        $this->ensureLifecycleSchema();
+        $this->connection->beginTransaction();
+
+        try {
+            $lockStatement = $this->connection->prepare(
+                "SELECT id FROM pickup_sheets
+                 WHERE reference_number = :reference_number AND deleted_at IS NULL AND status = 'paid'
+                 LIMIT 1 FOR UPDATE",
+            );
+            $lockStatement->execute(['reference_number' => $referenceNumber]);
+            $pickupSheetId = $lockStatement->fetchColumn();
+            if ($pickupSheetId === false) {
+                throw new \RuntimeException('Paid pickup sheet not found for receipt correction.');
+            }
+
+            $original = $this->findByReference($referenceNumber);
+            if ($original === null) {
+                throw new \RuntimeException('Pickup sheet could not be loaded for receipt audit.');
+            }
+
+            $statement = $this->connection->prepare(
+                'UPDATE pickup_sheets SET payment_receipt_number = :receipt_number WHERE id = :id',
+            );
+            $statement->execute([
+                'id' => (int) $pickupSheetId,
+                'receipt_number' => $receiptNumber,
+            ]);
+
+            $corrected = new PickupSheet(
+                $original->id,
+                $original->referenceNumber,
+                $original->agentName,
+                $original->collectionDate,
+                $original->shipments,
+                $original->totalCashReceivedXaf,
+                $original->privacyConsentAt,
+                $original->privacyNoticeVersion,
+                $original->createdAt,
+                $original->status,
+                $original->paidAt,
+                $receiptNumber,
+            );
+            $this->writeLifecycleAudit((int) $pickupSheetId, $referenceNumber, $actorId, 'receipt_edit', $this->snapshot($original), $this->snapshot($corrected));
+            $this->connection->commit();
+            return $corrected;
+        } catch (Throwable $exception) {
+            if ($this->connection->inTransaction()) {
+                $this->connection->rollBack();
+            }
+            throw $exception;
+        }
+    }
+
     public function delete(string $referenceNumber, string $actorId): void
     {
         $this->ensureLifecycleSchema();

@@ -2057,6 +2057,7 @@ button, a, input, select, textarea { -webkit-tap-highlight-color: transparent; }
     text-transform: uppercase;
 }
 .pickup-reference-field strong { color: #655000; font-size: 0.82rem; }
+.pickup-date-locked small { color: #5c4a14; font-size: 0.72rem; }
 .pickup-meta-fields label > span,
 .pickup-form .captcha-fieldset label > span {
     color: #493800;
@@ -2521,6 +2522,7 @@ button, a, input, select, textarea { -webkit-tap-highlight-color: transparent; }
 }
 .pickup-record-actions a:first-child { background: #fff; color: var(--dhl-red); }
 .pickup-record-actions .pickup-record-paid { background: #fff; color: #0b633a; border-color: #0b633a; }
+.pickup-record-actions .pickup-record-paid:disabled { cursor: not-allowed; opacity: 0.5; }
 .pickup-record-actions .pickup-record-delete { background: #241b00; border-color: #241b00; }
 .pickup-record-table-wrap { overflow-x: auto; border: 1px solid rgba(69, 50, 0, 0.3); }
 .pickup-record-table { width: 100%; min-width: 940px; border-collapse: collapse; font-size: 0.74rem; }
@@ -2774,8 +2776,6 @@ button, a, input, select, textarea { -webkit-tap-highlight-color: transparent; }
 .pickup-awb-warning p { margin: 0; font-size: 0.78rem; line-height: 1.55; }
 .pickup-awb-warning ul { display: grid; gap: 6px; margin: 0; padding-left: 18px; font-size: 0.78rem; }
 .pickup-awb-warning a { color: #a6000a; font-weight: 850; }
-.pickup-awb-confirm { display: flex; align-items: flex-start; gap: 10px; font-size: 0.8rem; font-weight: 750; }
-.pickup-awb-confirm input { width: 18px; height: 18px; margin: 2px 0 0; accent-color: var(--dhl-red); }
 .pickup-awb-expired { color: #655000; white-space: nowrap; }
 .pickup-awb-expired small { margin-left: 4px; padding: 1px 5px; border: 1px solid rgba(69, 50, 0, 0.35); color: #806d24; font-size: 0.6rem; font-weight: 850; letter-spacing: 0.04em; text-transform: uppercase; }
 .pickup-crm-merge-list { display: grid; }

@@ -10,6 +10,7 @@ $canPrint = (bool) ($canPrint ?? false);
 $canExport = (bool) ($canExport ?? false);
 $canEdit = (bool) ($canEdit ?? false);
 $canMarkPaid = (bool) ($canMarkPaid ?? false);
+$canEditReceipt = (bool) ($canEditReceipt ?? false);
 $canDelete = (bool) ($canDelete ?? false);
 $pagination = is_array($pagination ?? null) ? $pagination : [];
 $search = trim(is_string($search ?? null) ? $search : '');
@@ -50,7 +51,7 @@ $pageUrl = static function (int $target) use ($basePath, $search): string {
                 <span><small>Agent</small><?= $e($pickupSheet->agentName) ?></span>
                 <span><small>Shipments</small><?= $e($pickupSheet->shipmentCount()) ?></span>
                 <strong><?= $e(number_format($pickupSheet->totalCashReceivedXaf)) ?> XAF</strong>
-                <?php if ($canPrint || $canExport || $canEdit || $canMarkPaid || $canDelete): ?>
+                <?php if ($canPrint || $canExport || $canEdit || $canMarkPaid || $canEditReceipt || $canDelete): ?>
                     <div class="pickup-record-actions">
                         <?php if ($canEdit): ?>
                             <a href="<?= $e($basePath) ?>/dhl/pickupsheet/submissions/edit?reference=<?= $e($referenceQuery) ?>">Edit record</a>
@@ -63,6 +64,9 @@ $pageUrl = static function (int $target) use ($basePath, $search): string {
                         <?php endif; ?>
                         <?php if ($canMarkPaid && !$isPaid): ?>
                             <details class="pickup-record-payment"><summary>Mark paid</summary><form method="post" action="<?= $e($basePath) ?>/dhl/pickupsheet/submissions/paid" data-pickup-payment><input type="hidden" name="_token" value="<?= $e($csrfToken) ?>"><input type="hidden" name="reference" value="<?= $e($pickupSheet->referenceNumber) ?>"><input type="hidden" name="return_page" value="<?= $e($page) ?>"><input type="hidden" name="return_search" value="<?= $e($search) ?>"><label><span>Receipt number</span><input type="text" name="receipt_number" minlength="3" maxlength="64" pattern="[A-Za-z0-9][A-Za-z0-9._/-]{2,63}" placeholder="e.g. RCP-12345" autocomplete="off" required></label><button class="pickup-record-paid" type="submit">Confirm paid</button></form></details>
+                        <?php endif; ?>
+                        <?php if ($canEditReceipt && $isPaid): ?>
+                            <details class="pickup-record-payment"><summary>Edit receipt</summary><form method="post" action="<?= $e($basePath) ?>/dhl/pickupsheet/submissions/receipt" data-pickup-receipt-edit><input type="hidden" name="_token" value="<?= $e($csrfToken) ?>"><input type="hidden" name="reference" value="<?= $e($pickupSheet->referenceNumber) ?>"><input type="hidden" name="return_page" value="<?= $e($page) ?>"><input type="hidden" name="return_search" value="<?= $e($search) ?>"><label><span>Receipt number</span><input type="text" name="receipt_number" value="<?= $e($pickupSheet->paymentReceiptNumber ?? '') ?>" minlength="3" maxlength="64" pattern="[A-Za-z0-9][A-Za-z0-9._/-]{2,63}" autocomplete="off" required></label><button class="pickup-record-paid" type="submit">Save receipt</button></form></details>
                         <?php endif; ?>
                         <?php if ($canDelete): ?>
                             <form method="post" action="<?= $e($basePath) ?>/dhl/pickupsheet/submissions/delete" data-pickup-delete><input type="hidden" name="_token" value="<?= $e($csrfToken) ?>"><input type="hidden" name="reference" value="<?= $e($pickupSheet->referenceNumber) ?>"><input type="hidden" name="return_page" value="<?= $e($page) ?>"><input type="hidden" name="return_search" value="<?= $e($search) ?>"><button class="pickup-record-delete" type="submit">Delete</button></form>

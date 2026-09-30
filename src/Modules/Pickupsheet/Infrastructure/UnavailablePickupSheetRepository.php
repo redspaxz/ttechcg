@@ -25,6 +25,11 @@ final class UnavailablePickupSheetRepository implements PickupSheetRepository
         throw new RuntimeException('Pickup-sheet storage is unavailable.');
     }
 
+    public function updateReceipt(string $referenceNumber, string $receiptNumber, string $actorId): PickupSheet
+    {
+        throw new RuntimeException('Pickup-sheet storage is unavailable.');
+    }
+
     public function delete(string $referenceNumber, string $actorId): void
     {
         throw new RuntimeException('Pickup-sheet storage is unavailable.');

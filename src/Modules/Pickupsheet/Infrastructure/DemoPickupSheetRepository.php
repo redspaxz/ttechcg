@@ -76,6 +76,36 @@ final class DemoPickupSheetRepository implements PickupSheetRepository
         throw new \RuntimeException('Pickup sheet not found for payment status update.');
     }
 
+    public function updateReceipt(string $referenceNumber, string $receiptNumber, string $actorId): PickupSheet
+    {
+        $sheets = $_SESSION[self::SESSION_KEY] ?? [];
+        foreach (is_array($sheets) ? $sheets : [] as $index => $stored) {
+            if (!$stored instanceof PickupSheet || $stored->referenceNumber !== $referenceNumber || !$stored->isPaid()) {
+                continue;
+            }
+
+            $corrected = new PickupSheet(
+                $stored->id,
+                $stored->referenceNumber,
+                $stored->agentName,
+                $stored->collectionDate,
+                $stored->shipments,
+                $stored->totalCashReceivedXaf,
+                $stored->privacyConsentAt,
+                $stored->privacyNoticeVersion,
+                $stored->createdAt,
+                $stored->status,
+                $stored->paidAt,
+                $receiptNumber,
+            );
+            $sheets[$index] = $corrected;
+            $_SESSION[self::SESSION_KEY] = $sheets;
+            return $corrected;
+        }
+
+        throw new \RuntimeException('Paid pickup sheet not found for receipt correction.');
+    }
+
     public function delete(string $referenceNumber, string $actorId): void
     {
         $sheets = $_SESSION[self::SESSION_KEY] ?? [];

@@ -280,7 +280,7 @@ Cash settlement always covers the last 3 months. Trend, destination, sender and 
 DHL recycles AWB numbers after about three months, so an AWB only identifies a shipment within that window around its collection date. The window is `PICKUPSHEET_AWB_REUSE_DAYS` (default 90); confirm the exact period with DHL, and whether it counts from the label date or the collection date.
 
 - the same AWB twice on one sheet is always refused
-- when a new or edited sheet uses an AWB that is already on another active sheet collected within the window either side of its date, the save stops with a warning naming the other sheet and its collection date. The operator either corrects the number or ticks "I confirm DHL reissued…" and saves again. The confirmation covers only the AWBs listed in that warning, and the security log records how many were confirmed (`awb_reuse_confirmed`) and every warning (`pickupsheet.awb_reuse`)
+- an AWB cannot be entered again within the window of its collection date. When a new or edited sheet uses an AWB that is already on another active sheet collected within the window either side of its date, the save is refused with a message naming the other sheet and its collection date, and the number must be corrected. There is no override. Every refusal is recorded in the security log (`pickupsheet.awb_reuse`)
 - once a shipment is older than the window, its AWB is shown as plain text marked "tracking expired" instead of a DHL tracking link, on submitted sheets, printed sheets, and customer shipment history, because the link could now open another customer's shipment
 - nothing treats the AWB alone as a unique key; identify a shipment by its sheet and line, or by AWB plus collection date
 

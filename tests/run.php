@@ -626,8 +626,10 @@ $assert($operatorPrincipal?->can('crm_view') === true && $operatorPrincipal->can
 $assert($viewerPrincipal?->can('crm_view') === false && $viewerPrincipal->can('crm_update') === false, 'Viewers should not receive CRM profile access.');
 $assert($adminPrincipal?->fullName() === 'Records Administrator', 'Authenticated principals should expose the account first and last name.');
 $assert($adminPrincipal?->can('edit') === true && $adminPrincipal->can('mark_paid') === true && $adminPrincipal->can('delete') === true, 'An administrator should edit, mark paid, and delete pickup records.');
+$assert($adminPrincipal?->can('set_collection_date') === true && $operatorPrincipal?->can('set_collection_date') === false && $viewerPrincipal?->can('set_collection_date') === false, 'Only administrators should choose a pickup sheet collection date.');
 $assert($viewerPrincipal?->can('create') === true && $viewerPrincipal->can('list') === true && $viewerPrincipal->can('edit') === false && $viewerPrincipal->can('print') === false, 'A viewer should create and view records but cannot edit, print, or export them.');
-$assert($operatorPrincipal?->can('create') === true && $operatorPrincipal->can('list') === true && $operatorPrincipal->can('edit') === false && $operatorPrincipal->can('mark_paid') === false && $operatorPrincipal->can('delete') === false && $operatorPrincipal->can('print') === true && $operatorPrincipal->can('export') === true, 'An operator should create, view, print, and export records without edit, status, or delete access.');
+$assert($operatorPrincipal?->can('create') === true && $operatorPrincipal->can('list') === true && $operatorPrincipal->can('edit') === false && $operatorPrincipal->can('mark_paid') === true && $operatorPrincipal->can('edit_receipt') === false && $operatorPrincipal->can('delete') === false && $operatorPrincipal->can('print') === true && $operatorPrincipal->can('export') === true, 'An operator should create, view, print, export, and confirm paid records without edit, receipt-correction, or delete access.');
+$assert($adminPrincipal?->can('edit_receipt') === true && $viewerPrincipal?->can('mark_paid') === false && $viewerPrincipal->can('edit_receipt') === false, 'Only administrators should correct a paid sheet receipt number, and viewers should not confirm payment.');
 $recordsSession->login($adminPrincipal);
 $assert($recordsSession->authenticatedWithin(300), 'A new authenticated session should qualify for short-lived sensitive-action freshness.');
 $_SESSION['_pickupsheet_identity']['id_rotated_at'] = time() - 901;
@@ -1349,17 +1351,24 @@ try {
 } catch (AwbReuseException $exception) {
     $reuseWarning = $exception;
 }
-$assert($reuseWarning?->awbNumbers() === ['7770000001'] && ($reuseWarning->conflicts[0]['referenceNumber'] ?? '') === $firstAwbSheet->referenceNumber && str_contains($reuseWarning->getMessage(), 'already on another pickup sheet from the last 90 days'), 'An AWB already on another sheet within 90 days should stop the save with a warning naming that sheet.');
-$wrongConfirmation = null;
+$assert($reuseWarning?->awbNumbers() === ['7770000001'] && ($reuseWarning->conflicts[0]['referenceNumber'] ?? '') === $firstAwbSheet->referenceNumber && str_contains($reuseWarning->getMessage(), 'already on another pickup sheet collected within 90 days'), 'An AWB already on another sheet within 90 days should be refused with a message naming that sheet.');
+$overrideAttempt = null;
 try {
-    $renamePickupService->submit($awbSheet('2026-09-25', ['7770000002', '7770000001']) + ['confirmed_awb_reuse' => '7770000009']);
+    $renamePickupService->submit($awbSheet('2026-09-25', ['7770000002', '7770000001']) + ['confirmed_awb_reuse' => '7770000001']);
 } catch (AwbReuseException $exception) {
-    $wrongConfirmation = $exception;
+    $overrideAttempt = $exception;
 }
-$assert($wrongConfirmation !== null, 'Confirming a different AWB should not approve the one that clashes.');
-$confirmedAwbSheet = $renamePickupService->submit($awbSheet('2026-09-25', ['7770000002', '7770000001']) + ['confirmed_awb_reuse' => '7770000001']);
-$assert(count($confirmedAwbSheet->shipments) === 2, 'After the operator confirms the listed AWBs were reissued, the sheet should save.');
-$assert($renamePickupService->submit($awbSheet('2027-01-10', ['7770000001']))->collectionDate === '2027-01-10', 'An AWB outside the 90-day window should be accepted without a warning.');
+$assert($overrideAttempt !== null, 'A reused AWB within 90 days should be refused even when a confirmation is submitted.');
+foreach (['2026-12-18', '2026-06-23'] as $insideWindowDate) {
+    $insideWindow = null;
+    try {
+        $renamePickupService->submit($awbSheet($insideWindowDate, ['7770000001']));
+    } catch (AwbReuseException $exception) {
+        $insideWindow = $exception;
+    }
+    $assert($insideWindow !== null, 'An AWB 89 days from its earlier collection should still be refused: ' . $insideWindowDate);
+}
+$assert($renamePickupService->submit($awbSheet('2026-12-19', ['7770000001']))->collectionDate === '2026-12-19', 'An AWB may be entered again once 90 days have passed since its collection.');
 $ownAwbSheet = $renamePickupService->submit($awbSheet('2026-09-20', ['7770000004']));
 $selfEditInput = $awbSheet('2026-09-21', ['7770000004']);
 $selfEditInput['shipments'][0]['collection_time'] = '10:00';
@@ -1825,6 +1834,36 @@ $assert((bool) preg_match('/^[0-9]{2}:[0-9]{2}$/', $savedControllerSheet->shipme
 $savedReference = $savedControllerSheet->referenceNumber;
 $trackingHref = htmlspecialchars(DhlTrackingUrl::forAwb('1234567890'), ENT_QUOTES, 'UTF-8');
 
+$recordsSession->login($operatorPrincipal);
+unset($_SESSION['_last_pickup_sheet_at']);
+$operatorChallenge = $pickupCaptcha->issue();
+$operatorParts = preg_split('/\s+/', $operatorChallenge['question']);
+$operatorAnswer = is_array($operatorParts) && $operatorParts[1] === '+'
+    ? (string) ((int) $operatorParts[0] + (int) $operatorParts[2])
+    : (string) ((int) $operatorParts[0] - (int) $operatorParts[2]);
+$pickupController->store(new Request('POST', '/dhl/pickupsheet', [], [
+    '_token' => $pickupCsrf->token(),
+    'captcha_nonce' => $operatorChallenge['nonce'],
+    'captcha_answer' => $operatorAnswer,
+    'website' => '',
+    'agent_name' => 'Operator Agent',
+    'collection_date' => '2026-01-15',
+    'privacy_consent' => '1',
+    'shipments' => [[
+        'consignor' => 'Operator Client',
+        'awb_number' => '5550001112',
+        'destination' => 'DLA',
+        'amount' => '5000',
+        'pieces' => '1',
+        'weight_kg' => '0.5',
+    ]],
+], ''));
+$operatorSheet = end($_SESSION['_demo_pickup_sheets']);
+$assert($operatorSheet instanceof App\Modules\Pickupsheet\Domain\PickupSheet && $operatorSheet->agentName === 'Operator Agent' && $operatorSheet->collectionDate === date('Y-m-d'), 'The server should ignore a submitted collection date from operators and record today.');
+array_pop($_SESSION['_demo_pickup_sheets']);
+unset($_SESSION['_last_pickup_sheet_at']);
+$recordsSession->login($adminPrincipal);
+
 $consignorSearch = $pickupController->searchConsignors(new Request('GET', '/dhl/pickupsheet/consignors/search', ['q' => 'controller'], [], '', $recordsServer));
 $consignorSearchPayload = json_decode($consignorSearch->body(), true);
 $assert($consignorSearch->status() === 200 && ($consignorSearchPayload['suggestions'] ?? []) === ['Controller Client'], 'Authenticated consignor search should return matching saved names.');
@@ -1909,7 +1948,7 @@ $assert(!str_contains($operatorSubmissions->body(), 'Manage access'), 'An operat
 $assert(!str_contains($operatorSubmissions->body(), 'Page cash total') && !str_contains($operatorSubmissions->body(), 'Unpaid balance'), 'An operator should not receive administrator financial metrics.');
 $assert(str_contains($operatorSubmissions->body(), 'Customer CRM'), 'An operator should receive a direct link to the customer directory.');
 $assert(!str_contains($operatorSubmissions->body(), 'Edit record'), 'An operator should not receive record-edit actions.');
-$assert(!str_contains($operatorSubmissions->body(), 'Mark paid'), 'An operator should not receive the paid-status action.');
+$assert(str_contains($operatorSubmissions->body(), 'Mark paid') && !str_contains($operatorSubmissions->body(), 'data-pickup-delete'), 'An operator should receive the paid confirmation but not the delete action.');
 $assert(str_contains($operatorSubmissions->body(), 'Print / PDF') && str_contains($operatorSubmissions->body(), 'Export Excel'), 'An operator should be shown print and export actions.');
 $assert(!str_contains($operatorSubmissions->body(), 'data-pickup-delete'), 'An operator should not receive the administrator delete action.');
 $operatorEdit = $pickupController->edit(new Request('GET', '/dhl/pickupsheet/submissions/edit', ['reference' => $savedReference]));
@@ -1953,9 +1992,10 @@ $markPaidByOperator = $pickupController->markPickupSheetPaid(new Request('POST',
     '_token' => $pickupCsrf->token(),
     'reference' => $savedReference,
 ]));
-$assert($markPaidByOperator->status() === 403, 'An operator must not change an open pickup sheet to paid.');
+$assert($markPaidByOperator->status() === 303, 'An operator should be allowed to confirm a pickup sheet as paid.');
 $operatorUnchangedSheet = (new PickupSheetService(new DemoPickupSheetRepository()))->findByReference($savedReference);
-$assert($operatorUnchangedSheet?->status === 'open' && !$operatorUnchangedSheet->isPaid(), 'A denied operator status change must leave the pickup sheet open.');
+$assert($operatorUnchangedSheet?->status === 'open' && !$operatorUnchangedSheet->isPaid(), 'An operator payment confirmation without a receipt number must leave the pickup sheet open.');
+unset($_SESSION['_pickup_records_errors']);
 
 $recordsSession->login($viewerPrincipal);
 $viewerUsers = $pickupController->users(new Request('GET', '/dhl/pickupsheet/submissions/users', [], [], '', $viewerServer));
@@ -2007,7 +2047,7 @@ $duplicateAwbEdit = $pickupController->edit(new Request('GET', '/dhl/pickupsheet
 $assert($duplicateAwbUpdate->status() === 303 && str_contains($duplicateAwbEdit->body(), 'use the same AWB number 1234567890') && (new PickupSheetService(new DemoPickupSheetRepository()))->findByReference($savedReference)?->totalCashReceivedXaf === 14000, 'A sheet edit repeating an AWB should be refused and leave the sheet unchanged.');
 $_SESSION['_pickup_edit_awb_conflicts'] = [['awbNumber' => '1234567890', 'referenceNumber' => 'PS-20260720-EXAMPLE', 'collectionDate' => '2026-07-20']];
 $awbWarningEdit = $pickupController->edit(new Request('GET', '/dhl/pickupsheet/submissions/edit', ['reference' => $savedReference]));
-$assert(str_contains($awbWarningEdit->body(), 'data-awb-reuse-warning') && str_contains($awbWarningEdit->body(), 'PS-20260720-EXAMPLE</a>, collected 2026-07-20') && str_contains($awbWarningEdit->body(), 'name="confirmed_awb_reuse" value="1234567890"'), 'The edit form should list clashing AWBs and ask the operator to confirm DHL reissued them.');
+$assert(str_contains($awbWarningEdit->body(), 'data-awb-reuse-warning') && str_contains($awbWarningEdit->body(), 'PS-20260720-EXAMPLE</a>, collected 2026-07-20') && !str_contains($awbWarningEdit->body(), 'confirmed_awb_reuse') && str_contains($awbWarningEdit->body(), 'Correct the numbers to save this sheet.'), 'The edit form should list clashing AWBs without offering an override.');
 $missingReceiptPayment = $pickupController->markPickupSheetPaid(new Request('POST', '/dhl/pickupsheet/submissions/paid', [], [
     '_token' => $pickupCsrf->token(),
     'reference' => $savedReference,
@@ -2031,6 +2071,55 @@ $paidSubmissions = $pickupController->submissions(new Request('GET', '/dhl/picku
 $assert(str_contains($paidSubmissions->body(), 'data-status="paid">Paid</small>') && str_contains($paidSubmissions->body(), 'Receipt RCP-2026/0001') && !str_contains($paidSubmissions->body(), 'pickup-view-summary'), 'A paid pickup sheet should show its status and payment proof without restoring submitted-sheet metric cards.');
 $receiptSearch = $pickupController->submissions(new Request('GET', '/dhl/pickupsheet/submissions', ['q' => 'rcp-2026/0001'], [], '', $recordsServer));
 $assert(str_contains($receiptSearch->body(), $savedReference), 'Submitted-sheet search should locate a paid record by receipt number.');
+$assert(str_contains($paidSubmissions->body(), 'action="/dhl/pickupsheet/submissions/receipt" data-pickup-receipt-edit') && str_contains($paidSubmissions->body(), 'name="receipt_number" value="RCP-2026/0001"'), 'An administrator should receive a receipt-correction form prefilled with the paid sheet receipt.');
+$unchangedReceipt = $pickupController->updatePickupSheetReceipt(new Request('POST', '/dhl/pickupsheet/submissions/receipt', [], [
+    '_token' => $pickupCsrf->token(),
+    'reference' => $savedReference,
+    'receipt_number' => 'rcp-2026/0001',
+]));
+$assert($unchangedReceipt->status() === 303 && ($_SESSION['_pickup_records_errors'] ?? []) === ['The receipt number is unchanged.'], 'Resubmitting the same receipt number should be refused without an audit entry.');
+unset($_SESSION['_pickup_records_errors']);
+$adminReceiptEdit = $pickupController->updatePickupSheetReceipt(new Request('POST', '/dhl/pickupsheet/submissions/receipt', [], [
+    '_token' => $pickupCsrf->token(),
+    'reference' => $savedReference,
+    'receipt_number' => 'rcp-2026/0002',
+]));
+$receiptCorrectedSheet = (new PickupSheetService(new DemoPickupSheetRepository()))->findByReference($savedReference);
+$assert($adminReceiptEdit->status() === 303 && $receiptCorrectedSheet?->paymentReceiptNumber === 'RCP-2026/0002' && $receiptCorrectedSheet->isPaid() && $receiptCorrectedSheet->paidAt === $paidControllerSheet->paidAt, 'An administrator should correct a paid sheet receipt number while keeping its paid status and time.');
+unset($_SESSION['_pickup_records_flash']);
+
+$operatorPaidSheet = (new PickupSheetService(new DemoPickupSheetRepository()))->submit([
+    'agent_name' => 'Operator Payment Agent',
+    'collection_date' => date('Y-m-d'),
+    'privacy_consent' => '1',
+    'shipments' => [['consignor' => 'Operator Payment Client', 'awb_number' => '5550002223', 'destination' => 'DLA', 'amount' => '3000', 'pieces' => '1', 'weight_kg' => '0.5', 'checked_by' => 'Records Operator']],
+]);
+$recordsSession->login($operatorPrincipal);
+$operatorOpenList = $pickupController->submissions(new Request('GET', '/dhl/pickupsheet/submissions', ['q' => $operatorPaidSheet->referenceNumber], [], '', $operatorServer));
+$assert(str_contains($operatorOpenList->body(), 'Confirm paid') && !str_contains($operatorOpenList->body(), 'data-pickup-receipt-edit'), 'An operator should see the paid confirmation on open sheets but no receipt-correction form.');
+$operatorConfirmsPaid = $pickupController->markPickupSheetPaid(new Request('POST', '/dhl/pickupsheet/submissions/paid', [], [
+    '_token' => $pickupCsrf->token(),
+    'reference' => $operatorPaidSheet->referenceNumber,
+    'receipt_number' => 'op-rcp-001',
+]));
+$operatorConfirmedSheet = (new PickupSheetService(new DemoPickupSheetRepository()))->findByReference($operatorPaidSheet->referenceNumber);
+$assert($operatorConfirmsPaid->status() === 303 && $operatorConfirmedSheet?->isPaid() === true && $operatorConfirmedSheet->paymentReceiptNumber === 'OP-RCP-001', 'An operator should confirm an open pickup sheet as paid with its receipt number.');
+$operatorPaidList = $pickupController->submissions(new Request('GET', '/dhl/pickupsheet/submissions', ['q' => $operatorPaidSheet->referenceNumber], [], '', $operatorServer));
+$assert(str_contains($operatorPaidList->body(), 'Receipt OP-RCP-001') && !str_contains($operatorPaidList->body(), 'data-pickup-receipt-edit') && !str_contains($operatorPaidList->body(), 'Confirm paid'), 'An operator should see a paid sheet receipt without any way to change it.');
+$operatorRemarkPaid = $pickupController->markPickupSheetPaid(new Request('POST', '/dhl/pickupsheet/submissions/paid', [], [
+    '_token' => $pickupCsrf->token(),
+    'reference' => $operatorPaidSheet->referenceNumber,
+    'receipt_number' => 'op-rcp-999',
+]));
+$operatorReceiptEdit = $pickupController->updatePickupSheetReceipt(new Request('POST', '/dhl/pickupsheet/submissions/receipt', [], [
+    '_token' => $pickupCsrf->token(),
+    'reference' => $operatorPaidSheet->referenceNumber,
+    'receipt_number' => 'op-rcp-999',
+]));
+$assert($operatorRemarkPaid->status() === 303 && $operatorReceiptEdit->status() === 403 && (new PickupSheetService(new DemoPickupSheetRepository()))->findByReference($operatorPaidSheet->referenceNumber)?->paymentReceiptNumber === 'OP-RCP-001', 'An operator must not change a paid sheet receipt number by re-marking it paid or by the correction route.');
+unset($_SESSION['_pickup_records_errors'], $_SESSION['_pickup_records_flash']);
+$_SESSION['_demo_pickup_sheets'] = array_values(array_filter($_SESSION['_demo_pickup_sheets'], static fn ($sheet): bool => $sheet->referenceNumber !== $operatorPaidSheet->referenceNumber));
+$recordsSession->login($adminPrincipal);
 $adminDashboard = $pickupController->dashboard(new Request('GET', '/dhl/pickupsheet/dashboard'));
 $assert($adminDashboard->status() === 200, 'An administrator should open the KPI dashboard.');
 $assert(str_contains($adminDashboard->body(), '14,000'), 'The KPI dashboard should reflect the administrator-corrected cash activity.');
@@ -2810,7 +2899,20 @@ $assert(str_contains($product, 'pickupsheet'), 'The Pickupsheet product page sho
 $assert(!str_contains($product, 'dhl-logo.svg'), 'The Pickupsheet product page should use a text-only heading.');
 $assert(str_contains($product, 'Cash shipments'), 'The PDF cash-shipment section should render.');
 $assert(str_contains($product, 'name="agent_name"'), 'The pickup form should collect the agent name.');
-$assert(str_contains($product, 'name="collection_date"'), 'The pickup form should collect the sheet date.');
+$assert(!str_contains($product, 'name="collection_date"') && str_contains($product, 'datetime="' . date('Y-m-d') . '"') && str_contains($product, 'Only an administrator can change it.'), 'Non-administrators should see today\'s collection date locked instead of a date picker.');
+$adminProduct = $view->render('pickupsheet/show', array_merge($common, [
+    'pageTitle' => 'Cash shipment pickup sheet',
+    'pageDescription' => 'Test description',
+    'activePage' => 'pickupsheet',
+    'csrfToken' => 'pickup-csrf-token',
+    'captcha' => ['question' => '9 + 2', 'nonce' => 'pickup-captcha-nonce'],
+    'errors' => [],
+    'old' => [],
+    'pickupOperational' => true,
+    'recordsRole' => 'admin',
+    'canSetCollectionDate' => true,
+]));
+$assert(str_contains($adminProduct, 'type="date" name="collection_date"'), 'Administrators should be able to choose the collection date.');
 $assert(str_contains($product, 'Reference number'), 'The pickup form should disclose its automatic reference number.');
 $assert(str_contains($product, 'Assigned when saved'), 'Operators should know when the reference number is generated.');
 $assert(str_contains($product, 'href="/dhl/pickupsheet/submissions"'), 'The direct entry screen should link to the submissions table.');
@@ -3001,7 +3103,8 @@ $assert(is_string($script) && str_contains($script, "spinner.hidden = !loading")
 $assert(is_string($script) && str_contains($script, "window.history.pushState"), 'AJAX pagination should preserve browser history.');
 $assert(is_string($script) && str_contains($script, 'needsLoad: (url) => stateSignature(url) !== currentState'), 'AJAX history should reload when a tracked filter changes without a page-number change.');
 $assert(is_string($script) && str_contains($script, "event.target.matches?.('[data-audit-log-entry]')") && str_contains($script, "querySelectorAll('[data-audit-log-entry][open]')"), 'Dynamically loaded audit-log accordions should keep one expanded entry at a time.');
-$assert(is_string($script) && str_contains($script, "event.target.matches('[data-pickup-payment]')") && str_contains($script, 'This status cannot be reversed.'), 'Marking a pickup sheet paid should require explicit browser confirmation.');
+$assert(is_string($script) && str_contains($script, "event.target.matches('[data-pickup-payment]')") && str_contains($script, 'This status cannot be reversed, and only an administrator can change the receipt number afterwards.') && str_contains($script, "event.target.matches('[data-pickup-receipt-edit]')"), 'Marking a pickup sheet paid and correcting its receipt should require explicit browser confirmation.');
+$assert(is_string($script) && str_contains($script, 'const syncReceiptSubmit') && str_contains($script, "receipt.value.trim() === '' || !receipt.checkValidity()"), 'Confirm paid should stay disabled until a valid receipt number is entered.');
 $assert(is_string($script) && str_contains($script, "document.querySelectorAll('[data-user-edit-toggle]')") && str_contains($script, 'preventScroll: true'), 'Local account editors should open on demand without moving the viewport.');
 $assert(is_string($script) && str_contains($script, "event.target.matches('[data-user-delete-form]')") && str_contains($script, 'Permanently delete'), 'Local account deletion should require an explicit browser confirmation.');
 $assert(is_string($script) && str_contains($script, "event.target.matches('[data-user-status-form]')") && str_contains($script, 'Their current session and future local sign-ins will be blocked') && str_contains($script, "confirmation.value = '1'"), 'Direct managed-account disabling should require explicit browser confirmation.');

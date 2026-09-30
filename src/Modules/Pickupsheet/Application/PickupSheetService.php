@@ -188,7 +188,7 @@ final class PickupSheetService
     public function submit(array $input): PickupSheet
     {
         $pickupSheet = $this->pickupSheetFromInput($input);
-        $this->guardAwbReuse($pickupSheet, $input['confirmed_awb_reuse'] ?? '', null);
+        $this->guardAwbReuse($pickupSheet, null);
         return $this->repository->create($pickupSheet);
     }
 
@@ -202,7 +202,7 @@ final class PickupSheetService
         $this->validateActor($actorId);
 
         $pickupSheet = $this->pickupSheetFromInput($input, $existing);
-        $this->guardAwbReuse($pickupSheet, $input['confirmed_awb_reuse'] ?? '', $existing->referenceNumber);
+        $this->guardAwbReuse($pickupSheet, $existing->referenceNumber);
         return $this->repository->update($pickupSheet, $actorId);
     }
 
@@ -215,6 +215,31 @@ final class PickupSheetService
         if ($existing->isPaid()) {
             throw new InvalidArgumentException('This pickup sheet is already marked paid.');
         }
+        $receiptNumber = $this->receiptNumber($receiptNumber);
+        $this->validateActor($actorId);
+        return $this->repository->markPaid($referenceNumber, $receiptNumber, $actorId);
+    }
+
+    /** Corrects the receipt number recorded on a sheet that is already paid; the paid status and time are kept. */
+    public function updateReceipt(string $referenceNumber, mixed $receiptNumber, string $actorId): PickupSheet
+    {
+        $existing = $this->findByReference($referenceNumber);
+        if ($existing === null) {
+            throw new InvalidArgumentException('Pickup sheet not found.');
+        }
+        if (!$existing->isPaid()) {
+            throw new InvalidArgumentException('Only a paid pickup sheet has a receipt number to correct.');
+        }
+        $receiptNumber = $this->receiptNumber($receiptNumber);
+        if ($receiptNumber === $existing->paymentReceiptNumber) {
+            throw new InvalidArgumentException('The receipt number is unchanged.');
+        }
+        $this->validateActor($actorId);
+        return $this->repository->updateReceipt($referenceNumber, $receiptNumber, $actorId);
+    }
+
+    private function receiptNumber(mixed $receiptNumber): string
+    {
         $receiptNumber = strtoupper($this->stringValue($receiptNumber));
         if ($receiptNumber === '') {
             throw new InvalidArgumentException('A receipt number is required as proof of payment.');
@@ -222,8 +247,7 @@ final class PickupSheetService
         if (preg_match('/^[A-Z0-9][A-Z0-9._\/-]{2,63}$/', $receiptNumber) !== 1) {
             throw new InvalidArgumentException('Receipt number must be 3 to 64 characters using letters, numbers, dots, slashes, underscores, or hyphens.');
         }
-        $this->validateActor($actorId);
-        return $this->repository->markPaid($referenceNumber, $receiptNumber, $actorId);
+        return $receiptNumber;
     }
 
     public function delete(string $referenceNumber, string $actorId): void
@@ -237,11 +261,10 @@ final class PickupSheetService
 
     /** @param array<string, mixed> $input */
     /**
-     * DHL reissues AWB numbers after a few months. The same AWB twice on one sheet is always a mistake;
-     * an AWB already on another active sheet inside the reuse window needs the operator to confirm that
-     * DHL reissued it. Confirmation covers only the numbers the operator was warned about.
+     * DHL reissues AWB numbers only after the reuse window, so an AWB may appear once per sheet and on no
+     * other active sheet collected within the window either side of this sheet's collection date.
      */
-    private function guardAwbReuse(PickupSheet $pickupSheet, mixed $confirmedAwbs, ?string $excludeReference): void
+    private function guardAwbReuse(PickupSheet $pickupSheet, ?string $excludeReference): void
     {
         $linesByAwb = [];
         foreach ($pickupSheet->shipments as $shipment) {
@@ -258,11 +281,7 @@ final class PickupSheetService
         }
 
         [$fromDate, $toDate] = AwbReusePolicy::window($pickupSheet->collectionDate);
-        $confirmed = array_fill_keys(preg_split('/[^0-9]+/', is_string($confirmedAwbs) ? $confirmedAwbs : '', -1, PREG_SPLIT_NO_EMPTY) ?: [], true);
-        $conflicts = array_values(array_filter(
-            $this->repository->awbUses(array_map('strval', array_keys($linesByAwb)), $fromDate, $toDate, $excludeReference),
-            static fn (array $use): bool => !isset($confirmed[$use['awbNumber']]),
-        ));
+        $conflicts = $this->repository->awbUses(array_map('strval', array_keys($linesByAwb)), $fromDate, $toDate, $excludeReference);
         if ($conflicts !== []) {
             throw new AwbReuseException($conflicts, AwbReusePolicy::days());
         }

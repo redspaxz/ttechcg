@@ -106,6 +106,7 @@ final class PickupsheetController
             'recordsFullName' => $authorization->fullName(),
             'recordsIdentityProvider' => $authorization->identityProvider,
             'canCrmView' => $authorization->can('crm_view'),
+            'canSetCollectionDate' => $authorization->can('set_collection_date'),
             'consignorSuggestions' => $consignorSuggestions,
             'awbConflicts' => is_array($awbConflicts) ? $awbConflicts : [],
             'awbReuseDays' => AwbReusePolicy::days(),
@@ -156,10 +157,10 @@ final class PickupsheetController
 
         $input = [
             'agent_name' => $request->input('agent_name'),
-            'collection_date' => $request->input('collection_date'),
+            // Only administrators may back-date or forward-date a sheet; everyone else records today's collection.
+            'collection_date' => $authorization->can('set_collection_date') ? $request->input('collection_date') : date('Y-m-d'),
             'shipments' => $this->shipmentsCheckedByPrincipal($request->arrayInput('shipments'), $authorization),
             'privacy_consent' => $request->input('privacy_consent'),
-            'confirmed_awb_reuse' => $request->input('confirmed_awb_reuse'),
         ];
 
         if (!$this->pickupOperational) {
@@ -194,7 +195,6 @@ final class PickupsheetController
             $this->securityLogger->event('pickupsheet.submission', $request, 'accepted', [
                 'resource_id' => substr(hash('sha256', $pickupSheet->referenceNumber), 0, 24),
                 'shipment_count' => $pickupSheet->shipmentCount(),
-                'awb_reuse_confirmed' => $this->confirmedAwbCount($input['confirmed_awb_reuse']),
             ]);
             $_SESSION['_pickup_flash'] = sprintf(
                 'Pickup sheet %s saved with %d shipment%s and a total of %s XAF.',
@@ -529,7 +529,6 @@ final class PickupsheetController
             'agent_name' => $request->input('agent_name'),
             'collection_date' => $request->input('collection_date'),
             'shipments' => $this->shipmentsCheckedByPrincipal($request->arrayInput('shipments'), $authorization),
-            'confirmed_awb_reuse' => $request->input('confirmed_awb_reuse'),
         ];
 
         try {
@@ -543,7 +542,6 @@ final class PickupsheetController
                 'actor_id' => substr(hash('sha256', $authorization->username), 0, 24),
                 'resource_id' => substr(hash('sha256', $updated->referenceNumber), 0, 24),
                 'shipment_count' => $updated->shipmentCount(),
-                'awb_reuse_confirmed' => $this->confirmedAwbCount($input['confirmed_awb_reuse']),
             ]);
         } catch (AwbReuseException $exception) {
             $_SESSION['_pickup_edit_errors'] = [$exception->getMessage()];
@@ -598,6 +596,43 @@ final class PickupsheetController
             error_log($exception->__toString());
             $_SESSION['_pickup_records_errors'] = ['The pickup sheet could not be marked paid. Check MySQL and try again.'];
             $this->securityLogger->event('pickupsheet.record_paid', $request, 'failed');
+        }
+
+        return Response::redirect($this->submissionReturnPath($request));
+    }
+
+    public function updatePickupSheetReceipt(Request $request): Response
+    {
+        $authorization = $this->authorizeRecords($request, 'edit_receipt');
+        if ($authorization instanceof Response) {
+            return $authorization;
+        }
+
+        $denied = $this->pickupLifecycleWriteGuard($request, 'receipt-edit');
+        if ($denied !== null) {
+            return $denied;
+        }
+
+        $reference = $request->input('reference');
+        try {
+            $corrected = $this->service->updateReceipt(
+                $reference,
+                $request->input('receipt_number'),
+                $this->actorId($authorization),
+            );
+            $_SESSION['_pickup_records_flash'] = 'Receipt number for pickup sheet ' . $corrected->referenceNumber . ' changed to ' . $corrected->paymentReceiptNumber . '.';
+            $this->securityLogger->event('pickupsheet.record_receipt_edit', $request, 'accepted', [
+                'actor_id' => $this->actorId($authorization),
+                'resource_id' => substr(hash('sha256', $corrected->referenceNumber), 0, 24),
+                'receipt_id' => substr(hash('sha256', (string) $corrected->paymentReceiptNumber), 0, 24),
+            ]);
+        } catch (InvalidArgumentException $exception) {
+            $_SESSION['_pickup_records_errors'] = [$exception->getMessage()];
+            $this->securityLogger->event('pickupsheet.record_receipt_edit', $request, 'denied');
+        } catch (RuntimeException $exception) {
+            error_log($exception->__toString());
+            $_SESSION['_pickup_records_errors'] = ['The receipt number could not be changed. Check MySQL and try again.'];
+            $this->securityLogger->event('pickupsheet.record_receipt_edit', $request, 'failed');
         }
 
         return Response::redirect($this->submissionReturnPath($request));
@@ -1198,11 +1233,6 @@ final class PickupsheetController
         );
     }
 
-    private function confirmedAwbCount(string $confirmedAwbs): int
-    {
-        return count(preg_split('/[^0-9]+/', $confirmedAwbs, -1, PREG_SPLIT_NO_EMPTY) ?: []);
-    }
-
     /** @return array<string, string> */
     private function privateHeaders(): array
     {
@@ -1302,6 +1332,7 @@ final class PickupsheetController
             'canCrmView' => $principal->can('crm_view'),
             'canEdit' => $principal->can('edit'),
             'canMarkPaid' => $principal->can('mark_paid'),
+            'canEditReceipt' => $principal->can('edit_receipt'),
             'canDelete' => $principal->can('delete'),
             'recordsRole' => $principal->role,
             'recordsUsername' => $principal->username,

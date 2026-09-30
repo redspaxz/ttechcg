@@ -704,6 +704,25 @@ document.addEventListener('toggle', (event) => {
         });
 }, true);
 
+// Payment and receipt forms can only be submitted once a valid receipt number is entered.
+const syncReceiptSubmit = (form) => {
+    const receipt = form?.querySelector('[name="receipt_number"]');
+    const submit = form?.querySelector('button[type="submit"]');
+    if (!receipt || !submit) return;
+    submit.disabled = receipt.value.trim() === '' || !receipt.checkValidity();
+};
+document.addEventListener('toggle', (event) => {
+    if (!event.target.matches?.('.pickup-record-payment') || !event.target.open) return;
+    const form = event.target.querySelector('[data-pickup-payment], [data-pickup-receipt-edit]');
+    syncReceiptSubmit(form);
+    form?.querySelector('[name="receipt_number"]')?.focus();
+}, true);
+document.addEventListener('input', (event) => {
+    if (event.target.matches?.('[data-pickup-payment] [name="receipt_number"], [data-pickup-receipt-edit] [name="receipt_number"]')) {
+        syncReceiptSubmit(event.target.form);
+    }
+});
+
 const accountEditors = Array.from(document.querySelectorAll('[data-user-editor]'));
 const closeAccountEditor = (editor) => {
     if (!editor) return;
@@ -886,7 +905,15 @@ document.addEventListener('submit', (event) => {
     if (event.target.matches('[data-pickup-payment]')) {
         const reference = event.target.querySelector('[name="reference"]')?.value || 'this pickup sheet';
         const receipt = event.target.querySelector('[name="receipt_number"]')?.value.trim().toUpperCase() || '';
-        if (!window.confirm(`Mark ${reference} as paid using receipt ${receipt}? This status cannot be reversed.`)) {
+        if (!window.confirm(`Mark ${reference} as paid using receipt ${receipt}? This status cannot be reversed, and only an administrator can change the receipt number afterwards.`)) {
+            event.preventDefault();
+            return;
+        }
+    }
+    if (event.target.matches('[data-pickup-receipt-edit]')) {
+        const reference = event.target.querySelector('[name="reference"]')?.value || 'this pickup sheet';
+        const receipt = event.target.querySelector('[name="receipt_number"]')?.value.trim().toUpperCase() || '';
+        if (!window.confirm(`Change the receipt number for ${reference} to ${receipt}? The previous number is kept in the audit log.`)) {
             event.preventDefault();
             return;
         }

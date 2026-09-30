@@ -12,6 +12,8 @@ interface PickupSheetRepository
 
     public function markPaid(string $referenceNumber, string $receiptNumber, string $actorId): PickupSheet;
 
+    public function updateReceipt(string $referenceNumber, string $receiptNumber, string $actorId): PickupSheet;
+
     public function delete(string $referenceNumber, string $actorId): void;
 
     /** @return list<PickupSheet> */
