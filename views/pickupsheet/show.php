@@ -146,7 +146,10 @@ $renderShipmentRow = static function (int|string $index, mixed $row = []) use ($
             <?php require __DIR__ . '/_awb-reuse-warning.php'; ?>
             <div class="pickup-submit-row">
                 <p>Records and the consent timestamp are stored in the secured MySQL database.</p>
-                <button class="button button-red pickup-submit" type="submit" <?= !$pickupOperational ? 'disabled' : '' ?>>Save pickup sheet <span aria-hidden="true">→</span></button>
+                <div class="pickup-submit-actions">
+                    <a class="pickup-cancel" href="<?= $e($basePath) ?>/dhl/pickupsheet/submissions" data-discard-pickup-sheet>Cancel</a>
+                    <button class="button button-red pickup-submit" type="submit" <?= !$pickupOperational ? 'disabled' : '' ?>>Save pickup sheet <span aria-hidden="true">→</span></button>
+                </div>
             </div>
         </form>
 

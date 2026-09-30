@@ -77,14 +77,7 @@ final class PickupsheetController
         $awbConflicts = $_SESSION['_pickup_awb_conflicts'] ?? [];
         unset($_SESSION['_pickup_flash'], $_SESSION['_pickup_errors'], $_SESSION['_pickup_old'], $_SESSION['_pickup_awb_conflicts']);
 
-        $consignorSuggestions = [];
-        if ($this->pickupOperational) {
-            try {
-                $consignorSuggestions = $this->service->consignorSuggestions();
-            } catch (Throwable $exception) {
-                error_log('Pickup consignor suggestions could not be loaded: ' . $exception->getMessage());
-            }
-        }
+        $consignorSuggestions = $this->consignorSuggestionsForForm();
 
         $body = $this->view->render('pickupsheet/show', [
             'pageTitle' => 'Cash shipment pickup sheet',
@@ -488,6 +481,7 @@ final class PickupsheetController
         $body = $this->view->render('pickupsheet/edit', [
             'pageTitle' => 'Edit ' . $pickupSheet->referenceNumber,
             'pageDescription' => 'Correct a generated pickup sheet with an audit trail.',
+            'consignorSuggestions' => $this->consignorSuggestionsForForm(),
             'pageRobots' => 'noindex, nofollow',
             'activePage' => 'pickupsheet',
             'basePath' => $request->basePath,
@@ -1266,6 +1260,20 @@ final class PickupsheetController
             'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
             $pickupSheet->referenceNumber . '.xlsx',
         );
+    }
+
+    /** @return list<string> */
+    private function consignorSuggestionsForForm(): array
+    {
+        if (!$this->pickupOperational) {
+            return [];
+        }
+        try {
+            return $this->service->consignorSuggestions();
+        } catch (Throwable $exception) {
+            error_log('Pickup consignor suggestions could not be loaded: ' . $exception->getMessage());
+            return [];
+        }
     }
 
     /** @return array<string, string> */

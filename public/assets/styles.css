@@ -2560,6 +2560,13 @@ button, a, input, select, textarea { -webkit-tap-highlight-color: transparent; }
 .pickup-payment-result[data-outcome="failure"] h3 { color: var(--dhl-red); }
 .pickup-payment-result p { max-width: 36ch; margin: 0; color: #493800; font-size: 0.8rem; }
 .pickup-payment-result .pickup-payment-actions { justify-content: center; margin-top: 8px; }
+.app-confirm-body { display: grid; gap: 14px; padding: 22px; }
+.app-confirm-dialog header p { color: #493800; }
+.app-confirm-dialog[data-tone="danger"] header p { color: var(--dhl-red); }
+.app-confirm-message { margin: 0; color: #493800; font-size: 0.84rem; line-height: 1.5; }
+.app-confirm-dialog[data-tone="danger"] .pickup-payment-confirm { border-color: var(--dhl-red); background: var(--dhl-red); }
+.app-confirm-dialog[data-tone="danger"] .pickup-payment-confirm:hover { border-color: #a8040d; background: #a8040d; }
+.app-confirm-dialog .pickup-payment-actions button:focus-visible { outline: 3px solid rgba(36, 27, 0, 0.3); outline-offset: 2px; }
 @keyframes pickup-draw { to { stroke-dashoffset: 0; } }
 @keyframes pickup-pop { from { opacity: 0; transform: scale(0.5); } to { opacity: 1; transform: scale(1); } }
 @media (prefers-reduced-motion: reduce) {

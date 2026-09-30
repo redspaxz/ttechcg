@@ -1036,76 +1036,201 @@ if (existingCustomerHint && existingCustomerInput) {
     });
 }
 
-document.addEventListener('submit', (event) => {
-    if (event.target.matches('[data-crm-delete-form]')) {
-        const customerName = event.target.dataset.customerName || 'this customer';
-        if (!window.confirm(`Permanently delete ${customerName}? Contact details, activity, reward adjustments, and merge records are removed and cannot be restored. Pickup sheets keep the consignor name.`)) {
-            event.preventDefault();
-            return;
-        }
-    }
-    if (event.target.matches('[data-crm-dismiss-merge-form]')) {
-        const mergeName = event.target.dataset.mergeName || 'the merged customer';
-        const keepName = event.target.dataset.keepName || 'the retained customer';
-        if (!window.confirm(`Keep the merge of ${mergeName} into ${keepName}? It will be removed from Recent merges and can no longer be undone.`)) {
-            event.preventDefault();
-            return;
-        }
-    }
-    if (event.target.matches('[data-crm-undo-merge-form]')) {
-        const mergeName = event.target.dataset.mergeName || 'the merged customer';
-        const keepName = event.target.dataset.keepName || 'the retained customer';
-        if (!window.confirm(`Undo the merge of ${mergeName} into ${keepName}? ${mergeName} will become a separate profile again with its original shipments and rewards.`)) {
-            event.preventDefault();
-            return;
-        }
-    }
-    if (event.target.matches('[data-crm-merge-form]')) {
-        const keepName = event.target.dataset.keepName || 'the selected customer';
-        const mergeName = event.target.dataset.mergeName || 'the duplicate customer';
-        if (!window.confirm(`Merge ${mergeName} into ${keepName}? The ${mergeName} profile will be removed after its data is transferred; you can undo this from Recent merges.`)) {
-            event.preventDefault();
-            return;
-        }
-    }
-    if (event.target.matches('[data-pickup-payment], [data-pickup-receipt-edit]')) {
-        // Submitted in the background so the modal can show the outcome; a second submit is ignored.
-        event.preventDefault();
-        submitPayment(event.target);
+// One shared confirmation modal replaces the browser's confirm() prompt for every sensitive form.
+let confirmDialog = null;
+const buildConfirmDialog = () => {
+    const make = (tag, className, text) => {
+        const node = document.createElement(tag);
+        if (className) node.className = className;
+        if (text) node.textContent = text;
+        return node;
+    };
+    const dialog = make('dialog', 'pickup-payment-dialog app-confirm-dialog');
+    dialog.setAttribute('aria-labelledby', 'app-confirm-title');
+    dialog.setAttribute('aria-describedby', 'app-confirm-message');
+    const body = make('div', 'app-confirm-body');
+    const header = make('header');
+    const eyebrow = make('p');
+    const title = make('h2');
+    title.id = 'app-confirm-title';
+    header.append(eyebrow, title);
+    const message = make('p', 'app-confirm-message');
+    message.id = 'app-confirm-message';
+    const actions = make('div', 'pickup-payment-actions');
+    const cancel = make('button', '', 'Cancel');
+    cancel.type = 'button';
+    cancel.setAttribute('data-payment-dialog-close', '');
+    const confirm = make('button', 'pickup-payment-confirm');
+    confirm.type = 'button';
+    actions.append(cancel, confirm);
+    body.append(header, message, actions);
+    dialog.append(body);
+    document.body.append(dialog);
+    return { dialog, eyebrow, title, message, cancel, confirm };
+};
+const confirmInModal = ({ eyebrow = 'Please confirm', title, message, confirmLabel, danger = false }) => new Promise((resolve) => {
+    if (typeof HTMLDialogElement === 'undefined') {
+        resolve(window.confirm(message));
         return;
     }
-    if (event.target.matches('[data-pickup-delete]')
-        && !window.confirm('Delete this pickup sheet from active records? Its audit history will be retained.')) {
+    confirmDialog ??= buildConfirmDialog();
+    const parts = confirmDialog;
+    parts.eyebrow.textContent = eyebrow;
+    parts.title.textContent = title;
+    parts.message.textContent = message;
+    parts.confirm.textContent = confirmLabel;
+    parts.dialog.dataset.tone = danger ? 'danger' : 'default';
+    let confirmed = false;
+    parts.confirm.onclick = () => {
+        confirmed = true;
+        parts.dialog.close();
+    };
+    parts.dialog.addEventListener('close', () => resolve(confirmed), { once: true });
+    parts.dialog.showModal();
+    // Destructive actions start on Cancel so Enter never confirms them by accident.
+    (danger ? parts.cancel : parts.confirm).focus();
+});
+
+const CONFIRMED_ACTIONS = [
+    {
+        selector: '[data-crm-delete-form]',
+        options: (form) => {
+            const name = form.dataset.customerName || 'this customer';
+            return {
+                title: 'Delete customer?',
+                message: `Permanently delete ${name}? Contact details, activity, reward adjustments, and merge records are removed and cannot be restored. Pickup sheets keep the consignor name.`,
+                confirmLabel: 'Delete customer',
+                danger: true,
+            };
+        },
+    },
+    {
+        selector: '[data-crm-dismiss-merge-form]',
+        options: (form) => {
+            const mergeName = form.dataset.mergeName || 'the merged customer';
+            const keepName = form.dataset.keepName || 'the retained customer';
+            return {
+                title: 'Keep this merge?',
+                message: `Keep the merge of ${mergeName} into ${keepName}? It will be removed from Recent merges and can no longer be undone.`,
+                confirmLabel: 'Keep merge',
+            };
+        },
+    },
+    {
+        selector: '[data-crm-undo-merge-form]',
+        options: (form) => {
+            const mergeName = form.dataset.mergeName || 'the merged customer';
+            const keepName = form.dataset.keepName || 'the retained customer';
+            return {
+                title: 'Undo this merge?',
+                message: `Undo the merge of ${mergeName} into ${keepName}? ${mergeName} will become a separate profile again with its original shipments and rewards.`,
+                confirmLabel: 'Undo merge',
+            };
+        },
+    },
+    {
+        selector: '[data-crm-merge-form]',
+        options: (form) => {
+            const keepName = form.dataset.keepName || 'the selected customer';
+            const mergeName = form.dataset.mergeName || 'the duplicate customer';
+            return {
+                title: 'Merge customers?',
+                message: `Merge ${mergeName} into ${keepName}? The ${mergeName} profile will be removed after its data is transferred; you can undo this from Recent merges.`,
+                confirmLabel: 'Merge customers',
+            };
+        },
+    },
+    {
+        selector: '[data-pickup-delete]',
+        options: () => ({
+            title: 'Delete pickup sheet?',
+            message: 'Delete this pickup sheet from active records? Its audit history will be retained.',
+            confirmLabel: 'Delete sheet',
+            danger: true,
+        }),
+    },
+    {
+        selector: '[data-user-delete-form]',
+        confirmField: '[data-confirm-delete]',
+        options: (form) => ({
+            title: 'Delete account?',
+            message: `Permanently delete ${form.dataset.accountName || 'this local account'}? This account will no longer be able to sign in.`,
+            confirmLabel: 'Delete account',
+            danger: true,
+        }),
+    },
+    {
+        selector: '[data-user-status-form]',
+        confirmField: '[data-confirm-user-status]',
+        // Only disabling an account needs confirmation; re-enabling goes straight through.
+        applies: (form) => form.querySelector('[data-user-target-active]')?.value !== '1',
+        options: (form) => ({
+            title: 'Disable account?',
+            message: `Disable ${form.dataset.accountName || 'this managed account'}? Their current session and future local sign-ins will be blocked.`,
+            confirmLabel: 'Disable account',
+            danger: true,
+        }),
+    },
+    {
+        selector: '[data-self-mfa-reset]',
+        confirmField: '[data-confirm-self-mfa-reset]',
+        options: (form) => ({
+            title: 'Replace authenticator?',
+            message: `Replace the authenticator for ${form.dataset.accountName || 'your account'}? The current authenticator and unused recovery codes will stop working.`,
+            confirmLabel: 'Replace authenticator',
+            danger: true,
+        }),
+    },
+];
+
+document.addEventListener('submit', (event) => {
+    const form = event.target;
+    if (form.matches('[data-pickup-payment], [data-pickup-receipt-edit]')) {
+        // Submitted in the background so the modal can show the outcome; a second submit is ignored.
         event.preventDefault();
+        submitPayment(form);
+        return;
     }
-    if (event.target.matches('[data-user-delete-form]')) {
-        const accountName = event.target.dataset.accountName || 'this local account';
-        if (!window.confirm(`Permanently delete ${accountName}? This account will no longer be able to sign in.`)) {
-            event.preventDefault();
+    const action = CONFIRMED_ACTIONS.find((candidate) => form.matches(candidate.selector));
+    if (!action || (action.applies && !action.applies(form))) return;
+    if (form.dataset.confirmed === '1') {
+        // Second pass after the modal was confirmed: let the browser submit normally.
+        delete form.dataset.confirmed;
+        const confirmation = action.confirmField ? form.querySelector(action.confirmField) : null;
+        if (confirmation) confirmation.value = '1';
+        return;
+    }
+    event.preventDefault();
+    const submitter = event.submitter;
+    confirmInModal(action.options(form)).then((confirmed) => {
+        if (!confirmed) return;
+        form.dataset.confirmed = '1';
+        if (typeof form.requestSubmit === 'function') {
+            form.requestSubmit(submitter && submitter.form === form ? submitter : undefined);
             return;
         }
-        const confirmation = event.target.querySelector('[data-confirm-delete]');
+        delete form.dataset.confirmed;
+        const confirmation = action.confirmField ? form.querySelector(action.confirmField) : null;
         if (confirmation) confirmation.value = '1';
-    }
-    if (event.target.matches('[data-user-status-form]')) {
-        const targetActive = event.target.querySelector('[data-user-target-active]')?.value === '1';
-        if (!targetActive) {
-            const accountName = event.target.dataset.accountName || 'this managed account';
-            if (!window.confirm(`Disable ${accountName}? Their current session and future local sign-ins will be blocked.`)) {
-                event.preventDefault();
-                return;
-            }
-            const confirmation = event.target.querySelector('[data-confirm-user-status]');
-            if (confirmation) confirmation.value = '1';
-        }
-    }
-    if (event.target.matches('[data-self-mfa-reset]')) {
-        const accountName = event.target.dataset.accountName || 'your account';
-        if (!window.confirm(`Replace the authenticator for ${accountName}? The current authenticator and unused recovery codes will stop working.`)) {
-            event.preventDefault();
-            return;
-        }
-        const confirmation = event.target.querySelector('[data-confirm-self-mfa-reset]');
-        if (confirmation) confirmation.value = '1';
-    }
+        form.submit();
+    });
+});
+
+// Cancel on a new pickup sheet leaves the form; entered data is only discarded after confirmation.
+document.addEventListener('click', (event) => {
+    const cancel = event.target.closest?.('[data-discard-pickup-sheet]');
+    if (!cancel) return;
+    const form = cancel.closest('form');
+    const hasEntries = Array.from(form?.querySelectorAll('[name="agent_name"], [data-field]:not([readonly])') ?? [])
+        .some((input) => input.value.trim() !== '');
+    if (!hasEntries) return;
+    event.preventDefault();
+    confirmInModal({
+        title: 'Discard this pickup sheet?',
+        message: 'The details you entered have not been saved and will be lost.',
+        confirmLabel: 'Discard sheet',
+        danger: true,
+    }).then((confirmed) => {
+        if (confirmed) window.location.assign(cancel.href);
+    });
 });
