@@ -2372,6 +2372,40 @@ $assert(str_contains($updatedCustomerProfile->body(), 'Needs attention') && str_
 $newCustomerPage = $customerController->create(new Request('GET', '/dhl/pickupsheet/customers/new'));
 $assert($newCustomerPage->status() === 200 && str_contains($newCustomerPage->body(), 'Add customer') && str_contains($newCustomerPage->body(), 'New relationship'), 'Administrators should be able to open a prospective-customer form.');
 $assert(str_contains($newCustomerPage->body(), 'data-customer-autocomplete-form') && str_contains($newCustomerPage->body(), 'list="customer-name-suggestions"') && str_contains($newCustomerPage->body(), 'data-search-endpoint="/dhl/pickupsheet/customers/search"'), 'The add-customer name field should expose accessible existing-customer autocomplete.');
+// Manual merge from a profile: for duplicates the suggestions list cannot detect.
+$manualTarget = $customerService->save(null, ['display_name' => 'Northwind Freight Partners', 'status' => 'active'], str_repeat('a', 24));
+$manualSource = $customerService->save(null, ['display_name' => 'NWF Logistics Douala', 'contact_name' => 'Manual Merge Contact', 'status' => 'lead'], str_repeat('a', 24));
+$manualTargetProfile = $customerController->edit(new Request('GET', '/dhl/pickupsheet/customers/edit', ['customer' => $manualTarget->customerKey]));
+$assert(str_contains($manualTargetProfile->body(), 'Merge a duplicate into this customer') && str_contains($manualTargetProfile->body(), 'name="source_customer_name"') && str_contains($manualTargetProfile->body(), 'data-crm-merge-form data-customer-autocomplete-form') && str_contains($manualTargetProfile->body(), 'name="return_to" value="profile"'), 'Administrators should be able to merge any duplicate into a profile from the profile page.');
+$suggestedDissimilar = $customerController->merge(new Request('POST', '/dhl/pickupsheet/customers/merge', [], [
+    '_token' => $pickupCsrf->token(),
+    'target_customer_key' => $manualTarget->customerKey,
+    'source_customer_key' => $manualSource->customerKey,
+]));
+$assert($suggestedDissimilar->status() === 303 && str_contains((string) ($_SESSION['_crm_merge_error'] ?? ''), 'not similar enough') && $customerService->find($manualSource->customerKey) !== null, 'The suggestions workflow should still refuse to merge dissimilar names.');
+unset($_SESSION['_crm_merge_error']);
+$unknownManualMerge = $customerController->merge(new Request('POST', '/dhl/pickupsheet/customers/merge', [], [
+    '_token' => $pickupCsrf->token(),
+    'target_customer_key' => $manualTarget->customerKey,
+    'source_customer_name' => 'No Such Customer Anywhere',
+    'return_to' => 'profile',
+]));
+$assert($unknownManualMerge->status() === 303 && ($unknownManualMerge->headers()['Location'] ?? '') === '/dhl/pickupsheet/customers/edit?customer=' . $manualTarget->customerKey && ($_SESSION['_crm_errors'] ?? []) === ['No customer profile named "No Such Customer Anywhere" was found. Pick a name from the suggestions.'], 'A manual merge naming an unknown customer should return to the profile with an explanation.');
+unset($_SESSION['_crm_errors']);
+$manualMerge = $customerController->merge(new Request('POST', '/dhl/pickupsheet/customers/merge', [], [
+    '_token' => $pickupCsrf->token(),
+    'target_customer_key' => $manualTarget->customerKey,
+    'source_customer_name' => 'nwf logistics douala',
+    'return_to' => 'profile',
+]));
+$assert($manualMerge->status() === 303 && ($manualMerge->headers()['Location'] ?? '') === '/dhl/pickupsheet/customers/edit?customer=' . $manualTarget->customerKey && $customerService->find($manualSource->customerKey) === null && $customerService->find($manualTarget->customerKey)?->contactName === 'Manual Merge Contact', 'An administrator should merge a differently named duplicate from the profile, keeping its contact details.');
+$assert(str_contains((string) ($_SESSION['_crm_flash'] ?? ''), 'Merged NWF Logistics Douala into Northwind Freight Partners.'), 'A manual merge should confirm which profile was merged into which.');
+unset($_SESSION['_crm_flash']);
+$manualMergeId = (string) ($customerService->recentMerges()[0]['id'] ?? '');
+$assert(($customerService->recentMerges()[0]['sourceName'] ?? '') === 'NWF Logistics Douala', 'A manual merge should appear in Recent merges so it can be undone.');
+$customerService->undoMerge($manualMergeId, str_repeat('a', 24));
+$customerService->delete($manualSource->customerKey, str_repeat('a', 24));
+$customerService->delete($manualTarget->customerKey, str_repeat('a', 24));
 $invalidMergeCsrf = $customerController->merge(new Request('POST', '/dhl/pickupsheet/customers/merge', [], [
     '_token' => 'invalid-token',
     'target_customer_key' => $customerKey,
@@ -2916,8 +2950,8 @@ $assert(is_string($dhlAsset) && !str_contains($dhlAsset, '<text'), 'The disquali
 $partnerSources = $readSource(dirname(__DIR__) . '/public/assets/partners/README.md');
 $assert(is_string($partnerSources) && str_contains($partnerSources, 'www.dhl.com/content/dam/dhl/global/core/images/logos/dhl-logo.svg'), 'The official DHL artwork source should be documented.');
 $assert(!str_contains($home, 'href="/dhl/pickupsheet"'), 'Pickupsheet should not be discoverable from the public site chrome or homepage.');
-$assert(str_contains($home, 'styles.css?v=20260930-record-captcha'), 'Market-performance dashboard styles and prior Pickupsheet refinements should use a cache-safe stylesheet version.');
-$assert(str_contains($home, 'app.js?v=20260930-record-captcha'), 'AJAX audit-log accordions and prior OWASP-aligned interactions should use a cache-safe script version.');
+$assert(str_contains($home, 'styles.css?v=20260930-crm-manual-merge'), 'Market-performance dashboard styles and prior Pickupsheet refinements should use a cache-safe stylesheet version.');
+$assert(str_contains($home, 'app.js?v=20260930-crm-manual-merge'), 'AJAX audit-log accordions and prior OWASP-aligned interactions should use a cache-safe script version.');
 $assert(str_contains($home, 'analytics.js?v=20260825-security-hardening'), 'The current consent-aware Google Analytics loader should render on every page.');
 $assert(str_contains($home, 'data-analytics-accept'), 'The site should offer an explicit analytics acceptance control.');
 $assert(str_contains($home, 'data-analytics-decline'), 'The site should offer an explicit analytics decline control.');

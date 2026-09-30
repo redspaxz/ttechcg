@@ -56,6 +56,13 @@ $recentMerges = is_array($recentMerges ?? null) ? $recentMerges : [];
             </section>
         <?php endif; ?>
 
+        <?php if ($duplicateSuggestions === [] && (bool) ($canMergeCustomers ?? false)): ?>
+            <section class="pickup-crm-duplicates" aria-labelledby="crm-duplicates-title">
+                <div class="pickup-card-heading"><div><span>Data quality</span><h2 id="crm-duplicates-title">Possible duplicate customers</h2></div></div>
+                <p class="pickup-crm-duplicates-empty">No likely duplicates were found. To merge two profiles with different names, open the customer you want to keep and use Merge a duplicate.</p>
+            </section>
+        <?php endif; ?>
+
         <?php if ($recentMerges !== []): ?>
             <section class="pickup-crm-duplicates pickup-crm-merge-history" aria-labelledby="crm-merge-history-title">
                 <div class="pickup-card-heading"><div><span>Data quality</span><h2 id="crm-merge-history-title">Recent merges</h2></div><small>Undo restores the separate profile; Ignore keeps the merge</small></div>

@@ -2892,6 +2892,14 @@ button, a, input, select, textarea { -webkit-tap-highlight-color: transparent; }
 .pickup-customer-activity-list p { margin: 0 0 4px; color: #241b00; line-height: 1.55; white-space: pre-line; overflow-wrap: anywhere; }
 .pickup-customer-activity-list small { color: #806d24; font-size: 0.66rem; }
 .pickup-activity-type { align-self: start; padding: 4px 8px; border: 1px solid rgba(69, 50, 0, 0.32); color: #493800; font-size: 0.62rem; font-weight: 850; text-align: center; text-transform: uppercase; }
+.pickup-customer-merge { display: grid; gap: 14px; margin-top: 24px; padding: 20px; border: 1px solid rgba(69, 50, 0, 0.3); background: #fff; }
+.pickup-customer-merge h2 { margin: 0 0 6px; font-size: 1.1rem; }
+.pickup-customer-merge p { max-width: 680px; margin: 0; color: #655000; font-size: 0.75rem; line-height: 1.6; }
+.pickup-customer-merge form { display: flex; flex-wrap: wrap; align-items: flex-end; gap: 12px; margin: 0; }
+.pickup-customer-merge .pickup-field { flex: 1 1 260px; min-width: 0; }
+.pickup-customer-merge button { min-height: 44px; padding: 0 18px; border: 1px solid #241b00; background: #241b00; color: #fff; cursor: pointer; font: inherit; font-size: 0.74rem; font-weight: 850; }
+.pickup-customer-merge button:hover, .pickup-customer-merge button:focus-visible { background: #3d2f00; }
+.pickup-crm-duplicates-empty { margin: 0; color: #655000; font-size: 0.78rem; }
 .pickup-customer-danger { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 16px 24px; margin-top: 24px; padding: 20px; border: 1px solid rgba(212, 5, 17, 0.45); background: #fff; }
 .pickup-customer-danger h2 { margin: 0 0 6px; color: var(--dhl-red); font-size: 1.1rem; }
 .pickup-customer-danger p { max-width: 640px; margin: 0; color: #655000; font-size: 0.75rem; line-height: 1.6; }

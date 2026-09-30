@@ -482,7 +482,12 @@ final class CustomerService
         return $this->repository->addActivity($customerKey, $type, $occurredOn, $summary, $nextFollowUpOn, $actorId, $actorName === '' ? 'Records user' : $actorName);
     }
 
-    public function merge(string $targetCustomerKey, string $sourceCustomerKey, string $actorId): CustomerProfile
+    /**
+     * Suggested merges must look like duplicates. A manual merge is an administrator's explicit choice of two
+     * profiles (for example "Acme" and "Acme Logistics Cameroon"), so it skips the similarity check; both are
+     * recorded the same way and can be undone from Recent merges.
+     */
+    public function merge(string $targetCustomerKey, string $sourceCustomerKey, string $actorId, bool $manual = false): CustomerProfile
     {
         if (preg_match('/^[a-f0-9]{24}$/', $actorId) !== 1) {
             throw new InvalidArgumentException('The customer-data actor is invalid.');
@@ -501,7 +506,7 @@ final class CustomerService
             ['normalized' => $this->normalizedDuplicateName($target->displayName), 'email' => strtolower($target->email), 'phone' => $this->phoneDigits($target->phone)],
             ['normalized' => $this->normalizedDuplicateName($source->displayName), 'email' => strtolower($source->email), 'phone' => $this->phoneDigits($source->phone)],
         );
-        if ($match === null) {
+        if ($match === null && !$manual) {
             throw new InvalidArgumentException('These customer names are not similar enough for the duplicate merge workflow.');
         }
         return $this->repository->merge($targetCustomerKey, $sourceCustomerKey, $actorId);

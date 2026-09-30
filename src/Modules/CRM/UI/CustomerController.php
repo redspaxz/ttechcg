@@ -69,6 +69,7 @@ final class CustomerController
             'pageTitle' => 'Customer CRM',
             'summary' => $summary,
             'duplicateSuggestions' => $duplicateSuggestions,
+            'canMergeCustomers' => $error === null && $principal->can('crm'),
             'recentMerges' => $recentMerges,
             'flash' => is_string($flash) ? $flash : null,
             'error' => $error,
@@ -298,10 +299,20 @@ final class CustomerController
 
         $targetKey = strtolower($request->input('target_customer_key'));
         $sourceKey = strtolower($request->input('source_customer_key'));
+        // The profile page merges a duplicate picked by name, for pairs the suggestions list does not detect.
+        $fromProfile = $request->input('return_to') === 'profile';
         try {
+            if ($sourceKey === '' && $request->input('source_customer_name') !== '') {
+                $sourceName = $request->input('source_customer_name');
+                $source = $this->service->existingCustomer($sourceName);
+                if ($source === null) {
+                    throw new InvalidArgumentException(sprintf('No customer profile named "%s" was found. Pick a name from the suggestions.', $sourceName));
+                }
+                $sourceKey = $source['customer']->customerKey;
+            }
             $targetName = $this->service->find($targetKey)?->displayName;
             $sourceName = $this->service->find($sourceKey)?->displayName;
-            $merged = $this->service->merge($targetKey, $sourceKey, $this->actorId($principal));
+            $merged = $this->service->merge($targetKey, $sourceKey, $this->actorId($principal), $fromProfile);
             $_SESSION['_crm_flash'] = sprintf(
                 'Merged %s into %s. Shipments, rewards, and available contact details were preserved.',
                 $sourceName ?? 'the duplicate profile',
@@ -312,12 +323,24 @@ final class CustomerController
                 'merged_resource_id' => substr($sourceKey, 0, 24),
             ]);
         } catch (InvalidArgumentException $exception) {
-            $_SESSION['_crm_merge_error'] = $exception->getMessage();
+            if ($fromProfile) {
+                $_SESSION['_crm_errors'] = [$exception->getMessage()];
+            } else {
+                $_SESSION['_crm_merge_error'] = $exception->getMessage();
+            }
             $this->log($request, $principal, 'pickupsheet.crm_customer_merge', 'denied', ['reason' => 'validation']);
         } catch (RuntimeException $exception) {
             error_log($exception->__toString());
-            $_SESSION['_crm_merge_error'] = 'The customer profiles could not be merged. Check MySQL and try again.';
+            $message = 'The customer profiles could not be merged. Check MySQL and try again.';
+            if ($fromProfile) {
+                $_SESSION['_crm_errors'] = [$message];
+            } else {
+                $_SESSION['_crm_merge_error'] = $message;
+            }
             $this->log($request, $principal, 'pickupsheet.crm_customer_merge', 'failed');
+        }
+        if ($fromProfile && preg_match('/^[a-f0-9]{64}$/', $targetKey) === 1) {
+            return Response::redirect($request->basePath . '/dhl/pickupsheet/customers/edit?customer=' . rawurlencode($targetKey));
         }
         return Response::redirect($request->basePath . '/dhl/pickupsheet/customers');
     }

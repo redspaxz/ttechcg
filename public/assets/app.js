@@ -1185,7 +1185,7 @@ const CONFIRMED_ACTIONS = [
         selector: '[data-crm-merge-form]',
         options: (form) => {
             const keepName = form.dataset.keepName || 'the selected customer';
-            const mergeName = form.dataset.mergeName || 'the duplicate customer';
+            const mergeName = form.dataset.mergeName || form.querySelector('[name="source_customer_name"]')?.value.trim() || 'the duplicate customer';
             return {
                 title: 'Merge customers?',
                 message: `Merge ${mergeName} into ${keepName}? The ${mergeName} profile will be removed after its data is transferred; you can undo this from Recent merges.`,
