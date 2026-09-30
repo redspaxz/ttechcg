@@ -36,6 +36,23 @@ final class CustomerProfile
     ) {
     }
 
+    /** Customer ID shown to staff, e.g. CUS-000042. Assigned once from the database row and never reused. */
+    public function reference(): string
+    {
+        return self::referenceFor($this->id);
+    }
+
+    public static function referenceFor(?int $id): string
+    {
+        return $id === null || $id < 1 ? '' : 'CUS-' . str_pad((string) $id, 6, '0', STR_PAD_LEFT);
+    }
+
+    /** Accepts "CUS-000042", "cus-42", or "CUS42" and returns 42; anything else returns null. */
+    public static function idFromReference(string $reference): ?int
+    {
+        return preg_match('/^\s*cus-?0*([1-9][0-9]{0,17})\s*$/i', $reference, $match) === 1 ? (int) $match[1] : null;
+    }
+
     public function followUpDue(?string $today = null): bool
     {
         return $this->nextFollowUpOn !== null

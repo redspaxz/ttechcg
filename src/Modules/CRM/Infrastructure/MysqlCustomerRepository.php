@@ -901,6 +901,11 @@ final class MysqlCustomerRepository implements CustomerRepository
             foreach (['search', 'search_contact', 'search_email', 'search_phone', 'search_city', 'search_alias'] as $name) {
                 $parameters[$name] = $like;
             }
+            $searchId = CustomerProfile::idFromReference($search);
+            if ($searchId !== null) {
+                $conditions[array_key_last($conditions)] = '(c.id = :search_id OR ' . substr($conditions[array_key_last($conditions)], 1);
+                $parameters['search_id'] = $searchId;
+            }
         }
         $status = (string) ($filters['status'] ?? '');
         if ($status !== '') {

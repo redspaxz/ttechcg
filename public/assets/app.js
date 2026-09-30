@@ -1089,6 +1089,81 @@ if (existingCustomerHint && existingCustomerInput) {
     });
 }
 
+// Profile merge: look up the typed duplicate and preview it before the merge can be reviewed.
+const profileMergeForm = document.querySelector('[data-profile-merge]');
+if (profileMergeForm) {
+    const mergeInput = profileMergeForm.querySelector('[name="source_customer_name"]');
+    const mergeCard = profileMergeForm.querySelector('[data-merge-source-card]');
+    const mergeFacts = profileMergeForm.querySelector('[data-merge-source-facts]');
+    const mergeStatus = profileMergeForm.querySelector('[data-merge-status]');
+    const mergeSubmit = profileMergeForm.querySelector('[data-merge-submit]');
+    const keepKey = profileMergeForm.dataset.keepKey || '';
+    const keepName = profileMergeForm.dataset.keepName || 'this customer';
+    const mergeStatusLabels = { lead: 'Lead', active: 'Active', attention: 'Needs attention', inactive: 'Inactive' };
+    let mergeLookupTimer = null;
+    let mergeLookupRequest = null;
+    const setMergeState = (state, message) => {
+        if (mergeCard) mergeCard.dataset.state = state;
+        if (mergeStatus) mergeStatus.textContent = message;
+        if (mergeFacts && state !== 'ready') mergeFacts.hidden = true;
+        if (mergeSubmit) mergeSubmit.disabled = state !== 'ready';
+    };
+    const setMergeFact = (name, value) => {
+        const fact = profileMergeForm.querySelector(`[data-merge-fact="${name}"]`);
+        if (fact) fact.textContent = value;
+    };
+    const lookUpMergeSource = async () => {
+        const query = mergeInput.value.trim();
+        mergeLookupRequest?.abort();
+        if (query.length < 2) {
+            setMergeState('empty', 'Pick the duplicate profile from the suggestions.');
+            return;
+        }
+        setMergeState('searching', 'Looking up this customer...');
+        const request = new AbortController();
+        mergeLookupRequest = request;
+        try {
+            const url = new URL(profileMergeForm.dataset.lookupEndpoint || '', window.location.href);
+            url.searchParams.set('q', query);
+            const response = await fetch(url, {
+                credentials: 'same-origin',
+                headers: { 'X-Requested-With': 'XMLHttpRequest' },
+                signal: request.signal,
+            });
+            const payload = await response.json();
+            if (mergeInput.value.trim() !== query) return;
+            const existing = payload?.existing;
+            if (!response.ok || !existing || typeof existing.name !== 'string') {
+                setMergeState('error', 'No customer profile has this exact name. Pick one from the suggestions.');
+                return;
+            }
+            if (existing.key === keepKey) {
+                setMergeState('error', typeof existing.alias === 'string'
+                    ? `${existing.alias} is already merged into ${keepName}.`
+                    : `That is ${keepName}, the profile you are viewing.`);
+                return;
+            }
+            setMergeFact('shipments', Number(existing.shipmentCount || 0).toLocaleString('en-US'));
+            setMergeFact('last', existing.lastShipmentOn || 'None');
+            setMergeFact('contact', existing.contactName || 'Not recorded');
+            setMergeFact('status', mergeStatusLabels[existing.status] || existing.status || 'Unknown');
+            if (mergeFacts) mergeFacts.hidden = false;
+            setMergeState('ready', typeof existing.alias === 'string'
+                ? `${existing.alias} now belongs to ${existing.name}. ${existing.name} will be merged into ${keepName}.`
+                : `${existing.name} will be merged into ${keepName}.`);
+        } catch (error) {
+            if (error?.name !== 'AbortError') setMergeState('error', 'This customer could not be looked up. Try again.');
+        }
+    };
+    const scheduleMergeLookup = () => {
+        window.clearTimeout(mergeLookupTimer);
+        if (mergeSubmit) mergeSubmit.disabled = true;
+        mergeLookupTimer = window.setTimeout(lookUpMergeSource, 300);
+    };
+    mergeInput?.addEventListener('input', scheduleMergeLookup);
+    mergeInput?.addEventListener('change', scheduleMergeLookup);
+}
+
 // One shared confirmation modal replaces the browser's confirm() prompt for every sensitive form.
 let confirmDialog = null;
 const buildConfirmDialog = () => {

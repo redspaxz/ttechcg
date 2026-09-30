@@ -99,6 +99,10 @@ final class DemoCustomerRepository implements CustomerRepository
             if ($search === '') {
                 return true;
             }
+            $searchId = CustomerProfile::idFromReference($search);
+            if ($searchId !== null && $searchId === (int) ($profile['id'] ?? 0)) {
+                return true;
+            }
             $haystack = implode(' ', [
                 $profile['displayName'] ?? '', $profile['contactName'] ?? '', $profile['email'] ?? '',
                 $profile['phone'] ?? '', $profile['city'] ?? '', ...($aliasNames[(string) $profile['customerKey']] ?? []),

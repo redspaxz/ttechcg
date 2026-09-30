@@ -24,11 +24,12 @@ $queryForPage = static function (int $targetPage) use ($search, $statusFilter, $
 <div class="pickup-card-heading"><div><span>Customer data</span><h2 id="customer-directory-title">Customer directory</h2></div><small><?= $e(number_format((int) ($customers['totalRecords'] ?? 0))) ?> profiles</small></div>
 <div class="pickup-crm-table-wrap">
     <table>
-        <thead><tr><th>Customer</th><th>Status</th><th>Contact</th><th>Shipment value</th><th>Rewards</th><th>Last shipment</th><th>Follow-up</th><th>Manage</th></tr></thead>
+        <thead><tr><th scope="col">Customer ID</th><th>Customer</th><th>Status</th><th>Contact</th><th>Shipment value</th><th>Rewards</th><th>Last shipment</th><th>Follow-up</th><th>Manage</th></tr></thead>
         <tbody>
-        <?php if ($items === []): ?><tr><td colspan="8">No customers match the current filters.</td></tr><?php endif; ?>
+        <?php if ($items === []): ?><tr><td colspan="9">No customers match the current filters.</td></tr><?php endif; ?>
         <?php foreach ($items as $customer): ?>
             <tr>
+                <td class="pickup-crm-id-cell"><span class="pickup-customer-id"><?= $e($customer->reference()) ?></span></td>
                 <td><strong><?= $e($customer->displayName) ?></strong><small><?= $customer->source === 'shipment' ? 'Created from shipment data' : 'Manual profile' ?><?= $customer->assignedName !== '' ? ' &middot; Owner: ' . $e($customer->assignedName) : '' ?></small></td>
                 <td><span class="pickup-customer-status is-<?= $e($customer->status) ?>"><?= $e($customer->status === 'attention' ? 'Needs attention' : ucfirst($customer->status)) ?></span></td>
                 <td><strong><?= $e($customer->contactName !== '' ? $customer->contactName : 'Not assigned') ?></strong><small><?= $e($customer->email !== '' ? $customer->email : ($customer->phone !== '' ? $customer->phone : 'No contact details')) ?></small></td>

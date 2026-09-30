@@ -130,6 +130,13 @@ final class CustomerController
                     'name' => $existing['customer']->displayName,
                     'alias' => $existing['alias'],
                     'url' => $this->profileUrl($request, $existing['customer']->customerKey),
+                    // Summary for the profile merge preview.
+                    'key' => $existing['customer']->customerKey,
+                    'reference' => $existing['customer']->reference(),
+                    'status' => $existing['customer']->status,
+                    'contactName' => $existing['customer']->contactName,
+                    'shipmentCount' => $existing['customer']->shipmentCount,
+                    'lastShipmentOn' => $existing['customer']->lastShipmentOn,
                 ],
             ], 200, $this->privateHeaders());
         } catch (InvalidArgumentException $exception) {
@@ -509,6 +516,7 @@ final class CustomerController
         }
         $statusLabels = ['lead' => 'Lead', 'active' => 'Active', 'attention' => 'Needs attention', 'inactive' => 'Inactive'];
         $rows = array_map(static fn (CustomerProfile $customer): array => [
+            $customer->reference(),
             $customer->displayName,
             $statusLabels[$customer->status] ?? $customer->status,
             $customer->contactName,
@@ -530,12 +538,12 @@ final class CustomerController
 
         return Response::download(
             (new XlsxWriter())->create(
-                ['Customer', 'Status', 'Contact', 'Email', 'Phone', 'City', 'Address', 'Owner', 'Shipments', 'Shipment value (XAF)', 'Reward points', 'Last shipment', 'Next follow-up'],
+                ['Customer ID', 'Customer', 'Status', 'Contact', 'Email', 'Phone', 'City', 'Address', 'Owner', 'Shipments', 'Shipment value (XAF)', 'Reward points', 'Last shipment', 'Next follow-up'],
                 $rows,
                 'TOTAL SHIPMENT VALUE',
-                9,
+                10,
                 array_sum(array_map(static fn (CustomerProfile $customer): int => $customer->totalCashXaf, $result['items'])),
-                [32, 16, 24, 28, 18, 16, 28, 22, 12, 20, 14, 16, 16],
+                [14, 32, 16, 24, 28, 18, 16, 28, 22, 12, 20, 14, 16, 16],
             ),
             'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
             'crm-customers-' . gmdate('Y-m-d') . '.xlsx',
