@@ -881,6 +881,7 @@ final class CustomerController
                     'shipments' => $this->service->paginatedShipments($customerKey, $this->pageNumber($request, 'shipment_page'), $this->pageSize($request, 'shipment_per_page')),
                     'customerKey' => $customerKey,
                     'currentPointsPage' => $this->pageNumber($request, 'points_page'),
+                    'currentPointsPerPage' => $this->pageSize($request, 'points_per_page'),
                 ];
                 $template = 'pickupsheet/_customer-shipments';
             } else {

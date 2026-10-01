@@ -1165,10 +1165,35 @@ final class PickupsheetController
             'basePath' => $request->basePath,
             'assetBase' => $request->basePath . '/public/assets',
             'pickupSheet' => $pickupSheet,
-            'customerKey' => trim($request->queryString('customer')),
+            'customerReturnUrl' => $this->customerReturnUrl($request),
         ], 'layouts/print');
 
         return Response::html($body, 200, $this->privateHeaders());
+    }
+
+    // Rebuilds the customer profile the sheet was opened from, keeping its shipment and points pages.
+    private function customerReturnUrl(Request $request): ?string
+    {
+        $customerKey = trim($request->queryString('customer'));
+        if ($customerKey === '') {
+            return null;
+        }
+
+        $query = ['customer' => $customerKey];
+        foreach (['shipment_page', 'points_page'] as $parameter) {
+            $page = $request->queryString($parameter);
+            if (preg_match('/^[1-9][0-9]{0,8}$/', $page) === 1) {
+                $query[$parameter] = $page;
+            }
+        }
+        foreach (['shipment_per_page', 'points_per_page'] as $parameter) {
+            $size = $request->queryString($parameter);
+            if (in_array($size, ['10', '25', '50'], true)) {
+                $query[$parameter] = $size;
+            }
+        }
+
+        return $request->basePath . '/dhl/pickupsheet/customers/edit?' . http_build_query($query) . '#customer-shipments';
     }
 
     public function report(Request $request): Response

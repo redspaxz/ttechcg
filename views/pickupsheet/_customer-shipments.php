@@ -8,6 +8,15 @@ $items = is_array($shipments['items'] ?? null) ? $shipments['items'] : [];
 $customerKey = (string) ($customerKey ?? $customer?->customerKey ?? '');
 $pointsPage = max(1, (int) ($currentPointsPage ?? $rewardHistory['page'] ?? 1));
 $perPage = max(1, (int) ($shipments['perPage'] ?? 10));
+$pointsPerPage = max(1, (int) ($currentPointsPerPage ?? $rewardHistory['perPage'] ?? 10));
+$sheetUrl = static fn (string $reference): string => ($basePath ?? '') . '/dhl/pickupsheet/submissions/print?' . http_build_query([
+    'reference' => $reference,
+    'customer' => $customerKey,
+    'shipment_page' => max(1, (int) ($shipments['page'] ?? 1)),
+    'shipment_per_page' => $perPage,
+    'points_page' => $pointsPage,
+    'points_per_page' => $pointsPerPage,
+]);
 ?>
 <div class="pickup-card-heading"><div><span>Operational history</span><h2 id="customer-history-title">Recent shipments</h2></div><small><?= $e($perPage) ?> per page</small></div>
 <div class="pickup-crm-table-wrap pickup-shipments-table-wrap"><table class="pickup-shipments-table">
@@ -18,7 +27,7 @@ $perPage = max(1, (int) ($shipments['perPage'] ?? 10));
         <?php $shipmentStatus = (string) ($shipment['status'] ?? 'open'); ?>
         <tr>
             <td data-label="Date"><?= $e($shipment['collectionDate'] ?? '') ?></td>
-            <td data-label="Reference"><a href="<?= $e($basePath) ?>/dhl/pickupsheet/submissions/print?reference=<?= $e(rawurlencode((string) ($shipment['referenceNumber'] ?? ''))) ?>&amp;customer=<?= $e(rawurlencode($customerKey)) ?>"><?= $e($shipment['referenceNumber'] ?? '') ?></a></td>
+            <td data-label="Reference"><a href="<?= $e($sheetUrl((string) ($shipment['referenceNumber'] ?? ''))) ?>" data-remember-scroll><?= $e($shipment['referenceNumber'] ?? '') ?></a></td>
             <td data-label="AWB"><?= \App\Modules\Pickupsheet\UI\AwbLink::html((string) $shipment['awbNumber'] ?? '', (string) ($shipment['collectionDate'] ?? '')) ?></td>
             <td data-label="Destination"><?= $e($shipment['destination'] ?? '') ?></td>
             <td data-label="Amount" class="pickup-shipments-amount"><?= $e(number_format((int) ($shipment['amountXaf'] ?? 0))) ?> XAF</td>
