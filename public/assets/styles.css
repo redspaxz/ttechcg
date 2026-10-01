@@ -3197,7 +3197,7 @@ button, a, input, select, textarea { -webkit-tap-highlight-color: transparent; }
 .pickup-crm-directory-table .col-shipments { width: 16%; }
 .pickup-crm-directory-table .col-rewards { width: 11%; }
 .pickup-crm-directory-table .col-follow-up { width: 12%; }
-.pickup-crm-directory-table .col-open { width: 70px; }
+.pickup-crm-directory-table .col-open { width: 88px; }
 .pickup-crm-directory .pickup-crm-directory-table th,
 .pickup-crm-directory .pickup-crm-directory-table td { padding: 11px 10px; font-size: 0.78rem; line-height: 1.4; overflow-wrap: anywhere; }
 .pickup-crm-directory .pickup-crm-directory-table th { font-size: 0.6rem; white-space: nowrap; }
@@ -3207,9 +3207,12 @@ button, a, input, select, textarea { -webkit-tap-highlight-color: transparent; }
 .pickup-crm-directory-table .pickup-customer-id { font-size: 0.68rem; }
 .pickup-crm-directory-table tbody tr:hover td { background: #fffdf5; }
 .pickup-crm-muted { color: #806d24; }
-.pickup-crm-open-cell { text-align: right !important; }
-.pickup-crm-open-cell a { display: inline-flex; align-items: center; min-height: 32px; padding: 0 12px; border: 1px solid rgba(212, 5, 17, 0.4); border-radius: 8px; text-decoration: none; }
-.pickup-crm-open-cell a:hover, .pickup-crm-open-cell a:focus-visible { background: var(--dhl-red); color: #fff; outline: none; }
+/* The Open button must never wrap or spill: its column fits the label plus padding. */
+.pickup-crm-directory .pickup-crm-directory-table td.pickup-crm-open-cell { padding-right: 10px; padding-left: 6px; text-align: right; overflow-wrap: normal; vertical-align: middle; }
+.pickup-crm-open-cell a { display: inline-flex; align-items: center; justify-content: center; gap: 4px; min-width: 64px; min-height: 34px; padding: 0 12px; border: 1px solid rgba(212, 5, 17, 0.45); border-radius: 8px; background: #fff; color: var(--dhl-red); font-size: 0.74rem; font-weight: 850; line-height: 1; text-decoration: none; white-space: nowrap; transition: background-color 140ms ease, color 140ms ease; }
+.pickup-crm-open-cell a::after { content: "\2192"; font-size: 0.8rem; }
+.pickup-crm-open-cell a:hover { background: var(--dhl-red); color: #fff; }
+.pickup-crm-open-cell a:focus-visible { background: var(--dhl-red); color: #fff; outline: 3px solid rgba(212, 5, 17, 0.3); outline-offset: 2px; }
 @media (max-width: 1100px) {
     .pickup-crm-directory-table .col-id { width: 96px; }
     .pickup-crm-directory-table .col-status { width: 108px; }
@@ -3230,8 +3233,8 @@ button, a, input, select, textarea { -webkit-tap-highlight-color: transparent; }
     .pickup-crm-directory-table td[data-label="Customer"]::before { display: none; }
     .pickup-crm-directory-table td[data-label="Customer"] > strong { font-size: 0.95rem; }
     .pickup-crm-directory-table td > small { white-space: normal; }
-    .pickup-crm-directory-table .pickup-crm-open-cell { grid-column: 1 / -1; text-align: left !important; }
-    .pickup-crm-open-cell a { justify-content: center; width: 100%; }
+    .pickup-crm-directory .pickup-crm-directory-table td.pickup-crm-open-cell { grid-column: 1 / -1; padding: 0; text-align: left; }
+    .pickup-crm-open-cell a { width: 100%; min-height: 40px; }
     .pickup-crm-directory-table tbody tr:hover td { background: transparent; }
 }
 @media (max-width: 420px) {
