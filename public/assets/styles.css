@@ -1038,7 +1038,8 @@ button, a, input, select, textarea { -webkit-tap-highlight-color: transparent; }
 .pickup-login-brand { display: inline-flex; align-items: center; gap: 8px; color: #111; font-size: 1rem; font-weight: 900; letter-spacing: -0.03em; text-decoration: none; }
 .pickup-login-brand span { color: var(--dhl-red); }
 .pickup-login-brand { flex-wrap: wrap; column-gap: 6px; row-gap: 2px; line-height: 1.3; }
-.pickup-login-brand .pickup-login-brand-divider { color: #c4bca6; font-weight: 400; }
+/* The portal name always sits on its own line under the company name. */
+.pickup-login-brand .pickup-login-brand-portal { display: block; flex-basis: 100%; }
 .pickup-login-card { width: 100%; max-width: 440px; padding: clamp(26px, 4vw, 38px); border: 1px solid rgba(36, 27, 0, 0.08); border-radius: 18px; background: #fff; box-shadow: 0 1px 2px rgba(36, 27, 0, 0.04), 0 18px 48px rgba(36, 27, 0, 0.08); }
 .pickup-login-copy { margin: 0 0 26px; }
 .pickup-login-copy .eyebrow { margin: 0; }
@@ -3315,7 +3316,6 @@ button, a, input, select, textarea { -webkit-tap-highlight-color: transparent; }
 /* Login page: centred card on small screens; the welcome panel stays brief */
 /* Login: the portal name is set at the same size as the Welcome back heading. */
 .pickup-login-shell:not(.pickup-mfa-shell) .pickup-login-brand { display: block; max-width: 560px; color: #111; font-size: clamp(1.7rem, 3vw, 2.2rem); font-weight: 850; letter-spacing: -0.035em; line-height: 1.12; text-align: center; text-wrap: balance; }
-.pickup-login-shell:not(.pickup-mfa-shell) .pickup-login-brand .pickup-login-brand-divider { color: #c4bca6; font-weight: 300; }
 @media (max-width: 960px) {
     .pickup-login-welcome { gap: 24px; }
 }
