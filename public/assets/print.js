@@ -7,8 +7,9 @@
 
     printButton?.addEventListener('click', openPrintDialog);
 
+    // Only pages that opt in open the print dialog on load; the pickup sheet preview waits for the button.
     const autoPrint = () => {
-        if (autoPrintStarted) return;
+        if (autoPrintStarted || !printButton?.hasAttribute('data-print-auto')) return;
         autoPrintStarted = true;
         window.setTimeout(openPrintDialog, 150);
     };

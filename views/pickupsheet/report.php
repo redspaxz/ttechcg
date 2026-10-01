@@ -53,7 +53,7 @@ $legend = static function (array $items) use ($e): string {
 };
 ?>
 <div class="print-actions">
-    <button type="button" data-print-pickup>Print / Save as PDF</button>
+    <button type="button" data-print-pickup data-print-auto>Print / Save as PDF</button>
     <a href="<?= $e($basePath) ?>/dhl/pickupsheet/dashboard?tab=reports">Back to reports</a>
 </div>
 

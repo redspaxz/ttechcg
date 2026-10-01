@@ -14,7 +14,7 @@ $e = static fn (mixed $value): string => htmlspecialchars((string) $value, ENT_Q
     <meta name="robots" content="noindex, nofollow">
     <title><?= $e($pageTitle ?? 'Pickup sheet') ?> | Pickupsheet</title>
     <link rel="stylesheet" href="<?= $e($assetBase) ?>/print.css?v=20260925-report-charts-awb-reuse">
-    <script src="<?= $e($assetBase) ?>/print.js?v=20260825-print-dialog" defer></script>
+    <script src="<?= $e($assetBase) ?>/print.js?v=20261001-print-on-click" defer></script>
 </head>
 <body>
     <?= $content ?>
