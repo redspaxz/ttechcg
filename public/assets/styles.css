@@ -2565,6 +2565,8 @@ button, a, input, select, textarea { -webkit-tap-highlight-color: transparent; }
 .pickup-payment-dialog label > span { color: #493800; font-size: 0.66rem; font-weight: 850; letter-spacing: 0.06em; text-transform: uppercase; }
 .pickup-payment-dialog input { width: 100%; min-height: 44px; padding: 8px 11px; border: 1px solid #8b7626; border-radius: 8px; background: #fff; color: #241b00; font: inherit; font-size: 0.85rem; }
 .pickup-payment-dialog input[name="receipt_number"] { text-transform: uppercase; }
+/* Typed receipt numbers show in capitals, but the sample text keeps its normal case. */
+.pickup-payment-dialog input[name="receipt_number"]::placeholder { text-transform: none; }
 .pickup-payment-dialog input:focus { border-color: #0b633a; outline: 3px solid rgba(11, 99, 58, 0.18); outline-offset: 1px; }
 .pickup-payment-status { margin: -4px 0 0; color: #5c4a14; font-size: 0.74rem; }
 .pickup-payment-status[data-state="match"] { color: #0b633a; font-weight: 750; }
