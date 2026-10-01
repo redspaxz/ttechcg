@@ -2485,6 +2485,8 @@ $ignoreDuplicate = $customerController->dismissDuplicate(new Request('POST', '/d
 $assert($ignoreDuplicate->status() === 303 && !$ignorePairSuggested() && str_contains((string) ($_SESSION['_crm_flash'] ?? ''), 'will not be suggested as duplicates again'), 'Ignoring a duplicate suggestion should stop the pair being suggested.');
 unset($_SESSION['_crm_flash']);
 $assert($customerService->find($ignoreLeft->customerKey) !== null && $customerService->find($ignoreRight->customerKey) !== null, 'Ignoring a duplicate suggestion should keep both customer profiles.');
+$directoryAfterIgnore = $customerController->index(new Request('GET', '/dhl/pickupsheet/customers'))->body();
+$assert(($customerService->duplicateSuggestions(20) === []) === !str_contains($directoryAfterIgnore, 'Possible duplicate customers') && !str_contains($directoryAfterIgnore, 'No likely duplicates were found'), 'The Possible duplicate customers card should show only when there are suggestions.');
 $customerService->delete($ignoreRight->customerKey, str_repeat('a', 24));
 $assert(array_filter(
     (array) ($_SESSION['_demo_pickup_customer_duplicate_dismissals'] ?? []),
@@ -3026,7 +3028,7 @@ $partnerSources = $readSource(dirname(__DIR__) . '/public/assets/partners/README
 $assert(is_string($partnerSources) && str_contains($partnerSources, 'www.dhl.com/content/dam/dhl/global/core/images/logos/dhl-logo.svg'), 'The official DHL artwork source should be documented.');
 $assert(!str_contains($home, 'href="/dhl/pickupsheet"'), 'Pickupsheet should not be discoverable from the public site chrome or homepage.');
 $assert(str_contains($home, '© ' . date('Y') . ' T&amp;Tech Consulting Group. All rights reserved.') && !str_contains($home, 'class="pickup-footer"'), 'The public site footer should carry the copyright statement with the current year.');
-$assert(str_contains($home, 'styles.css?v=20261001-fixed-footer'), 'Market-performance dashboard styles and prior Pickupsheet refinements should use a cache-safe stylesheet version.');
+$assert(str_contains($home, 'styles.css?v=20261001-duplicates-card'), 'Market-performance dashboard styles and prior Pickupsheet refinements should use a cache-safe stylesheet version.');
 $assert(str_contains($home, 'app.js?v=20261001-crm-duplicate-ignore'), 'AJAX audit-log accordions and prior OWASP-aligned interactions should use a cache-safe script version.');
 $assert(str_contains($home, 'analytics.js?v=20260825-security-hardening'), 'The current consent-aware Google Analytics loader should render on every page.');
 $assert(str_contains($home, 'data-analytics-accept'), 'The site should offer an explicit analytics acceptance control.');

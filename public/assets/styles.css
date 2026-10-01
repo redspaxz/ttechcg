@@ -2962,7 +2962,6 @@ button, a, input, select, textarea { -webkit-tap-highlight-color: transparent; }
     .pickup-merge-outcome { grid-template-columns: 1fr; }
     .pickup-merge-submit { width: 100%; }
 }
-.pickup-crm-duplicates-empty { margin: 0; color: #655000; font-size: 0.78rem; }
 .pickup-customer-danger { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 16px 24px; margin-top: 24px; padding: 20px; border: 1px solid rgba(212, 5, 17, 0.45); background: #fff; }
 .pickup-customer-danger h2 { margin: 0 0 6px; color: var(--dhl-red); font-size: 1.1rem; }
 .pickup-customer-danger p { max-width: 640px; margin: 0; color: #655000; font-size: 0.75rem; line-height: 1.6; }
