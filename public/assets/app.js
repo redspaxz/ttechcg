@@ -1362,3 +1362,23 @@ document.addEventListener('click', (event) => {
         if (confirmed) window.location.assign(cancel.href);
     });
 });
+
+// Login: reveal or hide the password. The button stays hidden without JavaScript.
+document.querySelectorAll('[data-password-toggle]').forEach((toggle) => {
+    const input = toggle.closest('.pickup-login-password')?.querySelector('[data-password-input]');
+    if (!input) return;
+    toggle.hidden = false;
+    toggle.addEventListener('click', () => {
+        const reveal = input.type === 'password';
+        input.type = reveal ? 'text' : 'password';
+        toggle.textContent = reveal ? 'Hide' : 'Show';
+        toggle.setAttribute('aria-pressed', String(reveal));
+        toggle.setAttribute('aria-label', reveal ? 'Hide password' : 'Show password');
+        input.focus({ preventScroll: true });
+    });
+});
+// Mask the password again on submit so it is not left visible on screen.
+document.querySelector('.pickup-login-form')?.addEventListener('submit', (event) => {
+    const input = event.target.querySelector('[data-password-input]');
+    if (input) input.type = 'password';
+});
