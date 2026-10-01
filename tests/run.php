@@ -1970,6 +1970,7 @@ $operatorPrint = $pickupController->print(new Request('GET', '/dhl/pickupsheet/s
 $assert(!str_contains($operatorPrint->body(), 'paper-paid-watermark'), 'An unpaid pickup sheet preview should not show the PAID watermark.');
 $operatorExport = $pickupController->export(new Request('GET', '/dhl/pickupsheet/submissions/export', ['reference' => $savedReference], [], '', $operatorServer));
 $operatorSubmissions = $pickupController->submissions(new Request('GET', '/dhl/pickupsheet/submissions', [], [], '', $operatorServer));
+$assert(str_contains($operatorSubmissions->body(), 'data-status="open">Open</small>') && !str_contains($operatorSubmissions->body(), 'data-status="open">Closed</small>'), 'Unpaid pickup sheets should keep the Open status on Submitted sheets.');
 $assert($operatorCreate->status() === 200 && $operatorSubmissions->status() === 200, 'An operator should be able to enter and view pickup records.');
 $assert($operatorPrint->status() === 200 && $operatorExport->status() === 200, 'An operator should print pickup-sheet PDFs and export Excel files.');
 $assert(!str_contains($operatorSubmissions->body(), 'Manage access'), 'An operator should not be shown administrator account controls.');
@@ -2118,7 +2119,7 @@ $assert(($markPaidByAdmin->headers()['Location'] ?? '') === '/dhl/pickupsheet/su
 $paidControllerSheet = (new PickupSheetService(new DemoPickupSheetRepository()))->findByReference($savedReference);
 $assert($paidControllerSheet?->status === 'paid' && $paidControllerSheet->isPaid() && $paidControllerSheet->paidAt !== null && $paidControllerSheet->paymentReceiptNumber === 'RCP-2026/0001', 'The administrator-paid status, timestamp, and normalized receipt number should persist on the pickup sheet.');
 $paidSubmissions = $pickupController->submissions(new Request('GET', '/dhl/pickupsheet/submissions', [], [], '', $recordsServer));
-$assert(str_contains($paidSubmissions->body(), 'data-status="paid">Paid</small>') && str_contains($paidSubmissions->body(), 'Receipt RCP-2026/0001') && !str_contains($paidSubmissions->body(), 'pickup-view-summary'), 'A paid pickup sheet should show its status and payment proof without restoring submitted-sheet metric cards.');
+$assert(str_contains($paidSubmissions->body(), 'data-status="paid">Closed</small>') && !str_contains($paidSubmissions->body(), 'data-status="paid">Paid</small>') && str_contains($paidSubmissions->body(), 'Receipt RCP-2026/0001') && !str_contains($paidSubmissions->body(), 'pickup-view-summary'), 'A paid pickup sheet should show its status and payment proof without restoring submitted-sheet metric cards.');
 $receiptSearch = $pickupController->submissions(new Request('GET', '/dhl/pickupsheet/submissions', ['q' => 'rcp-2026/0001'], [], '', $recordsServer));
 $assert(str_contains($receiptSearch->body(), $savedReference), 'Submitted-sheet search should locate a paid record by receipt number.');
 $assert(str_contains($paidSubmissions->body(), 'action="/dhl/pickupsheet/submissions/receipt" data-pickup-receipt-edit') && str_contains($paidSubmissions->body(), 'name="receipt_number" value="RCP-2026/0001"'), 'An administrator should receive a receipt-correction form prefilled with the paid sheet receipt.');

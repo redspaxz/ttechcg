@@ -57,7 +57,7 @@ $pageUrl = static function (int $target) use ($basePath, $search): string {
         <?php $referenceQuery = rawurlencode($pickupSheet->referenceNumber); $isPaid = $pickupSheet->isPaid(); ?>
         <article class="pickup-record">
             <div class="pickup-record-overview">
-                <span class="pickup-record-reference"><?= $e($pickupSheet->referenceNumber) ?><small class="pickup-record-status" data-status="<?= $isPaid ? 'paid' : 'open' ?>"><?= $isPaid ? 'Paid' : 'Open' ?></small><?php if ($isPaid && $pickupSheet->paymentReceiptNumber !== null): ?><small class="pickup-record-receipt">Receipt <?= $e($pickupSheet->paymentReceiptNumber) ?></small><?php endif; ?></span>
+                <span class="pickup-record-reference"><?= $e($pickupSheet->referenceNumber) ?><small class="pickup-record-status" data-status="<?= $isPaid ? 'paid' : 'open' ?>"><?= $isPaid ? 'Closed' : 'Open' ?></small><?php if ($isPaid && $pickupSheet->paymentReceiptNumber !== null): ?><small class="pickup-record-receipt">Receipt <?= $e($pickupSheet->paymentReceiptNumber) ?></small><?php endif; ?></span>
                 <span><small>Date</small><?= $e($pickupSheet->collectionDate) ?></span>
                 <span><small>Agent</small><?= $e($pickupSheet->agentName) ?></span>
                 <span><small>Shipments</small><?= $e($pickupSheet->shipmentCount()) ?></span>
