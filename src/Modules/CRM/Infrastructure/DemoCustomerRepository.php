@@ -21,6 +21,7 @@ final class DemoCustomerRepository implements CustomerRepository
     private const MERGES_SESSION_KEY = '_demo_pickup_customer_merges';
     private const ACTIVITIES_SESSION_KEY = '_demo_pickup_customer_activities';
     private const ERASED_SESSION_KEY = '_demo_pickup_customer_erased_names';
+    private const DUPLICATE_DISMISSALS_SESSION_KEY = '_demo_pickup_customer_duplicate_dismissals';
     private const PROFILE_CHANGED_MESSAGE = 'This profile was changed by someone else after you opened it. Your changes were not saved; review the current details and edit again.';
 
     public function __construct(private readonly PickupSheetRepository $pickupSheets)
@@ -317,6 +318,10 @@ final class DemoCustomerRepository implements CustomerRepository
         $_SESSION[self::REWARDS_SESSION_KEY] = array_filter(is_array($_SESSION[self::REWARDS_SESSION_KEY] ?? null) ? $_SESSION[self::REWARDS_SESSION_KEY] : [], $keep);
         $_SESSION[self::ACTIVITIES_SESSION_KEY] = array_values(array_filter($this->allActivities(), $keep));
         $_SESSION[self::ALIASES_SESSION_KEY] = array_filter($this->aliases(), $keep);
+        $_SESSION[self::DUPLICATE_DISMISSALS_SESSION_KEY] = array_values(array_filter(
+            $this->dismissedDuplicatePairs(),
+            static fn (string $pair): bool => !in_array($customerKey, explode(':', $pair), true),
+        ));
         $_SESSION[self::MERGES_SESSION_KEY] = array_map(
             static fn (array $merge): array => in_array($customerKey, [$merge['targetCustomerKey'] ?? '', $merge['sourceCustomerKey'] ?? ''], true)
                 ? ['undoneAt' => 'erased', 'snapshot' => []] + $merge
@@ -571,6 +576,22 @@ final class DemoCustomerRepository implements CustomerRepository
         $merges[$mergeId - 1]['dismissedAt'] = gmdate('Y-m-d H:i:s');
         $merges[$mergeId - 1]['dismissedBy'] = $actorId;
         $_SESSION[self::MERGES_SESSION_KEY] = $merges;
+    }
+
+    public function dismissedDuplicatePairs(): array
+    {
+        $pairs = $_SESSION[self::DUPLICATE_DISMISSALS_SESSION_KEY] ?? [];
+        return is_array($pairs) ? array_values(array_filter($pairs, 'is_string')) : [];
+    }
+
+    public function dismissDuplicate(string $firstCustomerKey, string $secondCustomerKey, string $actorId): void
+    {
+        $pairs = $this->dismissedDuplicatePairs();
+        $pair = $firstCustomerKey . ':' . $secondCustomerKey;
+        if (!in_array($pair, $pairs, true)) {
+            $pairs[] = $pair;
+        }
+        $_SESSION[self::DUPLICATE_DISMISSALS_SESSION_KEY] = $pairs;
     }
 
     /** Points shipments still typed with a merged-away name at the profile that absorbed it. */

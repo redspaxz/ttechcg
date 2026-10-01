@@ -417,6 +417,36 @@ final class CustomerController
         return Response::redirect($request->basePath . '/dhl/pickupsheet/customers');
     }
 
+    public function dismissDuplicate(Request $request): Response
+    {
+        $principal = $this->authorize($request, 'crm');
+        if ($principal instanceof Response) {
+            return $principal;
+        }
+        $guard = $this->guardWrite($request, $principal, 'pickupsheet.crm_customer_duplicate_dismiss', 'pickup-crm-merge', 20);
+        if ($guard !== null) {
+            return $guard;
+        }
+
+        try {
+            $this->service->dismissDuplicate(
+                strtolower($request->input('first_customer_key')),
+                strtolower($request->input('second_customer_key')),
+                $this->actorId($principal),
+            );
+            $_SESSION['_crm_flash'] = 'Suggestion ignored. These two profiles will not be suggested as duplicates again.';
+            $this->log($request, $principal, 'pickupsheet.crm_customer_duplicate_dismiss', 'accepted');
+        } catch (InvalidArgumentException $exception) {
+            $_SESSION['_crm_merge_error'] = $exception->getMessage();
+            $this->log($request, $principal, 'pickupsheet.crm_customer_duplicate_dismiss', 'denied', ['reason' => 'validation']);
+        } catch (RuntimeException $exception) {
+            error_log($exception->__toString());
+            $_SESSION['_crm_merge_error'] = 'The suggestion could not be ignored. Check MySQL and try again.';
+            $this->log($request, $principal, 'pickupsheet.crm_customer_duplicate_dismiss', 'failed');
+        }
+        return Response::redirect($request->basePath . '/dhl/pickupsheet/customers');
+    }
+
     public function addActivity(Request $request): Response
     {
         $principal = $this->authorize($request, 'crm_update');

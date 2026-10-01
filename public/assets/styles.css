@@ -2868,7 +2868,8 @@ button, a, input, select, textarea { -webkit-tap-highlight-color: transparent; }
 .pickup-crm-merge-list article:last-child { border-bottom: 0; }
 .pickup-crm-merge-list form { margin: 0; }
 .pickup-crm-merge-actions { display: flex; flex-wrap: wrap; gap: 8px; }
-.pickup-crm-merge-list .pickup-crm-ignore { border-color: rgba(69, 50, 0, 0.4); color: #655000; }
+.pickup-crm-merge-list .pickup-crm-ignore,
+.pickup-crm-duplicate-actions .pickup-crm-ignore { border-color: rgba(69, 50, 0, 0.4); color: #655000; }
 .pickup-crm-merge-list button { min-height: 34px; padding: 7px 14px; border: 1px solid #493800; background: #fff; color: #352900; cursor: pointer; font: inherit; font-size: 0.64rem; font-weight: 850; }
 .pickup-crm-merge-list button:hover, .pickup-crm-merge-list button:focus { border-color: var(--dhl-red); color: var(--dhl-red); outline: 2px solid rgba(212, 5, 17, 0.12); }
 .pickup-crm-existing-hint { color: #241b00; font-weight: 700; }
@@ -3110,6 +3111,7 @@ button, a, input, select, textarea { -webkit-tap-highlight-color: transparent; }
     .pickup-crm-filter { grid-template-columns: 1fr 1fr; }
     .pickup-crm-duplicate-list article { grid-template-columns: 70px minmax(0, 1fr) auto minmax(0, 1fr); }
     .pickup-crm-duplicate-actions { grid-column: 2 / -1; grid-template-columns: repeat(2, minmax(0, 1fr)); }
+    .pickup-crm-duplicate-actions .pickup-crm-ignore-form { grid-column: 1 / -1; }
     .pickup-customer-layout { grid-template-columns: 1fr; }
     .pickup-customer-details { padding: 20px; }
     .pickup-customer-details dl { grid-template-columns: 1fr; }
@@ -3130,6 +3132,7 @@ button, a, input, select, textarea { -webkit-tap-highlight-color: transparent; }
     .pickup-crm-duplicate-score { grid-template-columns: auto 1fr; align-items: baseline; }
     .pickup-crm-duplicate-separator { display: none; }
     .pickup-crm-duplicate-actions { grid-column: auto; grid-template-columns: 1fr; }
+    .pickup-crm-duplicate-actions .pickup-crm-ignore-form { grid-column: auto; }
     .pickup-crm-kpis article,
     .pickup-customer-metrics article { min-height: 0; padding: 16px; }
     .pickup-crm-kpis strong,

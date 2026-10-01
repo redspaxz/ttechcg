@@ -338,6 +338,7 @@ One organization should have one customer profile. The CRM enforces this in four
 - a pair needs a name-match score of at least 88. Names that differ in any number, such as "Douala Branch 1" and "Douala Branch 2", are never suggested or merged
 - a merge moves shipments, reward adjustments and aliases to the kept profile. Empty contact fields are filled from the other profile; conflicting values and notes are added to the kept profile's notes, cut to 2,000 bytes without splitting a character
 - the merged-away name becomes an alias of the kept profile. Shipments later entered under that name are moved to the kept profile at the next synchronization, and the name cannot be used for a new profile
+- **Ignore** beside the two Keep buttons marks a suggested pair as different customers. After a confirmation, both profiles stay as they are and the pair is no longer suggested. The pair is stored once with its keys sorted in `pickup_customer_duplicate_dismissals` (migration 024), with who ignored it and when, and is included in encrypted backups. Deleting or merging away either profile removes the row. Ignored pairs can still be merged from a customer profile with Merge a duplicate. Ignoring is rate limited, needs a CSRF token and the `crm` permission, and is recorded in the security log as `pickupsheet.crm_customer_duplicate_dismiss`
 
 **Undo.** "Recent merges" lists merges that can still be undone. Undo:
 

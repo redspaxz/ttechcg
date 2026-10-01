@@ -109,6 +109,16 @@ interface CustomerRepository
     public function dismissMerge(int $mergeId, string $actorId): void;
 
     /**
+     * Pairs marked as different customers, each as "firstKey:secondKey" with the keys sorted.
+     *
+     * @return list<string>
+     */
+    public function dismissedDuplicatePairs(): array;
+
+    /** Records that two profiles are different customers, so the pair is no longer suggested as a duplicate. */
+    public function dismissDuplicate(string $firstCustomerKey, string $secondCustomerKey, string $actorId): void;
+
+    /**
      * Bonuses and redemptions together, newest first.
      *
      * @return list<array{pointsDelta: int, reason: string, actorId: string, actorName: string, createdAt: string}>

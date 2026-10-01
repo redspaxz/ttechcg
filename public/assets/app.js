@@ -1245,6 +1245,18 @@ const CONFIRMED_ACTIONS = [
         },
     },
     {
+        selector: '[data-crm-dismiss-duplicate-form]',
+        options: (form) => {
+            const firstName = form.dataset.firstName || 'the first customer';
+            const secondName = form.dataset.secondName || 'the second customer';
+            return {
+                title: 'Ignore this suggestion?',
+                message: `${firstName} and ${secondName} will stay as separate customers and will not be suggested as duplicates again. You can still merge them from a customer profile with Merge a duplicate.`,
+                confirmLabel: 'Ignore suggestion',
+            };
+        },
+    },
+    {
         selector: '[data-crm-undo-merge-form]',
         options: (form) => {
             const mergeName = form.dataset.mergeName || 'the merged customer';

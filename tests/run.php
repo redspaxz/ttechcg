@@ -2453,6 +2453,43 @@ $dismissMerge = $customerController->dismissMerge(new Request('POST', '/dhl/pick
     'merge_id' => $repeatedMergeId,
 ]));
 $assert($dismissMerge->status() === 303 && !in_array($repeatedMergeId, array_map(static fn (array $merge): string => (string) $merge['id'], $customerService->recentMerges()), true), 'Ignoring a merge should remove it from Recent merges.');
+$ignoreLeft = $customerService->save(null, ['display_name' => 'Ignorable Cargo Partners', 'status' => 'lead'], str_repeat('a', 24));
+$ignoreRight = $customerService->save(null, ['display_name' => 'Ignorable Cargo Partner', 'status' => 'lead'], str_repeat('a', 24));
+$ignorePairSuggested = static fn (): bool => array_filter(
+    $customerService->duplicateSuggestions(20),
+    static fn (array $suggestion): bool => in_array($suggestion['primary']->customerKey, [$ignoreLeft->customerKey, $ignoreRight->customerKey], true)
+        && in_array($suggestion['duplicate']->customerKey, [$ignoreLeft->customerKey, $ignoreRight->customerKey], true),
+) !== [];
+$assert($ignorePairSuggested(), 'Near-identical customer names should be suggested before they are ignored.');
+$assert(str_contains($customerController->index(new Request('GET', '/dhl/pickupsheet/customers'))->body(), 'data-crm-dismiss-duplicate-form'), 'Possible duplicate customers should offer an Ignore button beside the merge buttons.');
+$invalidIgnoreCsrf = $customerController->dismissDuplicate(new Request('POST', '/dhl/pickupsheet/customers/duplicates/dismiss', [], [
+    '_token' => 'invalid-token',
+    'first_customer_key' => $ignoreLeft->customerKey,
+    'second_customer_key' => $ignoreRight->customerKey,
+]));
+$assert($invalidIgnoreCsrf->status() === 419 && $ignorePairSuggested(), 'Ignoring a duplicate suggestion should require a valid CSRF token.');
+$sameIgnore = $customerController->dismissDuplicate(new Request('POST', '/dhl/pickupsheet/customers/duplicates/dismiss', [], [
+    '_token' => $pickupCsrf->token(),
+    'first_customer_key' => $ignoreLeft->customerKey,
+    'second_customer_key' => $ignoreLeft->customerKey,
+]));
+$assert($sameIgnore->status() === 303 && ($_SESSION['_crm_merge_error'] ?? '') === 'Select two different valid customer profiles to ignore.', 'Ignoring a profile paired with itself should be refused.');
+unset($_SESSION['_crm_merge_error']);
+// Submitted in the opposite order to the suggestion, to check the pair is stored order-independently.
+$ignoreDuplicate = $customerController->dismissDuplicate(new Request('POST', '/dhl/pickupsheet/customers/duplicates/dismiss', [], [
+    '_token' => $pickupCsrf->token(),
+    'first_customer_key' => $ignoreRight->customerKey,
+    'second_customer_key' => $ignoreLeft->customerKey,
+]));
+$assert($ignoreDuplicate->status() === 303 && !$ignorePairSuggested() && str_contains((string) ($_SESSION['_crm_flash'] ?? ''), 'will not be suggested as duplicates again'), 'Ignoring a duplicate suggestion should stop the pair being suggested.');
+unset($_SESSION['_crm_flash']);
+$assert($customerService->find($ignoreLeft->customerKey) !== null && $customerService->find($ignoreRight->customerKey) !== null, 'Ignoring a duplicate suggestion should keep both customer profiles.');
+$customerService->delete($ignoreRight->customerKey, str_repeat('a', 24));
+$assert(array_filter(
+    (array) ($_SESSION['_demo_pickup_customer_duplicate_dismissals'] ?? []),
+    static fn (string $pair): bool => str_contains($pair, $ignoreRight->customerKey),
+) === [], 'Deleting a customer should remove its ignored duplicate pairs.');
+$customerService->delete($ignoreLeft->customerKey, str_repeat('a', 24));
 $undoAfterDismiss = false;
 try {
     $customerService->undoMerge($repeatedMergeId, str_repeat('a', 24));
@@ -2988,8 +3025,8 @@ $partnerSources = $readSource(dirname(__DIR__) . '/public/assets/partners/README
 $assert(is_string($partnerSources) && str_contains($partnerSources, 'www.dhl.com/content/dam/dhl/global/core/images/logos/dhl-logo.svg'), 'The official DHL artwork source should be documented.');
 $assert(!str_contains($home, 'href="/dhl/pickupsheet"'), 'Pickupsheet should not be discoverable from the public site chrome or homepage.');
 $assert(str_contains($home, '© 2026 T&amp;Tech Consulting Group. All rights reserved.') && !str_contains($home, 'class="pickup-footer"'), 'The public site footer should carry the static copyright statement.');
-$assert(str_contains($home, 'styles.css?v=20261001-pickup-footer'), 'Market-performance dashboard styles and prior Pickupsheet refinements should use a cache-safe stylesheet version.');
-$assert(str_contains($home, 'app.js?v=20261001-crm-shipments-return'), 'AJAX audit-log accordions and prior OWASP-aligned interactions should use a cache-safe script version.');
+$assert(str_contains($home, 'styles.css?v=20261001-crm-duplicate-ignore'), 'Market-performance dashboard styles and prior Pickupsheet refinements should use a cache-safe stylesheet version.');
+$assert(str_contains($home, 'app.js?v=20261001-crm-duplicate-ignore'), 'AJAX audit-log accordions and prior OWASP-aligned interactions should use a cache-safe script version.');
 $assert(str_contains($home, 'analytics.js?v=20260825-security-hardening'), 'The current consent-aware Google Analytics loader should render on every page.');
 $assert(str_contains($home, 'data-analytics-accept'), 'The site should offer an explicit analytics acceptance control.');
 $assert(str_contains($home, 'data-analytics-decline'), 'The site should offer an explicit analytics decline control.');
@@ -3297,7 +3334,7 @@ $assert(is_string($script) && str_contains($script, "selector: '[data-user-statu
 $assert(is_string($script) && str_contains($script, "document.querySelector('[data-copy-recovery-codes]')"), 'Local 2FA should support secure one-time recovery-code handling.');
 $assert(is_string($script) && str_contains($script, "selector: '[data-self-mfa-reset]'") && str_contains($script, 'The current authenticator and unused recovery codes will stop working'), 'A signed-in user should explicitly confirm replacing their own authenticator.');
 $assert(is_string($script) && substr_count($script, 'window.confirm(') === 1 && str_contains($script, "if (typeof HTMLDialogElement === 'undefined') {
-        resolve(window.confirm(message));") && str_contains($script, 'confirmInModal(action.options(form))') && substr_count($script, "selector: '[data-") === 8, 'Every sensitive form confirmation should use the shared modal, keeping the browser prompt only for browsers without dialog support.');
+        resolve(window.confirm(message));") && str_contains($script, 'confirmInModal(action.options(form))') && substr_count($script, "selector: '[data-") === 9, 'Every sensitive form confirmation should use the shared modal, keeping the browser prompt only for browsers without dialog support.');
 $assert(is_string($script) && str_contains($script, '[data-discard-pickup-sheet]') && str_contains($script, "title: 'Discard this pickup sheet?'"), 'Cancelling a new pickup sheet with entered data should ask for confirmation in the modal.');
 $assert(is_string($script) && str_contains($script, 'loadRecordCaptcha(form);') && str_contains($script, 'applyRecordCaptcha(form, result.captcha);') && str_contains($script, "captchaNonce === '' || !/^[0-9]{1,2}$/.test(captchaAnswer.value.trim())"), 'The payment and receipt modals should load a security question on open, replace it after a failure, and require an answer before submitting.');
 $assert(is_string($script) && str_contains($script, "document.querySelector('[data-login-method-form]')") && str_contains($script, "'X-Requested-With': 'XMLHttpRequest'"), 'Sign-in toggles should save asynchronously without refreshing account management.');
@@ -3423,6 +3460,9 @@ $assert(is_string($customerRepositorySource) && str_contains($customerRepository
 $assert(is_string($customerRepositorySource) && str_contains($customerRepositorySource, 'WHERE customer_key = :rewards_customer_key') && str_contains($customerRepositorySource, 'metrics_customer.customer_key = :metrics_customer_key'), 'Single-profile lookups should aggregate totals for that customer only.');
 $customerDismissMigration = $readSource(dirname(__DIR__) . '/database/migrations/022_add_crm_merge_dismissal.sql');
 $assert(is_string($customerDismissMigration) && str_contains($customerDismissMigration, 'ADD COLUMN dismissed_at DATETIME NULL') && str_contains($customerDismissMigration, 'information_schema.COLUMNS'), 'Migration 022 should add merge dismissal columns only when they are missing.');
+$duplicateDismissalMigration = $readSource(dirname(__DIR__) . '/database/migrations/024_create_pickup_customer_duplicate_dismissals.sql');
+$assert(is_string($duplicateDismissalMigration) && str_contains($duplicateDismissalMigration, 'UNIQUE INDEX pickup_customer_duplicate_dismissals_pair_idx (first_customer_key, second_customer_key)') && substr_count($duplicateDismissalMigration, 'REFERENCES pickup_customers(customer_key) ON DELETE CASCADE') === 2, 'Migration 024 should store each ignored pair once and drop it when either profile is removed.');
+$assert(str_contains((string) $readSource(dirname(__DIR__) . '/src/Modules/Backup/Infrastructure/MysqlBackupRepository.php'), "'pickup_customer_duplicate_dismissals',"), 'Ignored duplicate pairs should be included in encrypted backups.');
 $customerSpacingMigration = $readSource(dirname(__DIR__) . '/database/migrations/020_collapse_customer_name_spacing.sql');
 $assert(is_string($customerSpacingMigration) && str_contains($customerSpacingMigration, "UPDATE pickup_shipments\nSET consignor = TRIM(REGEXP_REPLACE(consignor, '[[:space:]]+', ' '))") && strpos($customerSpacingMigration, 'DELETE duplicate_customer') < strpos($customerSpacingMigration, 'SET display_name = TRIM(REGEXP_REPLACE'), 'Migration 020 should collapse consignor spacing and fold spacing-variant customers before collapsing profile names.');
 $customerMergeHistoryMigration = $readSource(dirname(__DIR__) . '/database/migrations/019_create_pickup_customer_merge_history.sql');

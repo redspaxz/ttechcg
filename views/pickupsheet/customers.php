@@ -37,7 +37,7 @@ $recentMerges = is_array($recentMerges ?? null) ? $recentMerges : [];
         <?php if ($duplicateSuggestions !== []): ?>
             <section class="pickup-crm-duplicates" aria-labelledby="crm-duplicates-title">
                 <div class="pickup-card-heading"><div><span>Data quality</span><h2 id="crm-duplicates-title">Possible duplicate customers</h2></div><small><?= $e(count($duplicateSuggestions)) ?> suggested <?= count($duplicateSuggestions) === 1 ? 'match' : 'matches' ?></small></div>
-                <p class="pickup-crm-duplicates-intro">Review each suggestion before merging. The profile you keep retains its name; shipment history, rewards, and available contact details from the other profile are moved into it.</p>
+                <p class="pickup-crm-duplicates-intro">Review each suggestion before merging. The profile you keep retains its name; shipment history, rewards, and available contact details from the other profile are moved into it. Ignore a pair that are different customers and it will not be suggested again.</p>
                 <div class="pickup-crm-duplicate-list">
                     <?php foreach ($duplicateSuggestions as $suggestion): ?>
                         <?php $primary = $suggestion['primary']; $duplicate = $suggestion['duplicate']; ?>
@@ -49,6 +49,7 @@ $recentMerges = is_array($recentMerges ?? null) ? $recentMerges : [];
                             <div class="pickup-crm-duplicate-actions">
                                 <form method="post" action="<?= $e($basePath) ?>/dhl/pickupsheet/customers/merge" data-crm-merge-form data-keep-name="<?= $e($primary->displayName) ?>" data-merge-name="<?= $e($duplicate->displayName) ?>"><input type="hidden" name="_token" value="<?= $e($csrfToken) ?>"><input type="hidden" name="target_customer_key" value="<?= $e($primary->customerKey) ?>"><input type="hidden" name="source_customer_key" value="<?= $e($duplicate->customerKey) ?>"><button type="submit">Keep <?= $e($primary->displayName) ?></button></form>
                                 <form method="post" action="<?= $e($basePath) ?>/dhl/pickupsheet/customers/merge" data-crm-merge-form data-keep-name="<?= $e($duplicate->displayName) ?>" data-merge-name="<?= $e($primary->displayName) ?>"><input type="hidden" name="_token" value="<?= $e($csrfToken) ?>"><input type="hidden" name="target_customer_key" value="<?= $e($duplicate->customerKey) ?>"><input type="hidden" name="source_customer_key" value="<?= $e($primary->customerKey) ?>"><button type="submit">Keep <?= $e($duplicate->displayName) ?></button></form>
+                                <form class="pickup-crm-ignore-form" method="post" action="<?= $e($basePath) ?>/dhl/pickupsheet/customers/duplicates/dismiss" data-crm-dismiss-duplicate-form data-first-name="<?= $e($primary->displayName) ?>" data-second-name="<?= $e($duplicate->displayName) ?>"><input type="hidden" name="_token" value="<?= $e($csrfToken) ?>"><input type="hidden" name="first_customer_key" value="<?= $e($primary->customerKey) ?>"><input type="hidden" name="second_customer_key" value="<?= $e($duplicate->customerKey) ?>"><button type="submit" class="pickup-crm-ignore">Ignore</button></form>
                             </div>
                         </article>
                     <?php endforeach; ?>

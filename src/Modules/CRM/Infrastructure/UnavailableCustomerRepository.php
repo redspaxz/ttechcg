@@ -108,6 +108,16 @@ final class UnavailableCustomerRepository implements CustomerRepository
         throw new RuntimeException('Customer storage is unavailable.');
     }
 
+    public function dismissedDuplicatePairs(): array
+    {
+        throw new RuntimeException('Customer storage is unavailable.');
+    }
+
+    public function dismissDuplicate(string $firstCustomerKey, string $secondCustomerKey, string $actorId): void
+    {
+        throw new RuntimeException('Customer storage is unavailable.');
+    }
+
     public function rewardHistory(string $customerKey, int $limit, int $offset = 0): array
     {
         throw new RuntimeException('Customer storage is unavailable.');

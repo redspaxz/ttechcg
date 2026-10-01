@@ -30,6 +30,7 @@ final class MysqlBackupRepository implements BackupRepository
         'pickup_customer_reward_adjustments',
         'pickup_customer_aliases',
         'pickup_customer_merges',
+        'pickup_customer_duplicate_dismissals',
         'pickup_customer_activities',
         'pickup_crm_sync_state',
     ];

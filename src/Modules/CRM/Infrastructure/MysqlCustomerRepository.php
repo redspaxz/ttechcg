@@ -776,6 +776,25 @@ final class MysqlCustomerRepository implements CustomerRepository
         }
     }
 
+    public function dismissedDuplicatePairs(): array
+    {
+        $this->ensureSchema();
+        return array_map(
+            static fn (array $row): string => $row['first_customer_key'] . ':' . $row['second_customer_key'],
+            $this->connection->query('SELECT first_customer_key, second_customer_key FROM pickup_customer_duplicate_dismissals')->fetchAll(),
+        );
+    }
+
+    public function dismissDuplicate(string $firstCustomerKey, string $secondCustomerKey, string $actorId): void
+    {
+        $this->ensureSchema();
+        // A pair that is already ignored stays as it is.
+        $this->connection->prepare(
+            'INSERT IGNORE INTO pickup_customer_duplicate_dismissals (first_customer_key, second_customer_key, dismissed_by)
+             VALUES (:first_key, :second_key, :actor_id)',
+        )->execute(['first_key' => $firstCustomerKey, 'second_key' => $secondCustomerKey, 'actor_id' => $actorId]);
+    }
+
     public function rewardHistory(string $customerKey, int $limit, int $offset = 0): array
     {
         $this->ensureSchema();
@@ -1160,6 +1179,21 @@ final class MysqlCustomerRepository implements CustomerRepository
                 dismissed_at DATETIME NULL,
                 INDEX pickup_customer_merges_open_idx (undone_at, merged_at),
                 INDEX pickup_customer_merges_target_idx (target_customer_key)
+            ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci',
+        );
+        $this->connection->exec(
+            'CREATE TABLE IF NOT EXISTS pickup_customer_duplicate_dismissals (
+                id BIGINT UNSIGNED NOT NULL AUTO_INCREMENT PRIMARY KEY,
+                first_customer_key CHAR(64) NOT NULL,
+                second_customer_key CHAR(64) NOT NULL,
+                dismissed_by CHAR(24) NOT NULL,
+                dismissed_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+                UNIQUE INDEX pickup_customer_duplicate_dismissals_pair_idx (first_customer_key, second_customer_key),
+                INDEX pickup_customer_duplicate_dismissals_second_idx (second_customer_key),
+                CONSTRAINT pickup_customer_duplicate_dismissals_first_fk
+                    FOREIGN KEY (first_customer_key) REFERENCES pickup_customers(customer_key) ON DELETE CASCADE,
+                CONSTRAINT pickup_customer_duplicate_dismissals_second_fk
+                    FOREIGN KEY (second_customer_key) REFERENCES pickup_customers(customer_key) ON DELETE CASCADE
             ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci',
         );
         $this->connection->exec(

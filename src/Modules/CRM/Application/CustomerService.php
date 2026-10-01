@@ -167,8 +167,12 @@ final class CustomerService
             }
         }
         $candidates = [];
-        $consider = function (array $left, array $right) use (&$candidates): void {
-            $pairKey = strcmp($left['key'], $right['key']) < 0 ? $left['key'] . $right['key'] : $right['key'] . $left['key'];
+        $dismissed = array_flip($this->repository->dismissedDuplicatePairs());
+        $consider = function (array $left, array $right) use (&$candidates, $dismissed): void {
+            $pairKey = strcmp($left['key'], $right['key']) < 0 ? $left['key'] . ':' . $right['key'] : $right['key'] . ':' . $left['key'];
+            if (isset($dismissed[$pairKey])) {
+                return;
+            }
             if (!array_key_exists($pairKey, $candidates)) {
                 $match = $this->duplicateMatch($left, $right);
                 $candidates[$pairKey] = $match === null ? null : ['left' => $left, 'right' => $right] + $match;
@@ -532,6 +536,25 @@ final class CustomerService
             throw new InvalidArgumentException('Select a valid merge to ignore.');
         }
         $this->repository->dismissMerge((int) $mergeId, $actorId);
+    }
+
+    /** Marks two profiles as different customers, so Possible duplicate customers stops suggesting them. */
+    public function dismissDuplicate(string $firstCustomerKey, string $secondCustomerKey, string $actorId): void
+    {
+        if (preg_match('/^[a-f0-9]{24}$/', $actorId) !== 1) {
+            throw new InvalidArgumentException('The customer-data actor is invalid.');
+        }
+        if (preg_match('/^[a-f0-9]{64}$/', $firstCustomerKey) !== 1
+            || preg_match('/^[a-f0-9]{64}$/', $secondCustomerKey) !== 1
+            || hash_equals($firstCustomerKey, $secondCustomerKey)) {
+            throw new InvalidArgumentException('Select two different valid customer profiles to ignore.');
+        }
+        if ($this->find($firstCustomerKey) === null || $this->find($secondCustomerKey) === null) {
+            throw new InvalidArgumentException('One of the customer profiles no longer exists.');
+        }
+        $keys = [$firstCustomerKey, $secondCustomerKey];
+        sort($keys, SORT_STRING);
+        $this->repository->dismissDuplicate($keys[0], $keys[1], $actorId);
     }
 
     /** @param array<string, mixed> $input */
