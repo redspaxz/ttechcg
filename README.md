@@ -309,7 +309,7 @@ The login page, the dashboard, the backup page and every workspace page share th
 
 The login page shows "T&Tech Consulting Group" with "Cash Shipment Management Portal" on its own line underneath, separated by a thin horizontal line.
 
-Every Pickupsheet page, including sign-in, ends with a footer reading "© 2026 T&Tech Consulting Group. All rights reserved." The public site footer carries the same statement. The year is fixed text in `views/layouts/app.php`, so update it there when it should change. Printed sheets and reports have no footer.
+Every Pickupsheet page, including sign-in, has a footer reading "© {current year} T&Tech Consulting Group. All rights reserved." It is pinned to the bottom of the screen and stays in place while the page scrolls. The `<body>` of Pickupsheet pages carries the `pickup-app` class, which reserves the footer's height (`--pickup-footer-height`) as bottom padding so the footer never covers the end of a page. The public site footer carries the same statement in its normal place at the end of the page. In both, the year comes from `date('Y')` in `views/layouts/app.php`, so it changes automatically each year. Printed sheets and reports have no footer.
 
 ### AWB number reuse
 
