@@ -21,7 +21,7 @@ $analyticsPageView = $isPickupsheet ? 'disabled' : 'enabled';
     <meta name="robots" content="<?= $e($pageRobots) ?>">
     <title><?= $e($pageTitle ?? 'T&Tech Consulting Group') ?> | T&amp;Tech</title>
     <link rel="icon" href="<?= $e($assetBase) ?>/ttechcg-mark.svg" type="image/svg+xml">
-    <link rel="stylesheet" href="<?= $e($assetBase) ?>/styles.css?v=20261001-profile-divider">
+    <link rel="stylesheet" href="<?= $e($assetBase) ?>/styles.css?v=20261001-footer-privacy">
     <script src="<?= $e($assetBase) ?>/app.js?v=20261001-close-follow-up" defer></script>
     <script src="<?= $e($assetBase) ?>/analytics.js?v=20260825-security-hardening" defer></script>
 </head>
@@ -56,7 +56,7 @@ $analyticsPageView = $isPickupsheet ? 'disabled' : 'enabled';
 
     <?php if ($isPickupsheet): ?>
     <footer class="pickup-footer">
-        <p>© <?= $e(date('Y')) ?> T&amp;Tech Consulting Group. All rights reserved.</p>
+        <p>© <?= $e(date('Y')) ?> T&amp;Tech Consulting Group. All rights reserved. <span aria-hidden="true">&middot;</span> <a href="<?= $e($url('/privacy')) ?>">Privacy</a></p>
     </footer>
     <?php else: ?>
     <footer class="site-footer">
