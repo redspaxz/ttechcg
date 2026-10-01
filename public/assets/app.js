@@ -1382,27 +1382,3 @@ document.querySelector('.pickup-login-form')?.addEventListener('submit', (event)
     const input = event.target.querySelector('[data-password-input]');
     if (input) input.type = 'password';
 });
-
-// CRM: a pickup sheet opened from a customer profile returns to the same scroll position.
-const SCROLL_RETURN_KEY = 'pickup-customer-scroll';
-document.addEventListener('click', (event) => {
-    if (!event.target.closest?.('a[data-remember-scroll]')) return;
-    try {
-        sessionStorage.setItem(SCROLL_RETURN_KEY, JSON.stringify({ path: window.location.pathname, y: window.scrollY }));
-    } catch {
-        // Without storage the return link still opens the right page at the shipment history.
-    }
-});
-(() => {
-    let saved = null;
-    try {
-        saved = JSON.parse(sessionStorage.getItem(SCROLL_RETURN_KEY) || 'null');
-        sessionStorage.removeItem(SCROLL_RETURN_KEY);
-    } catch {
-        saved = null;
-    }
-    if (!saved || saved.path !== window.location.pathname || !Number.isFinite(saved.y)) return;
-    if (window.location.hash !== '#customer-shipments') return;
-    window.history.replaceState(window.history.state, '', window.location.pathname + window.location.search);
-    window.requestAnimationFrame(() => window.scrollTo(0, saved.y));
-})();

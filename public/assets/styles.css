@@ -2980,7 +2980,7 @@ button, a, input, select, textarea { -webkit-tap-highlight-color: transparent; }
 .pickup-customer-danger button { min-height: 44px; padding: 0 18px; border: 1px solid var(--dhl-red); background: #fff; color: var(--dhl-red); cursor: pointer; font: inherit; font-size: 0.74rem; font-weight: 850; }
 .pickup-customer-danger button:hover, .pickup-customer-danger button:focus-visible { background: var(--dhl-red); color: #fff; }
 .pickup-crm-directory,
-.pickup-customer-history { border: 1px solid rgba(69, 50, 0, 0.32); background: #fff; }
+.pickup-customer-history { border: 1px solid rgba(69, 50, 0, 0.32); background: #fff; scroll-margin-top: 16px; }
 .pickup-crm-directory > .pickup-card-heading,
 .pickup-crm-directory-content > .pickup-card-heading,
 .pickup-customer-history > .pickup-card-heading,
