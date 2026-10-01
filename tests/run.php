@@ -1554,6 +1554,7 @@ $assert(str_contains($jumpCloudLoginPage->body(), '<span class="pickup-sso-badge
 $assert(str_contains($jumpCloudLoginPage->body(), 'Or sign in with a local account') && str_contains($jumpCloudLoginPage->body(), 'autocomplete="current-password"'), 'The local credential form should remain available alongside JumpCloud.');
 $jumpCloudOnlyLoginPage = $jumpCloudOnlyAuthController->login(new Request('GET', '/dhl/pickupsheet/login'));
 $assert($jumpCloudOnlyLoginPage->status() === 200 && str_contains($jumpCloudOnlyLoginPage->body(), 'Continue with JumpCloud') && !str_contains($jumpCloudOnlyLoginPage->body(), 'autocomplete="current-password"'), 'Disabling local login should leave only the configured JumpCloud method visible.');
+$assert(!str_contains($jumpCloudOnlyLoginPage->body(), 'pickup-sso-badge') && str_contains($jumpCloudOnlyLoginPage->body(), 'Continue with JumpCloud'), 'The Recommended badge should only appear when another sign-in method is also enabled.');
 $disabledLocalLogin = $jumpCloudOnlyAuthController->authenticate(new Request('POST', '/dhl/pickupsheet/login', [], [
     '_token' => $pickupCsrf->token(),
     'username' => $recordsUsername,

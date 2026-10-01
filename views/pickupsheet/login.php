@@ -23,7 +23,7 @@ $e = static fn (mixed $value): string => htmlspecialchars((string) $value, ENT_Q
 
             <?php if (($jumpCloudEnabled ?? false) === true): ?>
                 <div class="pickup-sso-login">
-                    <span class="pickup-sso-badge">Recommended</span>
+                    <?php if (($localLoginEnabled ?? true) === true): ?><span class="pickup-sso-badge">Recommended</span><?php endif; ?>
                     <a class="button pickup-jumpcloud-button" href="<?= $e($basePath) ?>/dhl/pickupsheet/auth/jumpcloud"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M10 17l5-5-5-5"/><path d="M15 12H3"/><path d="M14 3h5a2 2 0 0 1 2 2v14a2 2 0 0 1-2 2h-5"/></svg><span class="pickup-jumpcloud-label">Continue with JumpCloud</span><span aria-hidden="true">&#8594;</span></a>
                     <small>Use your company JumpCloud account. Your name and approved group set your role automatically.</small>
                 </div>
