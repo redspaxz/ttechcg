@@ -2846,6 +2846,10 @@ $assert($printResponse->status() === 200, 'A direct pickup sheet should render f
 $assert(str_contains($printResponse->body(), 'print.css?v=20260925-report-charts-awb-reuse'), 'The print view should load its cache-safe external stylesheet.');
 $assert(str_contains($printResponse->body(), 'print.js?v=20260825-print-dialog'), 'The print view should load its CSP-compatible external behavior.');
 $assert(str_contains($printResponse->body(), 'data-print-pickup'), 'The print view should provide a manual print-dialog trigger.');
+$assert(str_contains($printResponse->body(), 'Back to submitted sheets') && !str_contains($printResponse->body(), 'Back to customer profile'), 'A print view opened from the records should return to the submitted sheets.');
+$crmPrintResponse = $pickupController->print(new Request('GET', '/dhl/pickupsheet/submissions/print', ['reference' => $savedReference, 'customer' => 'cust-print"<'], [], '', $recordsServer));
+$assert(str_contains($crmPrintResponse->body(), '/dhl/pickupsheet/customers/edit?customer=cust-print%22%3C">Back to customer profile</a>') && !str_contains($crmPrintResponse->body(), 'Back to submitted sheets'), 'A print view opened from a customer profile should return to that encoded customer profile.');
+$assert(str_contains((string) $readSource(dirname(__DIR__) . '/views/pickupsheet/_customer-shipments.php'), '/dhl/pickupsheet/submissions/print?reference='), 'Customer shipment references should open the pickup sheet print view.');
 $assert(!str_contains($printResponse->body(), 'onclick='), 'The print view should not rely on CSP-blocked inline event handlers.');
 $assert(!str_contains($printResponse->body(), '<style>'), 'The print view should not rely on CSP-blocked inline styles.');
 $assert(is_string($printScript) && str_contains($printScript, "document.addEventListener('DOMContentLoaded', autoPrint"), 'The print view should automatically trigger printing without waiting on the asynchronous Google tag.');
@@ -2974,7 +2978,7 @@ $assert(is_string($dhlAsset) && !str_contains($dhlAsset, '<text'), 'The disquali
 $partnerSources = $readSource(dirname(__DIR__) . '/public/assets/partners/README.md');
 $assert(is_string($partnerSources) && str_contains($partnerSources, 'www.dhl.com/content/dam/dhl/global/core/images/logos/dhl-logo.svg'), 'The official DHL artwork source should be documented.');
 $assert(!str_contains($home, 'href="/dhl/pickupsheet"'), 'Pickupsheet should not be discoverable from the public site chrome or homepage.');
-$assert(str_contains($home, 'styles.css?v=20261001-login-brand-lines'), 'Market-performance dashboard styles and prior Pickupsheet refinements should use a cache-safe stylesheet version.');
+$assert(str_contains($home, 'styles.css?v=20261001-dialog-result-only'), 'Market-performance dashboard styles and prior Pickupsheet refinements should use a cache-safe stylesheet version.');
 $assert(str_contains($home, 'app.js?v=20261001-login-brand-lines'), 'AJAX audit-log accordions and prior OWASP-aligned interactions should use a cache-safe script version.');
 $assert(str_contains($home, 'analytics.js?v=20260825-security-hardening'), 'The current consent-aware Google Analytics loader should render on every page.');
 $assert(str_contains($home, 'data-analytics-accept'), 'The site should offer an explicit analytics acceptance control.');

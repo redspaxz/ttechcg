@@ -16,7 +16,11 @@ $blankRows = max(0, $minimumRows - $pickupSheet->shipmentCount());
 ?>
 <div class="print-actions">
     <button type="button" data-print-pickup>Print / Save as PDF</button>
+    <?php if (($customerKey ?? '') !== ''): ?>
+    <a href="<?= $e($basePath) ?>/dhl/pickupsheet/customers/edit?customer=<?= $e(rawurlencode($customerKey)) ?>">Back to customer profile</a>
+    <?php else: ?>
     <a href="<?= $e($basePath) ?>/dhl/pickupsheet/submissions">Back to submitted sheets</a>
+    <?php endif; ?>
 </div>
 
 <main class="print-preview" aria-label="A4 pickup sheet preview">

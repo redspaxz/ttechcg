@@ -1165,6 +1165,7 @@ final class PickupsheetController
             'basePath' => $request->basePath,
             'assetBase' => $request->basePath . '/public/assets',
             'pickupSheet' => $pickupSheet,
+            'customerKey' => trim($request->queryString('customer')),
         ], 'layouts/print');
 
         return Response::html($body, 200, $this->privateHeaders());
