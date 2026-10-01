@@ -2291,7 +2291,7 @@ $invalidTabDashboard = $pickupController->dashboard(new Request('GET', '/dhl/pic
 $assert(str_contains($invalidTabDashboard->body(), 'data-dashboard-panel="market">') && !str_contains($invalidTabDashboard->body(), '"><script>'), 'An unknown tab value should fall back to market analysis without being reflected.');
 $assert(str_contains($adminDashboard->body(), 'id="dashboard-panel-reports"') && str_contains($adminDashboard->body(), 'action="/dhl/pickupsheet/dashboard/report" target="_blank"') && str_contains($adminDashboard->body(), 'name="period" value="90" checked') && substr_count($adminDashboard->body(), 'name="sections[]"') === 6, 'The Reports tab should offer a reporting period and six selectable report sections.');
 $fullReport = $pickupController->report(new Request('GET', '/dhl/pickupsheet/dashboard/report'));
-$assert($fullReport->status() === 200 && str_contains($fullReport->body(), 'Performance report') && str_contains($fullReport->body(), 'data-print-pickup') && str_contains($fullReport->body(), 'print.css?v=20261001-awb-no-underline'), 'An administrator should open a printable performance report in the A4 print layout.');
+$assert($fullReport->status() === 200 && str_contains($fullReport->body(), 'Performance report') && str_contains($fullReport->body(), 'data-print-pickup') && str_contains($fullReport->body(), 'print.css?v=20261001-checker-fit'), 'An administrator should open a printable performance report in the A4 print layout.');
 $assert(str_contains($fullReport->body(), '1. KPI summary and cash settlement') && str_contains($fullReport->body(), '6. Customer loyalty leaders') && str_contains($fullReport->body(), '(90 days)') && str_contains($fullReport->body(), 'New baseline'), 'A report without explicit sections should include every section for the default 90-day period.');
 $assert(str_contains($fullReport->body(), '<td>Total cash recorded</td><td class="is-number">14,000</td>') && str_contains($fullReport->body(), 'Confidential · Internal operational data'), 'The report should reuse dashboard KPI figures and carry an internal-data footer.');
 $filteredReport = $pickupController->report(new Request('GET', '/dhl/pickupsheet/dashboard/report', ['period' => '30', 'sections' => ['destinations', 'bogus', 'market']]));
@@ -2951,7 +2951,7 @@ $printResponse = $pickupController->print(new Request('GET', '/dhl/pickupsheet/s
 $printStyles = $readSource(dirname(__DIR__) . '/public/assets/print.css');
 $printScript = $readSource(dirname(__DIR__) . '/public/assets/print.js');
 $assert($printResponse->status() === 200, 'A direct pickup sheet should render for printing.');
-$assert(str_contains($printResponse->body(), 'print.css?v=20261001-awb-no-underline'), 'The print view should load its cache-safe external stylesheet.');
+$assert(str_contains($printResponse->body(), 'print.css?v=20261001-checker-fit'), 'The print view should load its cache-safe external stylesheet.');
 $assert(str_contains($printResponse->body(), 'print.js?v=20261001-print-on-click'), 'The print view should load its CSP-compatible external behavior.');
 $assert(!str_contains($printResponse->body(), 'data-print-auto'), 'The pickup sheet preview should open the print dialog only when the print button is clicked.');
 $assert(str_contains($printResponse->body(), 'data-print-pickup'), 'The print view should provide a manual print-dialog trigger.');
@@ -2961,6 +2961,11 @@ $assert(is_string($printStyles) && str_contains($printStyles, "color: #000;
     text-decoration: none;") && str_contains((string) $readSource(dirname(__DIR__) . '/public/assets/styles.css'), "color: var(--dhl-red);
     font-weight: 850;
     text-decoration: none;"), 'AWB tracking links should not be underlined inside their table cells.');
+$assert(is_string($printStyles) && str_contains($printStyles, '.paper-col-checker { width: 15%; }') && str_contains($printStyles, ".paper-shipment-table tbody td:nth-child(8) {
+    padding: 0.6mm 1mm;
+    font-size: 7pt;
+    line-height: 1.1;
+    white-space: normal;"), 'Long checker names should wrap inside the CHECK BY column instead of running into the border.');
 $assert(str_contains($printResponse->body(), 'Back to submitted sheets') && !str_contains($printResponse->body(), 'Back to customer profile'), 'A print view opened from the records should return to the submitted sheets.');
 $crmPrintResponse = $pickupController->print(new Request('GET', '/dhl/pickupsheet/submissions/print', ['reference' => $savedReference, 'customer' => 'cust-print"<', 'shipment_page' => '3', 'shipment_per_page' => '25', 'points_page' => '2', 'points_per_page' => '50'], [], '', $recordsServer));
 $assert(str_contains($crmPrintResponse->body(), '/dhl/pickupsheet/customers/edit?customer=cust-print%22%3C&amp;shipment_page=3&amp;points_page=2&amp;shipment_per_page=25&amp;points_per_page=50#customer-shipments">Back to customer profile</a>') && !str_contains($crmPrintResponse->body(), 'Back to submitted sheets'), 'A print view opened from a customer profile should return to the same encoded profile pages at the shipment history.');

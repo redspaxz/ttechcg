@@ -151,14 +151,22 @@ body { margin: 0; background: #5b5b5b; color: #151515; }
 }
 .pickup-awb-link:hover,
 .pickup-awb-link:focus-visible { text-decoration: underline; }
-.paper-col-consignor { width: 25.5%; }
+.paper-col-consignor { width: 23%; }
 .paper-col-awb { width: 16.5%; }
 .paper-col-destination { width: 9.5%; }
 .paper-col-amount { width: 13%; }
 .paper-col-pieces { width: 7%; }
 .paper-col-weight { width: 8%; }
 .paper-col-time { width: 8%; }
-.paper-col-checker { width: 12.5%; }
+.paper-col-checker { width: 15%; }
+/* Checker names can be long, so they wrap onto a second line in a smaller size instead of running into the border. */
+.paper-shipment-table tbody td:nth-child(8) {
+    padding: 0.6mm 1mm;
+    font-size: 7pt;
+    line-height: 1.1;
+    white-space: normal;
+    overflow-wrap: anywhere;
+}
 
 .paper-totals {
     display: grid;
