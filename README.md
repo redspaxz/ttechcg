@@ -4,6 +4,7 @@
 [![MySQL 8](https://img.shields.io/badge/MySQL-8-4479A1?logo=mysql&logoColor=white)](https://www.mysql.com)
 [![License](https://img.shields.io/badge/License-Internal-blue)](#)
 [![Status](https://img.shields.io/badge/Status-Production--ready-green)](#)
+[![Version](https://img.shields.io/badge/Version-1.0.0-informational)](#releases)
 
 A PHP 8.2 modular monolith that powers the T&Tech corporate website and the protected Pickupsheet operations workspace.
 
@@ -332,7 +333,7 @@ One organization should have one customer profile. The CRM enforces this in four
 
 **Renaming.** Renaming a customer updates the consignor on every existing shipment for that customer, on open, paid and deleted sheets. Matching ignores case, accents and surrounding spaces, and the confirmation says how many shipments changed. New sheets collapse repeated spaces in consignor names, and migration 020 collapses them on existing shipments and profiles, folding profiles that differed only by spacing. A spelling that differs in any other way, such as added punctuation, is a separate customer: merge it first so a rename covers its sheets too.
 
-**Reviewed merges.** Administrators see "Possible duplicate customers" on the CRM page:
+**Reviewed merges.** Administrators see "Possible duplicate customers" on the CRM page when there is at least one suggested pair; with no suggestions the card is not shown:
 
 - every profile is checked. Names are compared only within groups sharing their first or last three letters, after folding accents and expanding `co`, `corp`, `intl` and `ltd`
 - a pair needs a name-match score of at least 88. Names that differ in any number, such as "Douala Branch 1" and "Douala Branch 2", are never suggested or merged
@@ -355,7 +356,9 @@ Merge history is stored in `pickup_customer_merges`, with a JSON snapshot per me
 
 ### CRM operations
 
-**Profile layout.** A customer profile opens with a summary line under the name (status, owner, next follow-up with an Overdue badge, last shipment) and Call / Email buttons, then Customer details (Organization, Relationship, Primary contact), Activity, shipment figures and history, Reward points, and, for administrators, Delete customer. Activity shows the latest 10 entries with a "Show all" link. Reward points have one paginated Points history of bonuses and redemptions showing who made each change (migration 023 stores the name; older entries fall back to the matching account), and the adjustment form sits behind "Adjust points". Edit details shows only the form, straight under the heading.
+**Profile layout.** A customer profile opens with a summary line under the name (status, owner, next follow-up with an Overdue badge, last shipment) and Call / Email buttons, then Customer details (Organization, Relationship, Primary contact), Activity, shipment figures and history, Reward points, and, for administrators, Delete customer. Activity shows the latest 10 entries with a "Show all" link. Reward points have one paginated Points history of bonuses and redemptions showing who made each change (migration 023 stores the name; older entries fall back to the matching account), and the adjustment form sits behind "Adjust points". Edit details shows only the form, straight under the heading. A thin divider separates the name, summary line and quick actions from the metrics cards below.
+
+**Customer IDs.** Every profile has a readable ID: its database ID padded to six digits, such as `000042`, shown on the profile, in the directory, and in the Excel export. Directory search finds a customer by `000042` or `42`, and still accepts the older `CUS-000042` form found in exports made before version 1.0.0. Formatting and parsing live in `CustomerProfile::referenceFor()` and `CustomerProfile::idFromReference()`.
 
 **Shipment history links.** Clicking a pickup sheet reference in a customer's Recent shipments table opens that sheet's print view. The link carries the customer key and the profile's current shipment and points page numbers and page sizes. "Back to customer profile" returns to the same pages and lands on the Recent shipments section (`#customer-shipments`). The print controller rebuilds the return link itself and drops page values that are not valid.
 
@@ -496,6 +499,22 @@ Before opening a pull request:
 5. describe the business impact and verification steps in the pull request
 
 ## Project status and roadmap
+
+### Releases
+
+| Version | Date | Git tag | Summary |
+|---|---|---|---|
+| 1.0.0 | 2026-10-01 | `v1.0.0` | First versioned release of the corporate website and the Pickupsheet workspace |
+
+**1.0.0** brings together everything described in this README, including:
+
+- pickup sheet entry, validation, AWB reuse protection, payment and receipt confirmation, and the A4 print view with a PAID watermark
+- the tabbed administrator dashboard, market-performance analysis and printable performance reports
+- the CRM: customer profiles with six-digit customer IDs, activity and follow-ups with Close follow-up, owners, Excel export, duplicate prevention, reviewed merges with Ignore and undo, and erasure
+- loyalty points, encrypted backup and restore, local sign-in with two-factor authentication, and JumpCloud SSO
+- one colour system across the login page, dashboard and workspace pages, and a footer with the current year
+
+Later releases are tagged `vMAJOR.MINOR.PATCH` and listed here. To check out this release, run `git checkout v1.0.0`.
 
 ### Current status
 
