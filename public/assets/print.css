@@ -43,6 +43,28 @@ body { margin: 0; background: #5b5b5b; color: #151515; }
     color: #000;
     box-shadow: 0 20px 65px rgba(0, 0, 0, 0.34);
     text-transform: uppercase;
+    position: relative;
+}
+.paper-paid-watermark {
+    position: absolute;
+    top: 50%;
+    left: 50%;
+    z-index: 2;
+    padding: 2mm 10mm;
+    border: 3mm solid rgba(11, 140, 70, 0.32);
+    border-radius: 6mm;
+    color: rgba(11, 140, 70, 0.32);
+    font-family: Arial, Helvetica, sans-serif;
+    font-size: 150pt;
+    font-weight: 900;
+    letter-spacing: 0.08em;
+    line-height: 1;
+    white-space: nowrap;
+    transform: translate(-50%, -50%) rotate(-35deg);
+    pointer-events: none;
+    user-select: none;
+    print-color-adjust: exact;
+    -webkit-print-color-adjust: exact;
 }
 
 .paper-header {

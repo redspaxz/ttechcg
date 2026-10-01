@@ -25,6 +25,7 @@ $blankRows = max(0, $minimumRows - $pickupSheet->shipmentCount());
 
 <main class="print-preview" aria-label="A4 pickup sheet preview">
 <article class="print-sheet">
+    <?php if ($pickupSheet->isPaid()): ?><div class="paper-paid-watermark">PAID</div><?php endif; ?>
     <header class="paper-header">
         <div class="paper-identity">
             <h1>PICK-UP SHEET</h1>
