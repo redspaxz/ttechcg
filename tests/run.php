@@ -2532,6 +2532,7 @@ $logActivity = $customerController->addActivity(new Request('POST', '/dhl/pickup
 $activityProfilePage = $customerController->edit(new Request('GET', '/dhl/pickupsheet/customers/edit', ['customer' => $customerKey]));
 $assert($logActivity->status() === 303 && str_contains($activityProfilePage->body(), 'Quarterly review with the customer.') && str_contains($activityProfilePage->body(), 'Activity logged.'), 'Administrators should log contact activity from the customer profile.');
 $assert(str_contains($activityProfilePage->body(), 'data-crm-close-follow-up-form data-follow-up-date="2026-08-30"') && str_contains($activityProfilePage->body(), '/dhl/pickupsheet/customers/follow-up/close'), 'A scheduled follow-up should offer a Close follow-up button.');
+$assert(str_contains((string) $readSource(dirname(__DIR__) . '/public/assets/styles.css'), '.pickup-customer-profile-heading.is-profile { align-items: center; margin-bottom: 20px; padding-bottom: 20px; border-bottom: 1px solid rgba(69, 50, 0, 0.22); }'), 'A divider line should separate the customer name details from the metrics cards.');
 $invalidCloseCsrf = $customerController->closeFollowUp(new Request('POST', '/dhl/pickupsheet/customers/follow-up/close', [], [
     '_token' => 'invalid-token',
     'customer_key' => $customerKey,
@@ -3048,7 +3049,7 @@ $partnerSources = $readSource(dirname(__DIR__) . '/public/assets/partners/README
 $assert(is_string($partnerSources) && str_contains($partnerSources, 'www.dhl.com/content/dam/dhl/global/core/images/logos/dhl-logo.svg'), 'The official DHL artwork source should be documented.');
 $assert(!str_contains($home, 'href="/dhl/pickupsheet"'), 'Pickupsheet should not be discoverable from the public site chrome or homepage.');
 $assert(str_contains($home, '© ' . date('Y') . ' T&amp;Tech Consulting Group. All rights reserved.') && !str_contains($home, 'class="pickup-footer"'), 'The public site footer should carry the copyright statement with the current year.');
-$assert(str_contains($home, 'styles.css?v=20261001-close-follow-up'), 'Market-performance dashboard styles and prior Pickupsheet refinements should use a cache-safe stylesheet version.');
+$assert(str_contains($home, 'styles.css?v=20261001-profile-divider'), 'Market-performance dashboard styles and prior Pickupsheet refinements should use a cache-safe stylesheet version.');
 $assert(str_contains($home, 'app.js?v=20261001-close-follow-up'), 'AJAX audit-log accordions and prior OWASP-aligned interactions should use a cache-safe script version.');
 $assert(str_contains($home, 'analytics.js?v=20260825-security-hardening'), 'The current consent-aware Google Analytics loader should render on every page.');
 $assert(str_contains($home, 'data-analytics-accept'), 'The site should offer an explicit analytics acceptance control.');

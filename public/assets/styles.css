@@ -3159,7 +3159,8 @@ button, a, input, select, textarea { -webkit-tap-highlight-color: transparent; }
 /* Customer profile: header, at-a-glance strip, section navigation, and customer IDs */
 .pickup-customer-id { display: inline-flex; align-items: center; padding: 3px 8px; border-radius: 6px; background: #f3efe2; color: #493800; font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace; font-size: 0.72rem; font-weight: 700; letter-spacing: 0.02em; white-space: nowrap; }
 .pickup-crm-id-cell { white-space: nowrap; }
-.pickup-customer-profile-heading.is-profile { align-items: center; margin-bottom: 20px; }
+/* A divider separates the customer's name and details from the metrics cards below. */
+.pickup-customer-profile-heading.is-profile { align-items: center; margin-bottom: 20px; padding-bottom: 20px; border-bottom: 1px solid rgba(69, 50, 0, 0.22); }
 .pickup-profile-identity { display: flex; align-items: center; gap: 18px; min-width: 0; }
 .pickup-profile-identity > div { min-width: 0; }
 .pickup-profile-avatar { display: grid; flex: 0 0 64px; width: 64px; height: 64px; place-items: center; border-radius: 50%; background: #241b00; color: #ffcc00; font-size: 1.35rem; font-weight: 850; letter-spacing: 0.02em; }
