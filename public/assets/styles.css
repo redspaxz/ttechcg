@@ -3318,6 +3318,8 @@ button, a, input, select, textarea { -webkit-tap-highlight-color: transparent; }
 /* Login page: centred card on small screens; the welcome panel stays brief */
 /* Login: the portal name is set at the same size as the Welcome back heading. */
 .pickup-login-shell:not(.pickup-mfa-shell) .pickup-login-brand { display: block; max-width: 560px; color: #111; font-size: clamp(1.7rem, 3vw, 2.2rem); font-weight: 850; letter-spacing: -0.035em; line-height: 1.12; text-align: center; text-wrap: balance; }
+/* Login: a thin line separates the company name from the portal name. */
+.pickup-login-shell:not(.pickup-mfa-shell) .pickup-login-brand .pickup-login-brand-portal { margin-top: 12px; padding-top: 12px; border-top: 1px solid #c4bca6; }
 @media (max-width: 960px) {
     .pickup-login-welcome { gap: 24px; }
 }
