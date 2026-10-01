@@ -2010,6 +2010,7 @@ $assert(!str_contains($operatorPrint->body(), 'paper-paid-watermark'), 'An unpai
 $operatorExport = $pickupController->export(new Request('GET', '/dhl/pickupsheet/submissions/export', ['reference' => $savedReference], [], '', $operatorServer));
 $operatorSubmissions = $pickupController->submissions(new Request('GET', '/dhl/pickupsheet/submissions', [], [], '', $operatorServer));
 $assert(str_contains($operatorSubmissions->body(), 'data-status="open">Open</small>') && !str_contains($operatorSubmissions->body(), 'data-status="open">Closed</small>'), 'Unpaid pickup sheets should keep the Open status on Submitted sheets.');
+$assert(substr_count($operatorSubmissions->body(), 'placeholder="As shown on the receipt"') >= 2 && !str_contains($operatorSubmissions->body(), 'e.g. RCP-123456'), 'The Confirm payment receipt number and amount fields should show the same sample text.');
 $assert(str_contains((string) $readSource(dirname(__DIR__) . '/public/assets/styles.css'), '.pickup-record-status[data-status="paid"] { border-color: #8c8c8c; background: #ededed; color: #262626; }'), 'The Closed status badge should be monochrome on a light gray background.');
 $assert($operatorCreate->status() === 200 && $operatorSubmissions->status() === 200, 'An operator should be able to enter and view pickup records.');
 $assert($operatorPrint->status() === 200 && $operatorExport->status() === 200, 'An operator should print pickup-sheet PDFs and export Excel files.');
