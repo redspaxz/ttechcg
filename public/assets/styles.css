@@ -3318,3 +3318,7 @@ button, a, input, select, textarea { -webkit-tap-highlight-color: transparent; }
     .pickup-login-welcome ul { gap: 14px; }
     .pickup-login-welcome h2 { font-size: 1.9rem; }
 }
+
+/* Pickupsheet footer: a fixed copyright line under every workspace and sign-in page */
+.pickup-footer { padding: 18px 16px calc(18px + env(safe-area-inset-bottom, 0px)); border-top: 1px solid rgba(69, 50, 0, 0.16); background: var(--pickup-ground); color: #655000; font-size: 0.72rem; font-weight: 700; text-align: center; }
+.pickup-footer p { margin: 0; }

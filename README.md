@@ -227,7 +227,7 @@ Encrypted application-data backup and restore with transactional safety checks.
 | Shipment validation | server-side recalculation, AWB, value, weight, destination checks | Implemented |
 | Workflow control | open/paid/delete lifecycle and audit logging | Implemented |
 | Search and listings | paginated searchable submissions and AJAX fallback | Implemented |
-| Printing and export | A4 print view and native XLSX export | Implemented |
+| Printing and export | A4 print view with PAID watermark, and native XLSX export | Implemented |
 | CRM | customer profiles, activity log, owners, follow-up filters, Excel export, duplicate prevention, merge and undo, erasure | Implemented |
 | Loyalty | point balances, lifetime totals, tiers, adjustments | Implemented |
 | Dashboard | tabbed KPIs, market performance, operational metrics, user activity, security log | Implemented |
@@ -269,11 +269,47 @@ The Reports tab builds a printable A4 report at `/dhl/pickupsheet/dashboard/repo
 - periods: 30, 90 (default), 180 or 365 days, each compared with the preceding period of the same length
 - sections: KPI summary and cash settlement, period-over-period market performance, 12-month activity trend, destination mix, top 10 senders, and customer loyalty leaders
 - no section selected, or only invalid values, produces the full report; unsupported periods fall back to 90 days
-- the report opens in the print layout with Print / Save as PDF and shows the reporting dates, the preparer and the generation time
+- the report opens in the print layout with Print / Save as PDF and shows the reporting dates, the preparer and the generation time. Unlike the pickup sheet preview, the report opens the browser print dialog as soon as it loads; its button carries `data-print-auto`
 - each section has a server-rendered SVG chart above its table: a paid/unpaid share bar, latest-vs-previous bars for each market metric on its own scale, monthly shipment columns and a separate monthly cash line (never a dual axis), and ranked bars for destinations, senders and loyalty points. Charts need no JavaScript, print in colour, carry hover tooltips and legends, and the tables stay as the accessible table view. Chart markup is built in `src/Modules/Pickupsheet/UI/ReportCharts.php`
 - a new `report` permission restricts it to the `admin` role, and each generation is recorded in the security log as records access with action `report`
 
 Cash settlement always covers the last 3 months. Trend, destination, sender and repeat-sender figures always cover a rolling 12 months. The report labels these bases.
+
+### Payment and receipt confirmation
+
+Marking a sheet paid and correcting its receipt number both happen in a modal on Submitted sheets. Each modal asks a single-use security question loaded from the server when it opens.
+
+- after a successful save, the modal shows only the result: a tick, the title ("Payment confirmed" or "Receipt number updated"), the message and a Close button. The form fields, the security question and the form buttons are hidden
+- a failed save shows the error with Try again, which brings the form back
+- closing the modal after a successful save reloads the list so the sheet shows its new state
+
+The form and result panel are hidden with the `hidden` attribute. Their `display: grid` rules would override it, so `styles.css` keeps explicit `form[hidden]` and `.pickup-payment-result[hidden]` rules.
+
+### Pickup sheet print view
+
+`/dhl/pickupsheet/submissions/print?reference=…` shows the A4 pickup sheet preview.
+
+- the preview does not open the print dialog by itself. It opens only when Print / Save as PDF is clicked (`public/assets/print.js`)
+- a paid sheet shows a large green diagonal "PAID" watermark across the sheet. It is semi-transparent so the shipment details stay readable, and it prints and saves to PDF with the sheet. Unpaid sheets have no watermark
+- the back link depends on where the sheet was opened. From Submitted sheets it reads "Back to submitted sheets". From a customer profile it reads "Back to customer profile" (see [CRM operations](#crm-operations))
+
+The print layout loads `print.css` and `print.js` with their own `?v=` versions in `views/layouts/print.php`. Update those and the matching assertions in `tests/run.php` after changing either file.
+
+### Colour system
+
+Pickupsheet uses the 60-30-10 rule, with tokens defined at the top of `public/assets/styles.css`:
+
+| Share | Token | Colour | Used for |
+|---|---|---|---|
+| 60% | `--pickup-ground`, `--pickup-surface` | off-white `#faf8f2`, white | page backgrounds and cards |
+| 30% | `--pickup-structure` with `--pickup-structure-ink` | DHL yellow `#ffcc00` with dark brown `#241b00` text | the sticky header, every table header row, the active dashboard tab, the login side panel |
+| 10% | `--pickup-accent` | DHL red `#d40511` | buttons (including Continue with JumpCloud), badges, alerts, the enabled sign-in method toggle, highlight lines |
+
+The login page, the dashboard, the backup page and every workspace page share these tokens. Body text uses the app's browns (`#241b00`, `#493800`, `#655000`), and status colours are green `#0b633a`, red `#d40511` and amber `#8a5a00`. Card subheadings are brown rather than red, which keeps red for actions and alerts. Use the tokens in new styles instead of new colour values.
+
+The login page shows "T&Tech Consulting Group" with "Cash Shipment Management Portal" on its own line underneath, separated by a thin horizontal line.
+
+Every Pickupsheet page, including sign-in, ends with a footer reading "© 2026 T&Tech Consulting Group. All rights reserved." The public site footer carries the same statement. The year is fixed text in `views/layouts/app.php`, so update it there when it should change. Printed sheets and reports have no footer.
 
 ### AWB number reuse
 
@@ -319,6 +355,8 @@ Merge history is stored in `pickup_customer_merges`, with a JSON snapshot per me
 ### CRM operations
 
 **Profile layout.** A customer profile opens with a summary line under the name (status, owner, next follow-up with an Overdue badge, last shipment) and Call / Email buttons, then Customer details (Organization, Relationship, Primary contact), Activity, shipment figures and history, Reward points, and, for administrators, Delete customer. Activity shows the latest 10 entries with a "Show all" link. Reward points have one paginated Points history of bonuses and redemptions showing who made each change (migration 023 stores the name; older entries fall back to the matching account), and the adjustment form sits behind "Adjust points". Edit details shows only the form, straight under the heading.
+
+**Shipment history links.** Clicking a pickup sheet reference in a customer's Recent shipments table opens that sheet's print view. The link carries the customer key and the profile's current shipment and points page numbers and page sizes. "Back to customer profile" returns to the same pages and lands on the Recent shipments section (`#customer-shipments`). The print controller rebuilds the return link itself and drops page values that are not valid.
 
 **Activity and follow-ups.** The Activity section on a customer profile logs calls, visits, emails, meetings and notes with a date and summary (no future dates). The same form sets the next follow-up: change it to reschedule, or clear it to close the follow-up. Anyone with `crm_update` can log activity. The "Follow-ups due" figure on the CRM page links to the matching filtered list.
 

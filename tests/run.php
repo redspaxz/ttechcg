@@ -1623,6 +1623,7 @@ $lockedPickup = $pickupController->index(new Request('GET', '/dhl/pickupsheet', 
 $assert($lockedPickup->status() === 302 && ($lockedPickup->headers()['Location'] ?? '') === '/dhl/pickupsheet/login', 'Pickupsheet should redirect unauthenticated users to its login portal.');
 $loginPage = $pickupAuthController->login(new Request('GET', '/dhl/pickupsheet/login'));
 $assert($loginPage->status() === 200 && str_contains($loginPage->body(), 'Welcome back.'), 'The Pickupsheet login portal should render directly.');
+$assert(str_contains($loginPage->body(), '<footer class="pickup-footer">') && str_contains($loginPage->body(), '© 2026 T&amp;Tech Consulting Group. All rights reserved.') && !str_contains($loginPage->body(), 'class="site-footer"'), 'Pickupsheet pages should show the static copyright footer instead of the public site footer.');
 $assert(str_contains($loginPage->body(), 'autocomplete="current-password"'), 'The login portal should expose password-manager-compatible fields.');
 $assert(!str_contains($loginPage->body(), 'class="site-header"') && !str_contains($loginPage->body(), 'class="site-footer"'), 'Pickupsheet pages should omit the corporate header and footer.');
 $assert(!str_contains($loginPage->body(), 'data-analytics-consent'), 'The Analytics consent panel should not interrupt the operational Pickupsheet shell.');
@@ -2986,7 +2987,8 @@ $assert(is_string($dhlAsset) && !str_contains($dhlAsset, '<text'), 'The disquali
 $partnerSources = $readSource(dirname(__DIR__) . '/public/assets/partners/README.md');
 $assert(is_string($partnerSources) && str_contains($partnerSources, 'www.dhl.com/content/dam/dhl/global/core/images/logos/dhl-logo.svg'), 'The official DHL artwork source should be documented.');
 $assert(!str_contains($home, 'href="/dhl/pickupsheet"'), 'Pickupsheet should not be discoverable from the public site chrome or homepage.');
-$assert(str_contains($home, 'styles.css?v=20261001-palette-60-30-10'), 'Market-performance dashboard styles and prior Pickupsheet refinements should use a cache-safe stylesheet version.');
+$assert(str_contains($home, '© 2026 T&amp;Tech Consulting Group. All rights reserved.') && !str_contains($home, 'class="pickup-footer"'), 'The public site footer should carry the static copyright statement.');
+$assert(str_contains($home, 'styles.css?v=20261001-pickup-footer'), 'Market-performance dashboard styles and prior Pickupsheet refinements should use a cache-safe stylesheet version.');
 $assert(str_contains($home, 'app.js?v=20261001-crm-shipments-return'), 'AJAX audit-log accordions and prior OWASP-aligned interactions should use a cache-safe script version.');
 $assert(str_contains($home, 'analytics.js?v=20260825-security-hardening'), 'The current consent-aware Google Analytics loader should render on every page.');
 $assert(str_contains($home, 'data-analytics-accept'), 'The site should offer an explicit analytics acceptance control.');

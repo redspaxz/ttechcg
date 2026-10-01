@@ -21,7 +21,7 @@ $analyticsPageView = $isPickupsheet ? 'disabled' : 'enabled';
     <meta name="robots" content="<?= $e($pageRobots) ?>">
     <title><?= $e($pageTitle ?? 'T&Tech Consulting Group') ?> | T&amp;Tech</title>
     <link rel="icon" href="<?= $e($assetBase) ?>/ttechcg-mark.svg" type="image/svg+xml">
-    <link rel="stylesheet" href="<?= $e($assetBase) ?>/styles.css?v=20261001-palette-60-30-10">
+    <link rel="stylesheet" href="<?= $e($assetBase) ?>/styles.css?v=20261001-pickup-footer">
     <script src="<?= $e($assetBase) ?>/app.js?v=20261001-crm-shipments-return" defer></script>
     <script src="<?= $e($assetBase) ?>/analytics.js?v=20260825-security-hardening" defer></script>
 </head>
@@ -54,7 +54,11 @@ $analyticsPageView = $isPickupsheet ? 'disabled' : 'enabled';
         <?= $content ?>
     </main>
 
-    <?php if (!$isPickupsheet): ?>
+    <?php if ($isPickupsheet): ?>
+    <footer class="pickup-footer">
+        <p>© 2026 T&amp;Tech Consulting Group. All rights reserved.</p>
+    </footer>
+    <?php else: ?>
     <footer class="site-footer">
         <div class="container footer-top">
             <div class="footer-statement">
@@ -75,7 +79,7 @@ $analyticsPageView = $isPickupsheet ? 'disabled' : 'enabled';
                 <a href="<?= $e($url('/privacy')) ?>">Privacy</a>
                 <button class="footer-link-button" type="button" data-analytics-settings>Cookie settings</button>
             </nav>
-            <p>© <?= $e(date('Y')) ?> T&amp;Tech Consulting Group</p>
+            <p>© 2026 T&amp;Tech Consulting Group. All rights reserved.</p>
         </div>
     </footer>
 
