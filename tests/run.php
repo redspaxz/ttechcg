@@ -1550,6 +1550,7 @@ $jumpCloudPickupController = new PickupsheetController(
 );
 $jumpCloudLoginPage = $jumpCloudAuthController->login(new Request('GET', '/dhl/pickupsheet/login'));
 $assert($jumpCloudLoginPage->status() === 200 && str_contains($jumpCloudLoginPage->body(), 'Continue with JumpCloud'), 'Configured Pickupsheet login should offer JumpCloud SSO.');
+$assert(str_contains($jumpCloudLoginPage->body(), '<span class="pickup-sso-badge">Recommended</span>') && str_contains($jumpCloudLoginPage->body(), '<span class="pickup-jumpcloud-label">Continue with JumpCloud</span>') && str_contains($jumpCloudLoginPage->body(), '<form class="pickup-login-form is-secondary"') && preg_match('/\.pickup-jumpcloud-button \{[^}]*background: #ffcc00;/', (string) $readSource(dirname(__DIR__) . '/public/assets/styles.css')) === 1, 'JumpCloud should be highlighted as the recommended sign-in path, with the local password form made secondary.');
 $assert(str_contains($jumpCloudLoginPage->body(), 'Or sign in with a local account') && str_contains($jumpCloudLoginPage->body(), 'autocomplete="current-password"'), 'The local credential form should remain available alongside JumpCloud.');
 $jumpCloudOnlyLoginPage = $jumpCloudOnlyAuthController->login(new Request('GET', '/dhl/pickupsheet/login'));
 $assert($jumpCloudOnlyLoginPage->status() === 200 && str_contains($jumpCloudOnlyLoginPage->body(), 'Continue with JumpCloud') && !str_contains($jumpCloudOnlyLoginPage->body(), 'autocomplete="current-password"'), 'Disabling local login should leave only the configured JumpCloud method visible.');
@@ -2970,8 +2971,8 @@ $assert(is_string($dhlAsset) && !str_contains($dhlAsset, '<text'), 'The disquali
 $partnerSources = $readSource(dirname(__DIR__) . '/public/assets/partners/README.md');
 $assert(is_string($partnerSources) && str_contains($partnerSources, 'www.dhl.com/content/dam/dhl/global/core/images/logos/dhl-logo.svg'), 'The official DHL artwork source should be documented.');
 $assert(!str_contains($home, 'href="/dhl/pickupsheet"'), 'Pickupsheet should not be discoverable from the public site chrome or homepage.');
-$assert(str_contains($home, 'styles.css?v=20261001-login-brand'), 'Market-performance dashboard styles and prior Pickupsheet refinements should use a cache-safe stylesheet version.');
-$assert(str_contains($home, 'app.js?v=20261001-login-brand'), 'AJAX audit-log accordions and prior OWASP-aligned interactions should use a cache-safe script version.');
+$assert(str_contains($home, 'styles.css?v=20261001-jumpcloud-primary'), 'Market-performance dashboard styles and prior Pickupsheet refinements should use a cache-safe stylesheet version.');
+$assert(str_contains($home, 'app.js?v=20261001-jumpcloud-primary'), 'AJAX audit-log accordions and prior OWASP-aligned interactions should use a cache-safe script version.');
 $assert(str_contains($home, 'analytics.js?v=20260825-security-hardening'), 'The current consent-aware Google Analytics loader should render on every page.');
 $assert(str_contains($home, 'data-analytics-accept'), 'The site should offer an explicit analytics acceptance control.');
 $assert(str_contains($home, 'data-analytics-decline'), 'The site should offer an explicit analytics decline control.');

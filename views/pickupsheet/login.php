@@ -23,14 +23,15 @@ $e = static fn (mixed $value): string => htmlspecialchars((string) $value, ENT_Q
 
             <?php if (($jumpCloudEnabled ?? false) === true): ?>
                 <div class="pickup-sso-login">
-                    <a class="button button-dark pickup-jumpcloud-button" href="<?= $e($basePath) ?>/dhl/pickupsheet/auth/jumpcloud">Continue with JumpCloud <span aria-hidden="true">&#8594;</span></a>
-                    <small>Your JumpCloud name and approved group set your account and role.</small>
+                    <span class="pickup-sso-badge">Recommended</span>
+                    <a class="button pickup-jumpcloud-button" href="<?= $e($basePath) ?>/dhl/pickupsheet/auth/jumpcloud"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M10 17l5-5-5-5"/><path d="M15 12H3"/><path d="M14 3h5a2 2 0 0 1 2 2v14a2 2 0 0 1-2 2h-5"/></svg><span class="pickup-jumpcloud-label">Continue with JumpCloud</span><span aria-hidden="true">&#8594;</span></a>
+                    <small>Use your company JumpCloud account. Your name and approved group set your role automatically.</small>
                 </div>
             <?php endif; ?>
 
             <?php if (($jumpCloudEnabled ?? false) === true && ($localLoginEnabled ?? true) === true): ?><div class="pickup-login-divider"><span>Or sign in with a local account</span></div><?php endif; ?>
             <?php if (($localLoginEnabled ?? true) === true): ?>
-                <form class="pickup-login-form" method="post" action="<?= $e($basePath) ?>/dhl/pickupsheet/login">
+                <form class="pickup-login-form<?= ($jumpCloudEnabled ?? false) === true ? ' is-secondary' : '' ?>" method="post" action="<?= $e($basePath) ?>/dhl/pickupsheet/login">
                     <input type="hidden" name="_token" value="<?= $e($csrfToken) ?>">
                     <label><span>Email or username</span><input name="username" value="<?= $e($username) ?>" maxlength="100" autocomplete="username" autocapitalize="none" spellcheck="false" autofocus required placeholder="name@company.com"></label>
                     <label><span>Password</span><span class="pickup-login-password"><input type="password" name="password" maxlength="128" autocomplete="current-password" required data-password-input><button class="pickup-login-reveal" type="button" data-password-toggle aria-pressed="false" aria-label="Show password" hidden>Show</button></span></label>
