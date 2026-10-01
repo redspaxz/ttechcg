@@ -2475,7 +2475,8 @@ button, a, input, select, textarea { -webkit-tap-highlight-color: transparent; }
 .pickup-record-overview > span:not(.pickup-record-reference) { display: grid; gap: 5px; color: #352900; font-size: 0.78rem; }
 .pickup-record-reference { display: grid; gap: 7px; color: var(--dhl-red); font-size: 0.82rem; font-weight: 850; overflow-wrap: anywhere; }
 .pickup-record-status { width: fit-content; padding: 4px 7px; border: 1px solid rgba(69, 50, 0, 0.3); color: #655000; font-size: 0.57rem; letter-spacing: 0.08em; text-transform: uppercase; }
-.pickup-record-status[data-status="paid"] { border-color: #16794b; background: #e6f7ed; color: #0b633a; }
+/* A closed (paid) sheet is finished, so its badge is plain monochrome gray rather than a status colour. */
+.pickup-record-status[data-status="paid"] { border-color: #8c8c8c; background: #ededed; color: #262626; }
 .pickup-record-receipt { color: #655000; font-size: 0.62rem; font-weight: 750; letter-spacing: 0; text-transform: none; overflow-wrap: anywhere; }
 .pickup-record-overview > strong { justify-self: end; font-size: 0.94rem; white-space: nowrap; }
 .pickup-record-details { border-top: 1px solid rgba(69, 50, 0, 0.2); }
