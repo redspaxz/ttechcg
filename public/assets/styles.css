@@ -3240,3 +3240,38 @@ button, a, input, select, textarea { -webkit-tap-highlight-color: transparent; }
 @media (max-width: 420px) {
     .pickup-crm-directory-table tbody tr { grid-template-columns: 1fr; }
 }
+
+/* Customer profile: Recent shipments fits its card with no horizontal scroll */
+.pickup-customer-history-content { padding: 5px; }
+.pickup-shipments-table-wrap { overflow: visible; }
+.pickup-shipments-table-wrap .pickup-shipments-table { width: 100%; min-width: 0; table-layout: fixed; border-collapse: collapse; }
+.pickup-shipments-table .col-date { width: 15%; }
+.pickup-shipments-table .col-reference { width: 27%; }
+.pickup-shipments-table .col-awb { width: 18%; }
+.pickup-shipments-table .col-destination { width: 12%; }
+.pickup-shipments-table .col-amount { width: 16%; }
+.pickup-shipments-table .col-status { width: 12%; }
+.pickup-customer-history .pickup-shipments-table th,
+.pickup-customer-history .pickup-shipments-table td { padding: 10px 10px; font-size: 0.78rem; line-height: 1.4; overflow-wrap: anywhere; vertical-align: middle; }
+.pickup-customer-history .pickup-shipments-table th { font-size: 0.6rem; white-space: nowrap; }
+.pickup-shipments-table td a { font-variant-numeric: tabular-nums; }
+.pickup-shipments-table .pickup-awb-expired { white-space: normal; }
+.pickup-shipments-table .pickup-awb-expired small { display: block; width: fit-content; margin: 3px 0 0; font-size: 0.6rem; white-space: nowrap; }
+.pickup-shipments-amount { color: #241b00 !important; font-weight: 750; font-variant-numeric: tabular-nums; white-space: nowrap; }
+.pickup-shipment-status { display: inline-flex; padding: 3px 8px; border-radius: 999px; background: #f3efe2; color: #655000; font-size: 0.6rem; font-weight: 850; letter-spacing: 0.05em; text-transform: uppercase; white-space: nowrap; }
+.pickup-shipment-status.is-paid { background: #e6f7ed; color: #0b633a; }
+.pickup-shipments-table tbody tr:hover td { background: #fffdf5; }
+@media (max-width: 700px) {
+    .pickup-shipments-table,
+    .pickup-shipments-table tbody,
+    .pickup-shipments-table tr,
+    .pickup-shipments-table td { display: block; width: auto; }
+    .pickup-shipments-table colgroup,
+    .pickup-shipments-table thead { display: none; }
+    .pickup-shipments-table tbody { display: grid; gap: 8px; padding: 5px 0; }
+    .pickup-shipments-table tbody tr { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 8px 14px; padding: 12px; border: 1px solid rgba(69, 50, 0, 0.18); border-radius: 10px; }
+    .pickup-customer-history .pickup-shipments-table td { padding: 0; border: 0; }
+    .pickup-shipments-table td[data-label]::before { content: attr(data-label); display: block; margin-bottom: 2px; color: #806d24; font-size: 0.58rem; font-weight: 850; letter-spacing: 0.08em; text-transform: uppercase; }
+    .pickup-shipments-table td[data-label="Reference"] { grid-column: 1 / -1; }
+    .pickup-shipments-table tbody tr:hover td { background: transparent; }
+}

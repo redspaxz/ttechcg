@@ -10,9 +10,21 @@ $pointsPage = max(1, (int) ($currentPointsPage ?? $rewardHistory['page'] ?? 1));
 $perPage = max(1, (int) ($shipments['perPage'] ?? 10));
 ?>
 <div class="pickup-card-heading"><div><span>Operational history</span><h2 id="customer-history-title">Recent shipments</h2></div><small><?= $e($perPage) ?> per page</small></div>
-<div class="pickup-crm-table-wrap"><table><thead><tr><th>Date</th><th>Reference</th><th>AWB</th><th>Destination</th><th>Amount</th><th>Status</th></tr></thead><tbody>
+<div class="pickup-crm-table-wrap pickup-shipments-table-wrap"><table class="pickup-shipments-table">
+    <colgroup><col class="col-date"><col class="col-reference"><col class="col-awb"><col class="col-destination"><col class="col-amount"><col class="col-status"></colgroup>
+    <thead><tr><th scope="col">Date</th><th scope="col">Reference</th><th scope="col">AWB</th><th scope="col">Destination</th><th scope="col">Amount</th><th scope="col">Status</th></tr></thead><tbody>
     <?php if ($items === []): ?><tr><td colspan="6">No shipment history is linked to this customer.</td></tr><?php endif; ?>
-    <?php foreach ($items as $shipment): ?><tr><td><?= $e($shipment['collectionDate'] ?? '') ?></td><td><a href="<?= $e($basePath) ?>/dhl/pickupsheet/submissions?reference=<?= $e(rawurlencode((string) ($shipment['referenceNumber'] ?? ''))) ?>"><?= $e($shipment['referenceNumber'] ?? '') ?></a></td><td><?= \App\Modules\Pickupsheet\UI\AwbLink::html((string) $shipment['awbNumber'] ?? '', (string) ($shipment['collectionDate'] ?? '')) ?></td><td><?= $e($shipment['destination'] ?? '') ?></td><td><?= $e(number_format((int) ($shipment['amountXaf'] ?? 0))) ?> XAF</td><td><?= $e(ucfirst((string) ($shipment['status'] ?? 'open'))) ?></td></tr><?php endforeach; ?>
+    <?php foreach ($items as $shipment): ?>
+        <?php $shipmentStatus = (string) ($shipment['status'] ?? 'open'); ?>
+        <tr>
+            <td data-label="Date"><?= $e($shipment['collectionDate'] ?? '') ?></td>
+            <td data-label="Reference"><a href="<?= $e($basePath) ?>/dhl/pickupsheet/submissions?reference=<?= $e(rawurlencode((string) ($shipment['referenceNumber'] ?? ''))) ?>"><?= $e($shipment['referenceNumber'] ?? '') ?></a></td>
+            <td data-label="AWB"><?= \App\Modules\Pickupsheet\UI\AwbLink::html((string) $shipment['awbNumber'] ?? '', (string) ($shipment['collectionDate'] ?? '')) ?></td>
+            <td data-label="Destination"><?= $e($shipment['destination'] ?? '') ?></td>
+            <td data-label="Amount" class="pickup-shipments-amount"><?= $e(number_format((int) ($shipment['amountXaf'] ?? 0))) ?> XAF</td>
+            <td data-label="Status"><span class="pickup-shipment-status is-<?= $e($shipmentStatus === 'paid' ? 'paid' : 'open') ?>"><?= $e(ucfirst($shipmentStatus)) ?></span></td>
+        </tr>
+    <?php endforeach; ?>
 </tbody></table></div>
 <?php
 $pagerData = $shipments;
