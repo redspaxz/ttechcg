@@ -19,7 +19,11 @@ use App\Modules\CRM\Infrastructure\MysqlCustomerRepository;
 use App\Modules\CRM\Infrastructure\UnavailableCustomerRepository;
 use App\Modules\CRM\UI\CustomerController;
 use App\Modules\Pickupsheet\Domain\AwbReusePolicy;
+use App\Modules\Pickupsheet\Application\CollectionAgentService;
 use App\Modules\Pickupsheet\Application\PickupSheetService;
+use App\Modules\Pickupsheet\Infrastructure\DemoCollectionAgentRepository;
+use App\Modules\Pickupsheet\Infrastructure\MysqlCollectionAgentRepository;
+use App\Modules\Pickupsheet\Infrastructure\UnavailableCollectionAgentRepository;
 use App\Modules\Pickupsheet\Infrastructure\DemoPickupSheetRepository;
 use App\Modules\Pickupsheet\Infrastructure\MysqlPickupSheetRepository;
 use App\Modules\Pickupsheet\Infrastructure\UnavailablePickupSheetRepository;
@@ -179,6 +183,11 @@ $securityEventRepository = match (true) {
     $isProduction => new UnavailableSecurityEventRepository(),
     default => new DemoSecurityEventRepository(),
 };
+$collectionAgentRepository = match (true) {
+    $connection !== null => new MysqlCollectionAgentRepository($connection),
+    $isProduction => new UnavailableCollectionAgentRepository(),
+    default => new DemoCollectionAgentRepository(),
+};
 $loginMethodSettingsRepository = match (true) {
     $connection !== null => new MysqlLoginMethodSettingsRepository($connection),
     $isProduction => new UnavailableLoginMethodSettingsRepository(),
@@ -274,6 +283,7 @@ $pickupsheetController = new PickupsheetController(
     $loginMethodSettings,
     $localMfa,
     $customerService,
+    new CollectionAgentService($collectionAgentRepository),
 );
 $customerController = new CustomerController(
     $customerService,
@@ -359,6 +369,7 @@ $router->post('/dhl/pickupsheet/submissions/users/delete', fn (Request $request)
 $router->get('/dhl/pickupsheet/submissions/users/mfa/reset', fn (Request $request): Response => $pickupsheetController->confirmUserMfaReset($request));
 $router->post('/dhl/pickupsheet/submissions/users/mfa/reset', fn (Request $request): Response => $pickupsheetController->resetUserMfa($request));
 $router->post('/dhl/pickupsheet/submissions/users/login-methods', fn (Request $request): Response => $pickupsheetController->updateLoginMethods($request));
+$router->post('/dhl/pickupsheet/submissions/users/collection-agent', fn (Request $request): Response => $pickupsheetController->updateCollectionAgent($request));
 $router->post('/dhl/pickupsheet/submissions/users/admin-password', fn (Request $request): Response => $pickupsheetController->resetAdminPassword($request));
 $router->get('/dhl/pickupsheet/submissions/print', fn (Request $request): Response => $pickupsheetController->print($request));
 $router->get('/dhl/pickupsheet/submissions/export', fn (Request $request): Response => $pickupsheetController->export($request));

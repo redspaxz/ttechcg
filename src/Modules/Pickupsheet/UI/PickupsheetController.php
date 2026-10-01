@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 namespace App\Modules\Pickupsheet\UI;
 
+use App\Modules\Pickupsheet\Application\CollectionAgentService;
 use App\Modules\Pickupsheet\Application\PickupSheetService;
 use App\Modules\Pickupsheet\Domain\PickupSheet;
 use App\Modules\CRM\Application\CustomerService;
@@ -61,7 +62,30 @@ final class PickupsheetController
         private readonly ?LoginMethodSettingsService $loginMethodSettings = null,
         private readonly ?LocalMfaService $localMfa = null,
         private readonly ?CustomerService $customerService = null,
+        private readonly ?CollectionAgentService $collectionAgent = null,
     ) {
+    }
+
+    private const COLLECTION_AGENT_UNASSIGNED = 'No collection agent has been assigned. An administrator must assign one under Manage users and RBAC before pickup sheets can be created.';
+
+    /** The administrator-assigned agent name for new sheets, or an empty string when none is assigned or it cannot be read. */
+    private function collectionAgentName(): string
+    {
+        return $this->collectionAgentSettings()['name'];
+    }
+
+    /** @return array{name: string, updatedAt: ?string} */
+    private function collectionAgentSettings(): array
+    {
+        if ($this->collectionAgent === null) {
+            return ['name' => '', 'updatedAt' => null];
+        }
+        try {
+            return $this->collectionAgent->current();
+        } catch (RuntimeException $exception) {
+            error_log('Collection agent could not be loaded: ' . $exception->getMessage());
+            return ['name' => '', 'updatedAt' => null];
+        }
     }
 
     public function index(Request $request): Response
@@ -100,6 +124,8 @@ final class PickupsheetController
             'recordsIdentityProvider' => $authorization->identityProvider,
             'canCrmView' => $authorization->can('crm_view'),
             'canSetCollectionDate' => $authorization->can('set_collection_date'),
+            'collectionAgentName' => $this->collectionAgentName(),
+            'canAssignCollectionAgent' => $authorization->can('manage'),
             'consignorSuggestions' => $consignorSuggestions,
             'awbConflicts' => is_array($awbConflicts) ? $awbConflicts : [],
             'awbReuseDays' => AwbReusePolicy::days(),
@@ -149,7 +175,8 @@ final class PickupsheetController
         }
 
         $input = [
-            'agent_name' => $request->input('agent_name'),
+            // The agent name is assigned by an administrator; anything submitted in the form is ignored.
+            'agent_name' => $this->collectionAgentName(),
             // Only administrators may back-date or forward-date a sheet; everyone else records today's collection.
             'collection_date' => $authorization->can('set_collection_date') ? $request->input('collection_date') : date('Y-m-d'),
             'shipments' => $this->shipmentsCheckedByPrincipal($request->arrayInput('shipments'), $authorization),
@@ -158,6 +185,13 @@ final class PickupsheetController
 
         if (!$this->pickupOperational) {
             $_SESSION['_pickup_errors'] = ['Pickup-sheet storage is temporarily unavailable. Please try again later.'];
+            $_SESSION['_pickup_old'] = $input;
+            return Response::redirect($request->basePath . '/dhl/pickupsheet/');
+        }
+
+        if ($input['agent_name'] === '') {
+            $this->securityLogger->event('pickupsheet.validation', $request, 'denied', ['reason' => 'collection_agent_unassigned']);
+            $_SESSION['_pickup_errors'] = [self::COLLECTION_AGENT_UNASSIGNED];
             $_SESSION['_pickup_old'] = $input;
             return Response::redirect($request->basePath . '/dhl/pickupsheet/');
         }
@@ -760,6 +794,7 @@ final class PickupsheetController
             'recordsFullName' => $authorization->fullName(),
             'recordsIdentityProvider' => $authorization->identityProvider,
             'loginMethods' => $loginMethods,
+            'collectionAgent' => $this->collectionAgentSettings(),
             'mfaStatuses' => $mfaStatuses,
             'localLoginRequested' => (bool) ($this->config['local_login_requested'] ?? $this->config['local_login_enabled'] ?? true),
             'localMfaEnabled' => $this->localMfa?->isEnabled() === true,
@@ -1088,6 +1123,40 @@ final class PickupsheetController
         }
 
         return Response::redirect($request->basePath . '/dhl/pickupsheet/submissions/users');
+    }
+
+    public function updateCollectionAgent(Request $request): Response
+    {
+        $authorization = $this->authorizeRecords($request, 'manage');
+        if ($authorization instanceof Response) {
+            return $authorization;
+        }
+
+        $writeDenied = $this->recordsUserWriteGuard($request);
+        if ($writeDenied !== null) {
+            return $writeDenied;
+        }
+
+        try {
+            if ($this->collectionAgent === null) {
+                throw new RuntimeException('Collection agent storage is unavailable.');
+            }
+            $settings = $this->collectionAgent->assign($request->input('collection_agent_name'), $this->actorId($authorization));
+            $_SESSION['_records_users_flash'] = sprintf('Collection agent set to %s. New pickup sheets use this name.', $settings['name']);
+            $this->securityLogger->event('pickupsheet.collection_agent_update', $request, 'accepted', [
+                'actor_id' => $this->actorId($authorization),
+            ]);
+        } catch (InvalidArgumentException $exception) {
+            $_SESSION['_records_users_errors'] = [$exception->getMessage()];
+            $_SESSION['_records_users_old'] = ['collection_agent_name' => $request->input('collection_agent_name')];
+            $this->securityLogger->event('pickupsheet.collection_agent_update', $request, 'denied');
+        } catch (RuntimeException $exception) {
+            error_log($exception->__toString());
+            $_SESSION['_records_users_errors'] = ['The collection agent could not be saved. Apply migration 025 and check MySQL.'];
+            $this->securityLogger->event('pickupsheet.collection_agent_update', $request, 'failed');
+        }
+
+        return Response::redirect($request->basePath . '/dhl/pickupsheet/submissions/users#collection-agent-title');
     }
 
     public function resetAdminPassword(Request $request): Response

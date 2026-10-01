@@ -24,6 +24,7 @@ final class MysqlBackupRepository implements BackupRepository
         'pickup_local_mfa',
         'pickup_records_admin_credentials',
         'pickup_auth_settings',
+        'pickup_sheet_settings',
         'pickup_records_session_activity',
         'pickup_security_events',
         'pickup_customers',

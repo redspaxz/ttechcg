@@ -300,7 +300,8 @@ final class PickupSheetService
 
     private function pickupSheetFromInput(array $input, ?PickupSheet $existing = null): PickupSheet
     {
-        $agentName = $this->stringValue($input['agent_name'] ?? '');
+        // An edited sheet keeps the agent it was created with; only new sheets take the submitted name.
+        $agentName = $existing !== null ? $existing->agentName : $this->stringValue($input['agent_name'] ?? '');
         $collectionDate = $this->stringValue($input['collection_date'] ?? '');
         $privacyConsent = $this->stringValue($input['privacy_consent'] ?? '');
 

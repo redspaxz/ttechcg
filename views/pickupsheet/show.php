@@ -13,6 +13,8 @@ $checkerName = (string) ($recordsFullName ?? $recordsUsername ?? '');
 $consignorSuggestions = is_array($consignorSuggestions ?? null) ? array_values(array_filter($consignorSuggestions, 'is_string')) : [];
 $flash = $flash ?? null;
 $errors = is_array($errors ?? null) ? $errors : [];
+$collectionAgentName = (string) ($collectionAgentName ?? '');
+$agentAssigned = $collectionAgentName !== '';
 $field = static function (mixed $row, string $name) use ($e): string {
     return $e(is_array($row) ? ($row[$name] ?? '') : '');
 };
@@ -80,10 +82,16 @@ $renderShipmentRow = static function (int|string $index, mixed $row = []) use ($
 
             <fieldset class="pickup-meta-fields">
                 <legend>Sheet details</legend>
-                <label>
+                <div class="pickup-reference-field pickup-agent-locked<?= $agentAssigned ? '' : ' is-unassigned' ?>">
                     <span>Agent name</span>
-                    <input name="agent_name" value="<?= $e($old['agent_name'] ?? '') ?>" maxlength="100" required autocomplete="name" placeholder="Collection agent">
-                </label>
+                    <?php if ($agentAssigned): ?>
+                    <strong><?= $e($collectionAgentName) ?></strong>
+                    <small>Assigned by an administrator.</small>
+                    <?php else: ?>
+                    <strong>Not assigned</strong>
+                    <small><?php if (!empty($canAssignCollectionAgent)): ?><a href="<?= $e($basePath) ?>/dhl/pickupsheet/submissions/users#collection-agent-title">Assign the collection agent</a> before creating sheets.<?php else: ?>Ask an administrator to assign the collection agent.<?php endif; ?></small>
+                    <?php endif; ?>
+                </div>
                 <?php if (!empty($canSetCollectionDate)): ?>
                 <label>
                     <span>Date</span>
@@ -148,7 +156,7 @@ $renderShipmentRow = static function (int|string $index, mixed $row = []) use ($
                 <p>Records and the consent timestamp are stored in the secured MySQL database.</p>
                 <div class="pickup-submit-actions">
                     <a class="pickup-cancel" href="<?= $e($basePath) ?>/dhl/pickupsheet/submissions" data-discard-pickup-sheet>Cancel</a>
-                    <button class="button button-red pickup-submit" type="submit" <?= !$pickupOperational ? 'disabled' : '' ?>>Save pickup sheet <span aria-hidden="true">→</span></button>
+                    <button class="button button-red pickup-submit" type="submit" <?= !$pickupOperational || !$agentAssigned ? 'disabled' : '' ?>>Save pickup sheet <span aria-hidden="true">→</span></button>
                 </div>
             </div>
         </form>

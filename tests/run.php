@@ -19,9 +19,11 @@ use App\Modules\CRM\Domain\CustomerProfile;
 use App\Modules\CRM\Infrastructure\DemoCustomerRepository;
 use App\Modules\CRM\UI\CustomerController;
 use App\Modules\Pickupsheet\Application\AwbReuseException;
+use App\Modules\Pickupsheet\Application\CollectionAgentService;
 use App\Modules\Pickupsheet\Application\PickupSheetService;
 use App\Modules\Pickupsheet\Domain\AwbReusePolicy;
 use App\Modules\Pickupsheet\Domain\DhlTrackingUrl;
+use App\Modules\Pickupsheet\Infrastructure\DemoCollectionAgentRepository;
 use App\Modules\Pickupsheet\Infrastructure\DemoPickupSheetRepository;
 use App\Modules\Pickupsheet\Infrastructure\UnavailablePickupSheetRepository;
 use App\Modules\Pickupsheet\UI\AwbLink;
@@ -1437,6 +1439,7 @@ $pickupController = new PickupsheetController(
     $loginMethodSettings,
     $mfaService,
     $customerService,
+    new CollectionAgentService(new DemoCollectionAgentRepository()),
 );
 $customerController = new CustomerController(
     $customerService,
@@ -1819,12 +1822,46 @@ $pickupParts = preg_split('/\s+/', $pickupChallenge['question']);
 $pickupAnswer = is_array($pickupParts) && $pickupParts[1] === '+'
     ? (string) ((int) $pickupParts[0] + (int) $pickupParts[2])
     : (string) ((int) $pickupParts[0] - (int) $pickupParts[2]);
+$unassignedAgentForm = $pickupController->index(new Request('GET', '/dhl/pickupsheet/'));
+$assert(str_contains($unassignedAgentForm->body(), '<strong>Not assigned</strong>') && str_contains($unassignedAgentForm->body(), 'Assign the collection agent</a>') && !str_contains($unassignedAgentForm->body(), 'name="agent_name"'), 'Without an assigned agent the sheet form should say so, link administrators to assign one, and offer no agent input.');
+$unassignedAgentStore = $pickupController->store(new Request('POST', '/dhl/pickupsheet', [], [
+    '_token' => $pickupCsrf->token(),
+    'captcha_nonce' => $pickupChallenge['nonce'],
+    'captcha_answer' => $pickupAnswer,
+    'website' => '',
+    'agent_name' => 'Typed Agent',
+    'collection_date' => '2026-07-29',
+    'privacy_consent' => '1',
+    'shipments' => [['consignor' => 'Controller Client', 'awb_number' => '1234567890', 'destination' => 'DLA', 'amount' => '12000', 'pieces' => '2', 'weight_kg' => '1.25']],
+], ''));
+$assert($unassignedAgentStore->status() === 303 && str_contains(implode(' ', (array) ($_SESSION['_pickup_errors'] ?? [])), 'No collection agent has been assigned') && ($_SESSION['_demo_pickup_sheets'] ?? []) === [], 'A pickup sheet should not be created until an administrator assigns the collection agent.');
+unset($_SESSION['_pickup_errors'], $_SESSION['_pickup_old']);
+$invalidAgentCsrf = $pickupController->updateCollectionAgent(new Request('POST', '/dhl/pickupsheet/submissions/users/collection-agent', [], [
+    '_token' => 'invalid-token',
+    'collection_agent_name' => 'Forged Agent',
+], '', $recordsServer));
+$assert($invalidAgentCsrf->status() === 419, 'Assigning the collection agent should require a valid CSRF token.');
+$assignAgent = $pickupController->updateCollectionAgent(new Request('POST', '/dhl/pickupsheet/submissions/users/collection-agent', [], [
+    '_token' => $pickupCsrf->token(),
+    'collection_agent_name' => '  Controller   Agent ',
+], '', $recordsServer));
+$assert($assignAgent->status() === 303 && ($_SESSION['_records_users_flash'] ?? '') === 'Collection agent set to Controller Agent. New pickup sheets use this name.', 'An administrator should assign the collection agent from the admin panel, with spacing tidied.');
+unset($_SESSION['_records_users_flash']);
+$assignedAgentAdminPage = $pickupController->users(new Request('GET', '/dhl/pickupsheet/submissions/users', [], [], '', $recordsServer));
+$assert(str_contains($assignedAgentAdminPage->body(), 'id="collection-agent-title"') && str_contains($assignedAgentAdminPage->body(), 'name="collection_agent_name" value="Controller Agent"'), 'The admin panel should show the assigned collection agent.');
+$assignedAgentForm = $pickupController->index(new Request('GET', '/dhl/pickupsheet/'));
+$assert(str_contains($assignedAgentForm->body(), '<strong>Controller Agent</strong>') && str_contains($assignedAgentForm->body(), 'Assigned by an administrator.') && !str_contains($assignedAgentForm->body(), 'name="agent_name"'), 'The sheet form should show the assigned agent read-only.');
+$pickupChallenge = $pickupCaptcha->issue();
+$pickupParts = preg_split('/\s+/', $pickupChallenge['question']);
+$pickupAnswer = is_array($pickupParts) && $pickupParts[1] === '+'
+    ? (string) ((int) $pickupParts[0] + (int) $pickupParts[2])
+    : (string) ((int) $pickupParts[0] - (int) $pickupParts[2]);
 $pickupControllerResponse = $pickupController->store(new Request('POST', '/dhl/pickupsheet', [], [
     '_token' => $pickupCsrf->token(),
     'captcha_nonce' => $pickupChallenge['nonce'],
     'captcha_answer' => $pickupAnswer,
     'website' => '',
-    'agent_name' => 'Controller Agent',
+    'agent_name' => 'Spoofed Agent',
     'collection_date' => '2026-07-29',
     'privacy_consent' => '1',
     'shipments' => [[
@@ -1843,6 +1880,7 @@ $assert(str_contains((string) ($_SESSION['_pickup_flash'] ?? ''), '12,000 XAF'),
 $savedControllerSheet = $_SESSION['_demo_pickup_sheets'][0] ?? null;
 $assert($savedControllerSheet instanceof App\Modules\Pickupsheet\Domain\PickupSheet, 'The controller should persist a pickup-sheet aggregate.');
 $assert($savedControllerSheet->status === 'open' && !$savedControllerSheet->isPaid(), 'Every new pickup sheet should start with open status.');
+$assert($savedControllerSheet->agentName === 'Controller Agent', 'A new sheet should use the assigned collection agent and ignore a submitted agent name.');
 $assert(($savedControllerSheet->shipments[0]->checkedBy ?? '') === 'Records Administrator', 'The server should ignore a submitted checker and persist the authenticated account name.');
 $assert((bool) preg_match('/^[0-9]{2}:[0-9]{2}$/', $savedControllerSheet->shipments[0]->collectionTime ?? ''), 'The controller should persist the server-generated submission time.');
 $savedReference = $savedControllerSheet->referenceNumber;
@@ -1873,7 +1911,7 @@ $pickupController->store(new Request('POST', '/dhl/pickupsheet', [], [
     ]],
 ], ''));
 $operatorSheet = end($_SESSION['_demo_pickup_sheets']);
-$assert($operatorSheet instanceof App\Modules\Pickupsheet\Domain\PickupSheet && $operatorSheet->agentName === 'Operator Agent' && $operatorSheet->collectionDate === date('Y-m-d'), 'The server should ignore a submitted collection date from operators and record today.');
+$assert($operatorSheet instanceof App\Modules\Pickupsheet\Domain\PickupSheet && $operatorSheet->agentName === 'Controller Agent' && $operatorSheet->collectionDate === date('Y-m-d'), 'The server should ignore a submitted collection date and agent name from operators, recording today and the assigned agent.');
 array_pop($_SESSION['_demo_pickup_sheets']);
 unset($_SESSION['_last_pickup_sheet_at']);
 $recordsSession->login($adminPrincipal);
@@ -2039,7 +2077,7 @@ $adminEdit = $pickupController->edit(new Request('GET', '/dhl/pickupsheet/submis
 $adminUpdate = $pickupController->updatePickupSheet(new Request('POST', '/dhl/pickupsheet/submissions/edit', [], [
     '_token' => $pickupCsrf->token(),
     'reference' => $savedReference,
-    'agent_name' => 'Controller Agent',
+    'agent_name' => 'Edited Agent',
     'collection_date' => '2026-07-29',
     'shipments' => [[
         'consignor' => 'Controller Client',
@@ -2055,6 +2093,8 @@ $adminUpdate = $pickupController->updatePickupSheet(new Request('POST', '/dhl/pi
 $assert($adminEdit->status() === 200 && str_contains($adminEdit->body(), 'Records Administrator · admin'), 'An administrator should open the audited record editor with the account name.');
 $assert(str_contains($adminEdit->body(), '<div class="pickup-submit-actions"><a class="pickup-cancel" href="/dhl/pickupsheet/submissions">Cancel</a><button class="button button-red pickup-submit" type="submit">'), 'The record editor should offer a Cancel button beside Save that returns to the submitted sheets without saving.');
 $assert($adminUpdate->status() === 303, 'An administrator should save an audited pickup-sheet correction.');
+$assert(str_contains($adminEdit->body(), 'Set when the sheet was created.') && !str_contains($adminEdit->body(), 'name="agent_name"'), 'The record editor should show the sheet agent read-only.');
+$assert((new PickupSheetService($pickupRepository))->findByReference($savedReference)?->agentName === 'Controller Agent', 'Editing a sheet should keep the agent it was created with.');
 $adminUpdatedSheet = (new PickupSheetService(new DemoPickupSheetRepository()))->findByReference($savedReference);
 $assert($adminUpdatedSheet?->totalCashReceivedXaf === 14000 && !$adminUpdatedSheet->isPaid(), 'An administrator edit should persist while retaining open status.');
 $assert(($adminUpdatedSheet->shipments[0]->checkedBy ?? '') === 'Records Administrator', 'An administrator edit should stamp Check By with the administrator account name.');
@@ -3052,7 +3092,7 @@ $partnerSources = $readSource(dirname(__DIR__) . '/public/assets/partners/README
 $assert(is_string($partnerSources) && str_contains($partnerSources, 'www.dhl.com/content/dam/dhl/global/core/images/logos/dhl-logo.svg'), 'The official DHL artwork source should be documented.');
 $assert(!str_contains($home, 'href="/dhl/pickupsheet"'), 'Pickupsheet should not be discoverable from the public site chrome or homepage.');
 $assert(str_contains($home, '© ' . date('Y') . ' T&amp;Tech Consulting Group. All rights reserved.') && !str_contains($home, 'class="pickup-footer"'), 'The public site footer should carry the copyright statement with the current year.');
-$assert(str_contains($home, 'styles.css?v=20261001-closed-gray'), 'Market-performance dashboard styles and prior Pickupsheet refinements should use a cache-safe stylesheet version.');
+$assert(str_contains($home, 'styles.css?v=20261001-collection-agent'), 'Market-performance dashboard styles and prior Pickupsheet refinements should use a cache-safe stylesheet version.');
 $assert(str_contains($home, 'app.js?v=20261001-close-follow-up'), 'AJAX audit-log accordions and prior OWASP-aligned interactions should use a cache-safe script version.');
 $assert(str_contains($home, 'analytics.js?v=20260825-security-hardening'), 'The current consent-aware Google Analytics loader should render on every page.');
 $assert(str_contains($home, 'data-analytics-accept'), 'The site should offer an explicit analytics acceptance control.');
@@ -3140,7 +3180,7 @@ $product = $view->render('pickupsheet/show', array_merge($common, [
 $assert(str_contains($product, 'pickupsheet'), 'The Pickupsheet product page should render.');
 $assert(!str_contains($product, 'dhl-logo.svg'), 'The Pickupsheet product page should use a text-only heading.');
 $assert(str_contains($product, 'Cash shipments'), 'The PDF cash-shipment section should render.');
-$assert(str_contains($product, 'name="agent_name"'), 'The pickup form should collect the agent name.');
+$assert(!str_contains($product, 'name="agent_name"') && str_contains($product, 'pickup-agent-locked'), 'The pickup form should show the assigned agent name read-only instead of collecting it.');
 $assert(!str_contains($product, 'name="collection_date"') && str_contains($product, 'datetime="' . date('Y-m-d') . '"') && str_contains($product, 'Only an administrator can change it.'), 'Non-administrators should see today\'s collection date locked instead of a date picker.');
 $adminProduct = $view->render('pickupsheet/show', array_merge($common, [
     'pageTitle' => 'Cash shipment pickup sheet',
@@ -3489,6 +3529,9 @@ $customerDismissMigration = $readSource(dirname(__DIR__) . '/database/migrations
 $assert(is_string($customerDismissMigration) && str_contains($customerDismissMigration, 'ADD COLUMN dismissed_at DATETIME NULL') && str_contains($customerDismissMigration, 'information_schema.COLUMNS'), 'Migration 022 should add merge dismissal columns only when they are missing.');
 $duplicateDismissalMigration = $readSource(dirname(__DIR__) . '/database/migrations/024_create_pickup_customer_duplicate_dismissals.sql');
 $assert(is_string($duplicateDismissalMigration) && str_contains($duplicateDismissalMigration, 'UNIQUE INDEX pickup_customer_duplicate_dismissals_pair_idx (first_customer_key, second_customer_key)') && substr_count($duplicateDismissalMigration, 'REFERENCES pickup_customers(customer_key) ON DELETE CASCADE') === 2, 'Migration 024 should store each ignored pair once and drop it when either profile is removed.');
+$sheetSettingsMigration = $readSource(dirname(__DIR__) . '/database/migrations/025_create_pickup_sheet_settings.sql');
+$assert(is_string($sheetSettingsMigration) && str_contains($sheetSettingsMigration, 'CREATE TABLE IF NOT EXISTS pickup_sheet_settings') && str_contains($sheetSettingsMigration, "collection_agent_name VARCHAR(100) NOT NULL DEFAULT ''"), 'Migration 025 should store the administrator-assigned collection agent.');
+$assert(str_contains((string) $readSource(dirname(__DIR__) . '/src/Modules/Backup/Infrastructure/MysqlBackupRepository.php'), "'pickup_sheet_settings',"), 'The collection agent setting should be included in encrypted backups.');
 $assert(str_contains((string) $readSource(dirname(__DIR__) . '/src/Modules/Backup/Infrastructure/MysqlBackupRepository.php'), "'pickup_customer_duplicate_dismissals',"), 'Ignored duplicate pairs should be included in encrypted backups.');
 $customerSpacingMigration = $readSource(dirname(__DIR__) . '/database/migrations/020_collapse_customer_name_spacing.sql');
 $assert(is_string($customerSpacingMigration) && str_contains($customerSpacingMigration, "UPDATE pickup_shipments\nSET consignor = TRIM(REGEXP_REPLACE(consignor, '[[:space:]]+', ' '))") && strpos($customerSpacingMigration, 'DELETE duplicate_customer') < strpos($customerSpacingMigration, 'SET display_name = TRIM(REGEXP_REPLACE'), 'Migration 020 should collapse consignor spacing and fold spacing-variant customers before collapsing profile names.');

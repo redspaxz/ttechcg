@@ -276,6 +276,15 @@ The Reports tab builds a printable A4 report at `/dhl/pickupsheet/dashboard/repo
 
 Cash settlement always covers the last 3 months. Trend, destination, sender and repeat-sender figures always cover a rolling 12 months. The report labels these bases.
 
+### Collection agent
+
+The agent name on a pickup sheet is assigned by an administrator, not typed by the person creating the sheet.
+
+- administrators set it in the **Collection agent** card on Manage users and RBAC (`/dhl/pickupsheet/submissions/users`). The name is 2 to 100 characters, with extra spaces tidied. It is stored in `pickup_sheet_settings` (migration 025, also created on first save), included in encrypted backups, and each change is logged as `pickupsheet.collection_agent_update`
+- the new-sheet form shows the assigned name read-only. The server always stamps the assigned name on a new sheet and ignores any `agent_name` sent with the form
+- until a name is assigned, the form says "Not assigned", links administrators to the card, disables Save, and the server refuses to create sheets
+- an edited sheet keeps the agent it was created with. The record editor shows it read-only, so changing the assigned agent only affects sheets created afterwards
+
 ### Payment and receipt confirmation
 
 Marking a sheet paid and correcting its receipt number both happen in a modal on Submitted sheets. Each modal asks a single-use security question loaded from the server when it opens.

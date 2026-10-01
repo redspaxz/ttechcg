@@ -3344,3 +3344,14 @@ button, a, input, select, textarea { -webkit-tap-highlight-color: transparent; }
 .pickup-profile-kpis .pickup-follow-up-close { display: block; margin-top: 8px; }
 .pickup-follow-up-close button { padding: 0; border: 0; border-bottom: 1px solid currentColor; background: transparent; color: var(--pickup-accent); cursor: pointer; font: inherit; font-size: 0.72rem; font-weight: 850; }
 .pickup-follow-up-close button:hover, .pickup-follow-up-close button:focus-visible { color: #b0040e; outline: none; border-bottom-width: 2px; }
+
+/* Pickup sheets: the collection agent is assigned by an administrator and shown read-only on sheet forms */
+.pickup-agent-locked strong { color: #241b00; }
+.pickup-agent-locked small { color: #5c4a14; font-size: 0.72rem; }
+.pickup-agent-locked.is-unassigned strong { color: var(--pickup-accent); }
+.pickup-agent-locked small a { color: var(--pickup-accent); font-weight: 850; }
+.records-collection-agent { margin-top: 18px; }
+.records-collection-agent-field { display: grid; gap: 7px; max-width: 520px; margin: 14px 0; }
+.records-collection-agent-field > span { color: #493800; font-size: 0.66rem; font-weight: 850; letter-spacing: 0.06em; text-transform: uppercase; }
+.records-collection-agent-field input { width: 100%; min-height: 46px; padding: 10px 12px; border: 1px solid #8b7626; border-radius: 8px; background: #fff; color: #241b00; font: inherit; }
+.records-collection-agent-field input:focus { border-color: var(--pickup-accent); outline: 3px solid rgba(212, 5, 17, 0.12); }
