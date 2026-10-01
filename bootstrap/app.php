@@ -337,6 +337,7 @@ $router->post('/dhl/pickupsheet/customers/merge/undo', fn (Request $request): Re
 $router->post('/dhl/pickupsheet/customers/merge/dismiss', fn (Request $request): Response => $customerController->dismissMerge($request));
 $router->post('/dhl/pickupsheet/customers/duplicates/dismiss', fn (Request $request): Response => $customerController->dismissDuplicate($request));
 $router->post('/dhl/pickupsheet/customers/activities', fn (Request $request): Response => $customerController->addActivity($request));
+$router->post('/dhl/pickupsheet/customers/follow-up/close', fn (Request $request): Response => $customerController->closeFollowUp($request));
 $router->post('/dhl/pickupsheet/customers/delete', fn (Request $request): Response => $customerController->delete($request));
 $router->post('/dhl/pickupsheet/customers/rewards', fn (Request $request): Response => $customerController->adjustRewards($request));
 $router->get('/dhl/pickupsheet', fn (Request $request): Response => $pickupsheetController->index($request));

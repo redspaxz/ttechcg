@@ -483,6 +483,35 @@ final class CustomerController
             : $request->basePath . '/dhl/pickupsheet/customers');
     }
 
+    public function closeFollowUp(Request $request): Response
+    {
+        $principal = $this->authorize($request, 'crm_update');
+        if ($principal instanceof Response) {
+            return $principal;
+        }
+        $guard = $this->guardWrite($request, $principal, 'pickupsheet.crm_customer_follow_up_close', 'pickup-crm-write', 60);
+        if ($guard !== null) {
+            return $guard;
+        }
+
+        $key = strtolower($request->input('customer_key'));
+        try {
+            $this->service->closeFollowUp($key, $this->actorId($principal), $principal->fullName());
+            $_SESSION['_crm_flash'] = 'Follow-up closed. A note was added to Activity.';
+            $this->log($request, $principal, 'pickupsheet.crm_customer_follow_up_close', 'accepted', ['resource_id' => substr($key, 0, 24)]);
+        } catch (InvalidArgumentException $exception) {
+            $_SESSION['_crm_errors'] = [$exception->getMessage()];
+            $this->log($request, $principal, 'pickupsheet.crm_customer_follow_up_close', 'denied', ['reason' => 'validation']);
+        } catch (RuntimeException $exception) {
+            error_log($exception->__toString());
+            $_SESSION['_crm_errors'] = ['The follow-up could not be closed. Check MySQL and try again.'];
+            $this->log($request, $principal, 'pickupsheet.crm_customer_follow_up_close', 'failed');
+        }
+        return Response::redirect(preg_match('/^[a-f0-9]{64}$/', $key) === 1
+            ? $this->profileUrl($request, $key)
+            : $request->basePath . '/dhl/pickupsheet/customers');
+    }
+
     public function delete(Request $request): Response
     {
         $principal = $this->authorize($request, 'crm');

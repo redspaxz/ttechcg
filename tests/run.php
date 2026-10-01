@@ -2531,6 +2531,26 @@ $logActivity = $customerController->addActivity(new Request('POST', '/dhl/pickup
 ]));
 $activityProfilePage = $customerController->edit(new Request('GET', '/dhl/pickupsheet/customers/edit', ['customer' => $customerKey]));
 $assert($logActivity->status() === 303 && str_contains($activityProfilePage->body(), 'Quarterly review with the customer.') && str_contains($activityProfilePage->body(), 'Activity logged.'), 'Administrators should log contact activity from the customer profile.');
+$assert(str_contains($activityProfilePage->body(), 'data-crm-close-follow-up-form data-follow-up-date="2026-08-30"') && str_contains($activityProfilePage->body(), '/dhl/pickupsheet/customers/follow-up/close'), 'A scheduled follow-up should offer a Close follow-up button.');
+$invalidCloseCsrf = $customerController->closeFollowUp(new Request('POST', '/dhl/pickupsheet/customers/follow-up/close', [], [
+    '_token' => 'invalid-token',
+    'customer_key' => $customerKey,
+]));
+$assert($invalidCloseCsrf->status() === 419 && $customerService->find($customerKey)?->nextFollowUpOn === '2026-08-30', 'Closing a follow-up should require a valid CSRF token.');
+$closeFollowUp = $customerController->closeFollowUp(new Request('POST', '/dhl/pickupsheet/customers/follow-up/close', [], [
+    '_token' => $pickupCsrf->token(),
+    'customer_key' => $customerKey,
+]));
+$closedProfilePage = $customerController->edit(new Request('GET', '/dhl/pickupsheet/customers/edit', ['customer' => $customerKey]));
+$assert($closeFollowUp->status() === 303 && $customerService->find($customerKey)?->nextFollowUpOn === null && str_contains($closedProfilePage->body(), 'Follow-up due 2026-08-30 closed.') && str_contains($closedProfilePage->body(), 'Follow-up closed. A note was added to Activity.'), 'Close follow-up should clear the date and record a note in Activity.');
+$assert(!str_contains($closedProfilePage->body(), 'data-crm-close-follow-up-form'), 'A customer without a follow-up should not offer Close follow-up.');
+$customerController->closeFollowUp(new Request('POST', '/dhl/pickupsheet/customers/follow-up/close', [], [
+    '_token' => $pickupCsrf->token(),
+    'customer_key' => $customerKey,
+]));
+$assert(($_SESSION['_crm_errors'] ?? []) === ['This customer has no follow-up to close.'], 'Closing a follow-up that is not scheduled should be refused with an explanation.');
+unset($_SESSION['_crm_errors']);
+$customerService->addActivity($customerKey, ['activity_type' => 'note', 'occurred_on' => gmdate('Y-m-d'), 'summary' => 'Follow-up rescheduled for the tests.', 'next_follow_up_on' => '2026-08-30'], str_repeat('a', 24), 'Records Administrator');
 $assert(str_contains($activityProfilePage->body(), 'data-crm-delete-form') && str_contains($activityProfilePage->body(), '/dhl/pickupsheet/customers/delete'), 'Administrators should be offered customer deletion with a confirmation hook.');
 $ownerEditForm = $customerController->edit(new Request('GET', '/dhl/pickupsheet/customers/edit', ['customer' => $customerKey, 'mode' => 'edit']));
 $assert(str_contains($ownerEditForm->body(), '<select name="owner">') && str_contains($ownerEditForm->body(), 'name="expected_updated_at"'), 'The administrator edit form should offer an owner and guard against overwriting newer changes.');
@@ -3028,8 +3048,8 @@ $partnerSources = $readSource(dirname(__DIR__) . '/public/assets/partners/README
 $assert(is_string($partnerSources) && str_contains($partnerSources, 'www.dhl.com/content/dam/dhl/global/core/images/logos/dhl-logo.svg'), 'The official DHL artwork source should be documented.');
 $assert(!str_contains($home, 'href="/dhl/pickupsheet"'), 'Pickupsheet should not be discoverable from the public site chrome or homepage.');
 $assert(str_contains($home, '© ' . date('Y') . ' T&amp;Tech Consulting Group. All rights reserved.') && !str_contains($home, 'class="pickup-footer"'), 'The public site footer should carry the copyright statement with the current year.');
-$assert(str_contains($home, 'styles.css?v=20261001-duplicates-card'), 'Market-performance dashboard styles and prior Pickupsheet refinements should use a cache-safe stylesheet version.');
-$assert(str_contains($home, 'app.js?v=20261001-crm-duplicate-ignore'), 'AJAX audit-log accordions and prior OWASP-aligned interactions should use a cache-safe script version.');
+$assert(str_contains($home, 'styles.css?v=20261001-close-follow-up'), 'Market-performance dashboard styles and prior Pickupsheet refinements should use a cache-safe stylesheet version.');
+$assert(str_contains($home, 'app.js?v=20261001-close-follow-up'), 'AJAX audit-log accordions and prior OWASP-aligned interactions should use a cache-safe script version.');
 $assert(str_contains($home, 'analytics.js?v=20260825-security-hardening'), 'The current consent-aware Google Analytics loader should render on every page.');
 $assert(str_contains($home, 'data-analytics-accept'), 'The site should offer an explicit analytics acceptance control.');
 $assert(str_contains($home, 'data-analytics-decline'), 'The site should offer an explicit analytics decline control.');
@@ -3337,7 +3357,7 @@ $assert(is_string($script) && str_contains($script, "selector: '[data-user-statu
 $assert(is_string($script) && str_contains($script, "document.querySelector('[data-copy-recovery-codes]')"), 'Local 2FA should support secure one-time recovery-code handling.');
 $assert(is_string($script) && str_contains($script, "selector: '[data-self-mfa-reset]'") && str_contains($script, 'The current authenticator and unused recovery codes will stop working'), 'A signed-in user should explicitly confirm replacing their own authenticator.');
 $assert(is_string($script) && substr_count($script, 'window.confirm(') === 1 && str_contains($script, "if (typeof HTMLDialogElement === 'undefined') {
-        resolve(window.confirm(message));") && str_contains($script, 'confirmInModal(action.options(form))') && substr_count($script, "selector: '[data-") === 9, 'Every sensitive form confirmation should use the shared modal, keeping the browser prompt only for browsers without dialog support.');
+        resolve(window.confirm(message));") && str_contains($script, 'confirmInModal(action.options(form))') && substr_count($script, "selector: '[data-") === 10, 'Every sensitive form confirmation should use the shared modal, keeping the browser prompt only for browsers without dialog support.');
 $assert(is_string($script) && str_contains($script, '[data-discard-pickup-sheet]') && str_contains($script, "title: 'Discard this pickup sheet?'"), 'Cancelling a new pickup sheet with entered data should ask for confirmation in the modal.');
 $assert(is_string($script) && str_contains($script, 'loadRecordCaptcha(form);') && str_contains($script, 'applyRecordCaptcha(form, result.captcha);') && str_contains($script, "captchaNonce === '' || !/^[0-9]{1,2}$/.test(captchaAnswer.value.trim())"), 'The payment and receipt modals should load a security question on open, replace it after a failure, and require an answer before submitting.');
 $assert(is_string($script) && str_contains($script, "document.querySelector('[data-login-method-form]')") && str_contains($script, "'X-Requested-With': 'XMLHttpRequest'"), 'Sign-in toggles should save asynchronously without refreshing account management.');

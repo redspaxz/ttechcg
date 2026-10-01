@@ -1245,6 +1245,17 @@ const CONFIRMED_ACTIONS = [
         },
     },
     {
+        selector: '[data-crm-close-follow-up-form]',
+        options: (form) => {
+            const dueOn = form.dataset.followUpDate || '';
+            return {
+                title: 'Close this follow-up?',
+                message: `Close the follow-up${dueOn !== '' ? ` due ${dueOn}` : ''}? A note saying it was closed is added to Activity. Schedule a new one from Activity at any time.`,
+                confirmLabel: 'Close follow-up',
+            };
+        },
+    },
+    {
         selector: '[data-crm-dismiss-duplicate-form]',
         options: (form) => {
             const firstName = form.dataset.firstName || 'the first customer';

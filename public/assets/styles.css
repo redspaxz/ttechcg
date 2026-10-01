@@ -3330,3 +3330,9 @@ button, a, input, select, textarea { -webkit-tap-highlight-color: transparent; }
     .pickup-footer { display: none; }
     .pickup-app { padding-bottom: 0; }
 }
+
+/* CRM: Close follow-up sits in the Next follow-up card and the overdue alert */
+.pickup-follow-up-close { display: inline; margin: 0; }
+.pickup-profile-kpis .pickup-follow-up-close { display: block; margin-top: 8px; }
+.pickup-follow-up-close button { padding: 0; border: 0; border-bottom: 1px solid currentColor; background: transparent; color: var(--pickup-accent); cursor: pointer; font: inherit; font-size: 0.72rem; font-weight: 850; }
+.pickup-follow-up-close button:hover, .pickup-follow-up-close button:focus-visible { color: #b0040e; outline: none; border-bottom-width: 2px; }

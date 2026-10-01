@@ -486,6 +486,24 @@ final class CustomerService
         return $this->repository->addActivity($customerKey, $type, $occurredOn, $summary, $nextFollowUpOn, $actorId, $actorName === '' ? 'Records user' : $actorName);
     }
 
+    /** Clears the customer's follow-up and records a note in Activity saying it was closed. */
+    public function closeFollowUp(string $customerKey, string $actorId, string $actorName): void
+    {
+        $customer = preg_match('/^[a-f0-9]{64}$/', $customerKey) === 1 ? $this->find($customerKey) : null;
+        if ($customer === null) {
+            throw new InvalidArgumentException('Customer profile not found.');
+        }
+        if ($customer->nextFollowUpOn === null) {
+            throw new InvalidArgumentException('This customer has no follow-up to close.');
+        }
+        $this->addActivity($customerKey, [
+            'activity_type' => 'note',
+            'occurred_on' => gmdate('Y-m-d'),
+            'summary' => 'Follow-up due ' . $customer->nextFollowUpOn . ' closed.',
+            'next_follow_up_on' => '',
+        ], $actorId, $actorName);
+    }
+
     /**
      * Suggested merges must look like duplicates. A manual merge is an administrator's explicit choice of two
      * profiles (for example "Acme" and "Acme Logistics Cameroon"), so it skips the similarity check; both are

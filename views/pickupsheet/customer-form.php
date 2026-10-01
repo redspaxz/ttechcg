@@ -26,6 +26,12 @@ $activityTypes = is_array($activityTypes ?? null) ? $activityTypes : [];
 $ownerOptions = is_array($ownerOptions ?? null) ? $ownerOptions : [];
 $canDeleteCustomer = (bool) ($canDeleteCustomer ?? false);
 $followUpDue = $customer?->followUpDue() ?? false;
+$closeFollowUpForm = static function () use ($e, $basePath, $csrfToken, $customer): string {
+    return '<form class="pickup-follow-up-close" method="post" action="' . $e($basePath) . '/dhl/pickupsheet/customers/follow-up/close" data-crm-close-follow-up-form data-follow-up-date="' . $e($customer?->nextFollowUpOn ?? '') . '">'
+        . '<input type="hidden" name="_token" value="' . $e($csrfToken) . '">'
+        . '<input type="hidden" name="customer_key" value="' . $e($customer?->customerKey ?? '') . '">'
+        . '<button type="submit">Close follow-up</button></form>';
+};
 $phoneHref = $customer === null ? '' : (preg_replace('/[^+0-9]/', '', $customer->phone) ?? '');
 $detail = static fn (?string $text): string => $text === null || trim($text) === ''
     ? '<span class="pickup-customer-detail-empty">Not recorded</span>'
@@ -96,13 +102,13 @@ $eyebrow = match (true) {
 
         <?php if ($customer !== null && !$editing): ?>
             <?php if ($followUpDue): ?>
-                <div class="pickup-profile-alert" role="status"><strong>Follow-up overdue.</strong> It was due on <?= $e($customer->nextFollowUpOn) ?>. <?php if ($canUpdateCustomer): ?><a href="#customer-activity">Log the outcome</a><?php endif; ?></div>
+                <div class="pickup-profile-alert" role="status"><strong>Follow-up overdue.</strong> It was due on <?= $e($customer->nextFollowUpOn) ?>. <?php if ($canUpdateCustomer): ?><a href="#customer-activity">Log the outcome</a> or <?= $closeFollowUpForm() ?><?php endif; ?></div>
             <?php endif; ?>
             <section class="pickup-profile-kpis" aria-label="Customer at a glance">
                 <article><span>Shipments</span><strong><?= $e(number_format($customer->shipmentCount)) ?></strong><small><?= $customer->firstShipmentOn !== null ? 'Since ' . $e($customer->firstShipmentOn) : 'No shipments yet' ?></small></article>
                 <article><span>Shipment value</span><strong><?= $e(number_format($customer->totalCashXaf)) ?> <em>XAF</em></strong><small>Cash collected</small></article>
                 <article><span>Reward points</span><strong><?= $e(number_format($customer->rewardBalance())) ?></strong><small><?= $e($customer->loyaltyTier()) ?> tier</small></article>
-                <article><span>Next follow-up</span><strong><?= $e($customer->nextFollowUpOn ?? 'None') ?></strong><small><?php if ($followUpDue): ?><strong class="pickup-follow-up-badge">Overdue</strong><?php else: ?><?= $customer->nextFollowUpOn === null ? 'Not scheduled' : 'Scheduled' ?><?php endif; ?></small></article>
+                <article><span>Next follow-up</span><strong><?= $e($customer->nextFollowUpOn ?? 'None') ?></strong><small><?php if ($followUpDue): ?><strong class="pickup-follow-up-badge">Overdue</strong><?php else: ?><?= $customer->nextFollowUpOn === null ? 'Not scheduled' : 'Scheduled' ?><?php endif; ?></small><?php if ($canUpdateCustomer && $customer->nextFollowUpOn !== null): ?><?= $closeFollowUpForm() ?><?php endif; ?></article>
                 <article><span>Last shipment</span><strong><?= $e($customer->lastShipmentOn ?? 'None') ?></strong><small><?= $customer->lastShipmentOn !== null ? 'Most recent collection' : 'Awaiting first shipment' ?></small></article>
             </section>
             <nav class="pickup-profile-nav" aria-label="Customer profile sections">
@@ -193,7 +199,7 @@ $eyebrow = match (true) {
                         <label><span>Type</span><select name="activity_type" required><?php foreach ($activityTypes as $typeValue => $typeLabel): ?><option value="<?= $e($typeValue) ?>" <?= ($activityOld['activity_type'] ?? 'call') === $typeValue ? 'selected' : '' ?>><?= $e($typeLabel) ?></option><?php endforeach; ?></select></label>
                         <label><span>Date</span><input type="date" name="occurred_on" value="<?= $e($activityOld['occurred_on'] ?? gmdate('Y-m-d')) ?>" max="<?= $e(gmdate('Y-m-d')) ?>" required></label>
                         <label class="pickup-field-wide"><span>What happened</span><textarea name="summary" rows="3" maxlength="1000" minlength="3" required placeholder="Outcome of the call, visit, or message"><?= $e($activityOld['summary'] ?? '') ?></textarea></label>
-                        <label class="pickup-field-wide"><span>Next follow-up</span><input type="date" name="next_follow_up_on" value="<?= $e($activityOld['next_follow_up_on'] ?? ($customer->nextFollowUpOn ?? '')) ?>"><small>Change the date to reschedule, or clear it to close the follow-up.</small></label>
+                        <label class="pickup-field-wide"><span>Next follow-up</span><input type="date" name="next_follow_up_on" value="<?= $e($activityOld['next_follow_up_on'] ?? ($customer->nextFollowUpOn ?? '')) ?>"><small>Change the date to reschedule. To close the follow-up, clear the date or use Close follow-up.</small></label>
                         <button class="button" type="submit">Log activity</button>
                     </form>
                     <?php endif; ?>
