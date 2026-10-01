@@ -1874,9 +1874,10 @@ $pickupControllerResponse = $pickupController->store(new Request('POST', '/dhl/p
         'checked_by' => 'Spoofed Checker',
     ]],
 ], ''));
-$assert($pickupControllerResponse->status() === 303, 'A valid pickup sheet should redirect after saving.');
-$assert(str_contains((string) ($_SESSION['_pickup_flash'] ?? ''), 'PS-20260729-'), 'The saved-sheet confirmation should display its reference number.');
-$assert(str_contains((string) ($_SESSION['_pickup_flash'] ?? ''), '12,000 XAF'), 'The pickup controller should confirm the server-calculated total.');
+$assert($pickupControllerResponse->status() === 303 && ($pickupControllerResponse->headers()['Location'] ?? '') === '/dhl/pickupsheet/submissions', 'Saving a pickup sheet should close the form and return to Submitted sheets.');
+$assert(str_contains((string) ($_SESSION['_pickup_records_flash'] ?? ''), 'PS-20260729-') && !isset($_SESSION['_pickup_flash']), 'The saved-sheet confirmation should display its reference number on Submitted sheets.');
+$assert(str_contains((string) ($_SESSION['_pickup_records_flash'] ?? ''), '12,000 XAF'), 'The pickup controller should confirm the server-calculated total.');
+unset($_SESSION['_pickup_records_flash']);
 $savedControllerSheet = $_SESSION['_demo_pickup_sheets'][0] ?? null;
 $assert($savedControllerSheet instanceof App\Modules\Pickupsheet\Domain\PickupSheet, 'The controller should persist a pickup-sheet aggregate.');
 $assert($savedControllerSheet->status === 'open' && !$savedControllerSheet->isPaid(), 'Every new pickup sheet should start with open status.');

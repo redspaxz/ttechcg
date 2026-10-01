@@ -198,8 +198,8 @@ final class PickupsheetController
 
         if ($request->input('website') !== '') {
             $this->securityLogger->event('pickupsheet.honeypot', $request, 'blocked');
-            $_SESSION['_pickup_flash'] = 'Pickup sheet saved.';
-            return Response::redirect($request->basePath . '/dhl/pickupsheet/');
+            $_SESSION['_pickup_records_flash'] = 'Pickup sheet saved.';
+            return Response::redirect($request->basePath . '/dhl/pickupsheet/submissions');
         }
 
         if (!$this->captcha->validate($request->input('captcha_nonce'), $request->input('captcha_answer'))) {
@@ -223,14 +223,16 @@ final class PickupsheetController
                 'resource_id' => substr(hash('sha256', $pickupSheet->referenceNumber), 0, 24),
                 'shipment_count' => $pickupSheet->shipmentCount(),
             ]);
-            $_SESSION['_pickup_flash'] = sprintf(
+            $_SESSION['_last_pickup_sheet_at'] = time();
+            // A saved sheet closes the form and lands on Submitted sheets, where the confirmation is shown.
+            $_SESSION['_pickup_records_flash'] = sprintf(
                 'Pickup sheet %s saved with %d shipment%s and a total of %s XAF.',
                 $pickupSheet->referenceNumber,
                 $pickupSheet->shipmentCount(),
                 $pickupSheet->shipmentCount() === 1 ? '' : 's',
                 number_format($pickupSheet->totalCashReceivedXaf),
             );
-            $_SESSION['_last_pickup_sheet_at'] = time();
+            return Response::redirect($request->basePath . '/dhl/pickupsheet/submissions');
         } catch (AwbReuseException $exception) {
             $this->securityLogger->event('pickupsheet.awb_reuse', $request, 'denied', ['awb_count' => count($exception->awbNumbers())]);
             $_SESSION['_pickup_errors'] = [$exception->getMessage()];
