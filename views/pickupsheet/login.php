@@ -6,7 +6,7 @@ $e = static fn (mixed $value): string => htmlspecialchars((string) $value, ENT_Q
 ?>
 <section class="pickup-login-shell">
     <div class="pickup-login-panel">
-        <a class="pickup-login-brand" href="<?= $e($basePath . '/') ?>"><span class="pickup-login-mark" aria-hidden="true">P</span>T&amp;Tech <span>Pickupsheet</span></a>
+        <a class="pickup-login-brand" href="<?= $e($basePath . '/') ?>">T&amp;Tech Consulting Group <span class="pickup-login-brand-divider" aria-hidden="true">|</span> <span>Cash Shipment Management Portal</span></a>
         <div class="pickup-login-card">
             <div class="pickup-login-copy">
                 <p class="eyebrow eyebrow-red">Pickupsheet workspace</p>
@@ -46,7 +46,7 @@ $e = static fn (mixed $value): string => htmlspecialchars((string) $value, ENT_Q
     </div>
     <aside class="pickup-login-aside pickup-login-welcome" aria-label="About Pickupsheet">
         <div>
-            <p class="pickup-login-welcome-eyebrow">T&amp;Tech Pickupsheet</p>
+            <p class="pickup-login-welcome-eyebrow">T&amp;Tech Consulting Group</p>
             <h2>Every pickup,<br>accounted for.</h2>
             <ul>
                 <li><strong>Record cash shipments</strong><span>Build a pickup sheet in minutes, with totals worked out for you.</span></li>

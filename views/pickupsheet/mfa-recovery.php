@@ -6,7 +6,7 @@ $e = static fn (mixed $value): string => htmlspecialchars((string) $value, ENT_Q
 ?>
 <section class="pickup-login-shell pickup-mfa-shell">
     <div class="pickup-login-panel pickup-mfa-panel">
-        <a class="pickup-login-brand" href="<?= $e($basePath . '/') ?>">T&amp;Tech <span>Pickupsheet</span></a>
+        <a class="pickup-login-brand" href="<?= $e($basePath . '/') ?>">T&amp;Tech Consulting Group <span class="pickup-login-brand-divider" aria-hidden="true">|</span> <span>Cash Shipment Management Portal</span></a>
         <div class="pickup-login-copy">
             <p class="eyebrow eyebrow-red">2FA enabled</p>
             <h1>Save your recovery codes.</h1>

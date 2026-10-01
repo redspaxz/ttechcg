@@ -1037,7 +1037,8 @@ button, a, input, select, textarea { -webkit-tap-highlight-color: transparent; }
 .pickup-login-shell:not(.pickup-mfa-shell) .pickup-login-panel { align-items: center; gap: 28px; }
 .pickup-login-brand { display: inline-flex; align-items: center; gap: 8px; color: #111; font-size: 1rem; font-weight: 900; letter-spacing: -0.03em; text-decoration: none; }
 .pickup-login-brand span { color: var(--dhl-red); }
-.pickup-login-brand .pickup-login-mark { display: grid; width: 32px; height: 32px; place-items: center; border-radius: 9px; background: var(--dhl-red); color: #ffcc00; font-size: 0.95rem; letter-spacing: 0; }
+.pickup-login-brand { flex-wrap: wrap; column-gap: 6px; row-gap: 2px; line-height: 1.3; }
+.pickup-login-brand .pickup-login-brand-divider { color: #c4bca6; font-weight: 400; }
 .pickup-login-card { width: 100%; max-width: 440px; padding: clamp(26px, 4vw, 38px); border: 1px solid rgba(36, 27, 0, 0.08); border-radius: 18px; background: #fff; box-shadow: 0 1px 2px rgba(36, 27, 0, 0.04), 0 18px 48px rgba(36, 27, 0, 0.08); }
 .pickup-login-copy { margin: 0 0 26px; }
 .pickup-login-copy .eyebrow { margin: 0; }
@@ -3301,7 +3302,7 @@ button, a, input, select, textarea { -webkit-tap-highlight-color: transparent; }
 }
 
 /* Login page: centred card on small screens; the welcome panel stays brief */
-.pickup-login-shell:not(.pickup-mfa-shell) .pickup-login-brand { justify-content: center; }
+.pickup-login-shell:not(.pickup-mfa-shell) .pickup-login-brand { justify-content: center; max-width: 440px; text-align: center; }
 @media (max-width: 960px) {
     .pickup-login-welcome { gap: 24px; }
 }
