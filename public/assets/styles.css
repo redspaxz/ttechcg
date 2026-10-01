@@ -3313,7 +3313,9 @@ button, a, input, select, textarea { -webkit-tap-highlight-color: transparent; }
 }
 
 /* Login page: centred card on small screens; the welcome panel stays brief */
-.pickup-login-shell:not(.pickup-mfa-shell) .pickup-login-brand { justify-content: center; max-width: 440px; text-align: center; }
+/* Login: the portal name is set at the same size as the Welcome back heading. */
+.pickup-login-shell:not(.pickup-mfa-shell) .pickup-login-brand { display: block; max-width: 560px; color: #111; font-size: clamp(1.7rem, 3vw, 2.2rem); font-weight: 850; letter-spacing: -0.035em; line-height: 1.12; text-align: center; text-wrap: balance; }
+.pickup-login-shell:not(.pickup-mfa-shell) .pickup-login-brand .pickup-login-brand-divider { color: #c4bca6; font-weight: 300; }
 @media (max-width: 960px) {
     .pickup-login-welcome { gap: 24px; }
 }
