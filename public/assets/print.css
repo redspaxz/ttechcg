@@ -141,13 +141,16 @@ body { margin: 0; background: #5b5b5b; color: #151515; }
 }
 .paper-shipment-table tbody tr { break-inside: avoid; page-break-inside: avoid; }
 .pickup-awb-expired small { margin-left: 3px; font-size: 7pt; font-weight: 700; text-transform: uppercase; }
+/* The AWB already sits in its own cell, so the tracking link is not underlined until it is pointed at. */
 .pickup-awb-link {
     color: #000;
     font-weight: inherit;
-    text-decoration: underline;
+    text-decoration: none;
     text-decoration-thickness: 0.2mm;
     text-underline-offset: 0.5mm;
 }
+.pickup-awb-link:hover,
+.pickup-awb-link:focus-visible { text-decoration: underline; }
 .paper-col-consignor { width: 25.5%; }
 .paper-col-awb { width: 16.5%; }
 .paper-col-destination { width: 9.5%; }

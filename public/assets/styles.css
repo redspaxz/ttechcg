@@ -2628,13 +2628,15 @@ button, a, input, select, textarea { -webkit-tap-highlight-color: transparent; }
 .pickup-record-table tfoot th { background: #fffdf5; }
 .pickup-record-table tr > *:last-child { border-right: 0; }
 .pickup-record-table tfoot tr:last-child > * { border-bottom: 1px solid rgba(69, 50, 0, 0.3); }
+/* AWB numbers already sit in their own table cell, so the tracking link is underlined only on hover and focus. */
 .pickup-awb-link {
     color: var(--dhl-red);
     font-weight: 850;
-    text-decoration: underline;
+    text-decoration: none;
     text-decoration-thickness: 1px;
     text-underline-offset: 3px;
 }
+.pickup-awb-link:hover { text-decoration: underline; }
 .pickup-awb-link:focus-visible { outline: 3px solid rgba(212, 5, 17, 0.24); outline-offset: 3px; }
 .ajax-pager,
 .pickup-records-frame { position: relative; width: 100%; min-width: 0; min-height: 180px; margin-inline: auto; }
