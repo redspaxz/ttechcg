@@ -7,6 +7,7 @@ namespace App\Modules\CRM\Domain;
 final class CustomerProfile
 {
     public const POINTS_PER_KILOGRAM = 10;
+    public const NEW_CUSTOMER_DAYS = 15;
 
     public function __construct(
         public readonly ?int $id,
@@ -61,6 +62,31 @@ final class CustomerProfile
         return $this->nextFollowUpOn !== null
             && $this->nextFollowUpOn <= ($today ?? gmdate('Y-m-d'))
             && $this->status !== 'inactive';
+    }
+
+    /** Earliest of the profile's creation date and its first shipment, as Y-m-d. */
+    public function customerSince(): ?string
+    {
+        $dates = array_filter([substr((string) $this->createdAt, 0, 10), (string) $this->firstShipmentOn]);
+
+        return $dates === [] ? null : min($dates);
+    }
+
+    public function ageInDays(?string $today = null): ?int
+    {
+        $since = $this->customerSince();
+        $sinceDate = $since === null ? false : \DateTimeImmutable::createFromFormat('!Y-m-d', $since, new \DateTimeZone('UTC'));
+        $todayDate = \DateTimeImmutable::createFromFormat('!Y-m-d', $today ?? gmdate('Y-m-d'), new \DateTimeZone('UTC'));
+
+        return $sinceDate === false || $todayDate === false ? null : max(0, (int) $sinceDate->diff($todayDate)->format('%r%a'));
+    }
+
+    /** A customer is new for their first NEW_CUSTOMER_DAYS days (0 through 14). */
+    public function isNew(?string $today = null): bool
+    {
+        $age = $this->ageInDays($today);
+
+        return $age !== null && $age < self::NEW_CUSTOMER_DAYS;
     }
 
     public function shipmentRewardPoints(): int

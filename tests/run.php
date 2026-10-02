@@ -798,6 +798,11 @@ $assert($silverCustomer->loyaltyTier() === 'Silver', 'Customers with 100 lifetim
 $assert($goldCustomer->loyaltyTier() === 'Gold', 'Customers with 250 lifetime points should be Gold.');
 $assert($platinumCustomer->loyaltyTier() === 'Platinum', 'Customers with 500 lifetime points should be Platinum.');
 $assert($redeemedCustomer->rewardBalance() === 20 && $redeemedCustomer->lifetimeEarnedPoints() === 25, 'Redemptions should reduce only the available balance, not lifetime earned points.');
+$recentCustomer = new CustomerProfile(null, str_repeat('f', 64), 'Recent Customer', firstShipmentOn: '2026-09-20', createdAt: '2026-09-25 08:00:00');
+$assert($recentCustomer->customerSince() === '2026-09-20' && $recentCustomer->ageInDays('2026-10-02') === 12, 'Customer age should count from the earlier of profile creation and first shipment.');
+$assert($recentCustomer->isNew('2026-10-04'), 'Customers 14 days old should still be marked new.');
+$assert(!$recentCustomer->isNew('2026-10-05'), 'Customers 15 days old should no longer be marked new.');
+$assert(!(new CustomerProfile(null, str_repeat('g', 64), 'Undated Customer'))->isNew(), 'Customers without any dates should not be marked new.');
 $oidcSettings = [
     'enabled' => true,
     'issuer' => 'https://oauth.id.jumpcloud.com/',
@@ -3122,7 +3127,7 @@ $partnerSources = $readSource(dirname(__DIR__) . '/public/assets/partners/README
 $assert(is_string($partnerSources) && str_contains($partnerSources, 'www.dhl.com/content/dam/dhl/global/core/images/logos/dhl-logo.svg'), 'The official DHL artwork source should be documented.');
 $assert(!str_contains($home, 'href="/dhl/pickupsheet"'), 'Pickupsheet should not be discoverable from the public site chrome or homepage.');
 $assert(str_contains($home, '© ' . date('Y') . ' T&amp;Tech Consulting Group. All rights reserved.') && !str_contains($home, 'class="pickup-footer"'), 'The public site footer should carry the copyright statement with the current year.');
-$assert(str_contains($home, 'styles.css?v=20261002-modal-reference'), 'Market-performance dashboard styles and prior Pickupsheet refinements should use a cache-safe stylesheet version.');
+$assert(str_contains($home, 'styles.css?v=20261002-new-customers'), 'Market-performance dashboard styles and prior Pickupsheet refinements should use a cache-safe stylesheet version.');
 $assert(str_contains($home, 'app.js?v=20261002-mobile-menu'), 'AJAX audit-log accordions and prior OWASP-aligned interactions should use a cache-safe script version.');
 $assert(str_contains($home, 'analytics.js?v=20260825-security-hardening'), 'The current consent-aware Google Analytics loader should render on every page.');
 $assert(str_contains($home, 'data-analytics-accept'), 'The site should offer an explicit analytics acceptance control.');

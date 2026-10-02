@@ -2996,6 +2996,8 @@ button, a, input, select, textarea { -webkit-tap-highlight-color: transparent; }
 .pickup-customer-status.is-active { border-color: #168a45; background: #e6f7ed; color: #0b633a; }
 .pickup-customer-status.is-attention { border-color: var(--dhl-red); background: #fff0f1; color: #a6000a; }
 .pickup-customer-status.is-inactive { border-color: #999; background: #f2f2f2; color: #666; }
+.pickup-customer-new { display: inline-flex; align-items: center; margin-left: 6px; padding: 2px 7px; border: 1px solid #1f5fbf; border-radius: 999px; background: #e8f0fc; color: #174a96; font-size: 0.58rem; font-weight: 850; letter-spacing: 0.05em; line-height: 1.4; text-transform: uppercase; vertical-align: middle; white-space: nowrap; }
+.pickup-profile-meta .pickup-customer-new { margin-left: 0; padding: 3px 8px; }
 .pickup-follow-up-due { color: var(--dhl-red) !important; }
 .pickup-crm-directory .pickup-pagination,
 .pickup-customer-history .pickup-pagination { margin-top: 0; padding: 14px 16px 16px; border-top: 1px solid rgba(69, 50, 0, 0.16); }

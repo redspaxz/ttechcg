@@ -43,7 +43,7 @@ if ($customer !== null) {
         $initials .= function_exists('mb_substr') ? mb_strtoupper(mb_substr($word, 0, 1, 'UTF-8'), 'UTF-8') : strtoupper($word[0]);
     }
 }
-$customerSince = $customer === null ? null : (min(array_filter([substr((string) $customer->createdAt, 0, 10), (string) $customer->firstShipmentOn])) ?: null);
+$customerSince = $customer?->customerSince();
 $eyebrow = match (true) {
     $customer === null => 'New relationship',
     $editing => 'Editing customer',
@@ -73,6 +73,7 @@ $eyebrow = match (true) {
                         <ul class="pickup-profile-meta" aria-label="Customer summary">
                             <li><span class="pickup-customer-id" title="Customer ID">ID <?= $e($customer->reference()) ?></span></li>
                             <li><span class="pickup-customer-status is-<?= $e($customer->status) ?>"><?= $e($statusLabels[$customer->status] ?? ucfirst($customer->status)) ?></span></li>
+                            <?php if ($customer->isNew()): ?><li><span class="pickup-customer-new" title="Customer for <?= $e($customer->ageInDays()) ?> <?= $customer->ageInDays() === 1 ? 'day' : 'days' ?>">New</span></li><?php endif; ?>
                             <li><span class="sr-only">Owner: </span><?= $customer->assignedName !== '' ? $e($customer->assignedName) : 'Unassigned' ?></li>
                             <?php if ($customerSince !== null): ?><li>Customer since <?= $e($customerSince) ?></li><?php endif; ?>
                         </ul>
