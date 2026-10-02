@@ -3396,5 +3396,8 @@ a.pickup-ref { display: inline-block; max-width: 100%; overflow: hidden; color: 
 .pickup-record-reference,
 .pickup-storage-state,
 .pickup-payment-dialog h2 { min-width: 0; max-width: 100%; }
+/* A modal title is about 400px wide on desktop and 288px on a 360px phone; at this size the whole 44-character
+   reference fits on one line at both, so it is not clipped. */
+.pickup-payment-dialog h2 .pickup-ref { font-size: clamp(0.66rem, 2.85vw, 0.86rem); font-weight: 800; letter-spacing: 0; }
 a.pickup-ref:hover,
 a.pickup-ref:focus-visible { color: #1f1f1f; }
