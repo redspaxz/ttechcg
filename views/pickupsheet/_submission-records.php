@@ -57,7 +57,7 @@ $pageUrl = static function (int $target) use ($basePath, $search): string {
         <?php $referenceQuery = rawurlencode($pickupSheet->referenceNumber); $isPaid = $pickupSheet->isPaid(); ?>
         <article class="pickup-record">
             <div class="pickup-record-overview">
-                <span class="pickup-record-reference"><span class="pickup-ref"><?= $e($pickupSheet->referenceNumber) ?></span><small class="pickup-record-status" data-status="<?= $isPaid ? 'paid' : 'open' ?>"><?= $isPaid ? 'Closed' : 'Open' ?></small><?php if ($isPaid && $pickupSheet->paymentReceiptNumber !== null): ?><small class="pickup-record-receipt">Receipt <?= $e($pickupSheet->paymentReceiptNumber) ?></small><?php endif; ?></span>
+                <span class="pickup-record-reference"><span class="pickup-ref" title="<?= $e($pickupSheet->referenceNumber) ?>"><?= $e($pickupSheet->referenceNumber) ?></span><small class="pickup-record-status" data-status="<?= $isPaid ? 'paid' : 'open' ?>"><?= $isPaid ? 'Closed' : 'Open' ?></small><?php if ($isPaid && $pickupSheet->paymentReceiptNumber !== null): ?><small class="pickup-record-receipt">Receipt <?= $e($pickupSheet->paymentReceiptNumber) ?></small><?php endif; ?></span>
                 <span><small>Date</small><?= $e($pickupSheet->collectionDate) ?></span>
                 <span><small>Agent</small><?= $e($pickupSheet->agentName) ?></span>
                 <span><small>Shipments</small><?= $e($pickupSheet->shipmentCount()) ?></span>
@@ -94,7 +94,7 @@ $pageUrl = static function (int $target) use ($basePath, $search): string {
                             <input type="hidden" name="_token" value="<?= $e($csrfToken) ?>"><input type="hidden" name="reference" value="<?= $e($pickupSheet->referenceNumber) ?>"><input type="hidden" name="return_page" value="<?= $e($page) ?>"><input type="hidden" name="return_search" value="<?= $e($search) ?>">
                             <header>
                                 <p>Confirm payment</p>
-                                <h2 id="<?= $e($paymentDialogId) ?>-title"><span class="pickup-ref"><?= $e($pickupSheet->referenceNumber) ?></span></h2>
+                                <h2 id="<?= $e($paymentDialogId) ?>-title"><span class="pickup-ref" title="<?= $e($pickupSheet->referenceNumber) ?>"><?= $e($pickupSheet->referenceNumber) ?></span></h2>
                             </header>
                             <dl class="pickup-payment-summary">
                                 <div><dt>Collected</dt><dd><?= $e($pickupSheet->collectionDate) ?></dd></div>
@@ -133,7 +133,7 @@ $pageUrl = static function (int $target) use ($basePath, $search): string {
                         <div class="app-confirm-body">
                             <header>
                                 <p>Payment receipt</p>
-                                <h2 id="<?= $e($viewReceiptDialogId) ?>-title"><span class="pickup-ref"><?= $e($pickupSheet->referenceNumber) ?></span></h2>
+                                <h2 id="<?= $e($viewReceiptDialogId) ?>-title"><span class="pickup-ref" title="<?= $e($pickupSheet->referenceNumber) ?>"><?= $e($pickupSheet->referenceNumber) ?></span></h2>
                             </header>
                             <dl class="pickup-payment-summary">
                                 <div><dt>Receipt number</dt><dd><?= $e($pickupSheet->paymentReceiptNumber ?? '') ?></dd></div>
@@ -155,7 +155,7 @@ $pageUrl = static function (int $target) use ($basePath, $search): string {
                             <input type="hidden" name="_token" value="<?= $e($csrfToken) ?>"><input type="hidden" name="reference" value="<?= $e($pickupSheet->referenceNumber) ?>"><input type="hidden" name="return_page" value="<?= $e($page) ?>"><input type="hidden" name="return_search" value="<?= $e($search) ?>">
                             <header>
                                 <p>Edit receipt number</p>
-                                <h2 id="<?= $e($receiptDialogId) ?>-title"><span class="pickup-ref"><?= $e($pickupSheet->referenceNumber) ?></span></h2>
+                                <h2 id="<?= $e($receiptDialogId) ?>-title"><span class="pickup-ref" title="<?= $e($pickupSheet->referenceNumber) ?>"><?= $e($pickupSheet->referenceNumber) ?></span></h2>
                             </header>
                             <dl class="pickup-payment-summary">
                                 <div><dt>Current receipt</dt><dd><?= $e($pickupSheet->paymentReceiptNumber ?? '') ?></dd></div>

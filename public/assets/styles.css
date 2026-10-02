@@ -3387,9 +3387,14 @@ button, a, input, select, textarea { -webkit-tap-highlight-color: transparent; }
     .pickup-nav-toggle-icon i { transition: none; }
 }
 
-/* Pickup sheet reference numbers: always on one line, dark gray, never underlined. Declared last and with an
-   element-qualified link selector so it wins over the red table-link rules in the CRM, dashboard and warnings. */
+/* Pickup sheet reference numbers: always on one line, dark gray, never underlined. A reference is 44 characters,
+   so where its column is narrower it is clipped with an ellipsis instead of running into the next column; the
+   title attribute shows the full reference. Declared last and with an element-qualified link selector so it wins
+   over the red table-link rules in the CRM, dashboard and warnings. */
 .pickup-ref,
-a.pickup-ref { color: #3a3a3a; font-variant-numeric: tabular-nums; text-decoration: none; white-space: nowrap; }
+a.pickup-ref { display: inline-block; max-width: 100%; overflow: hidden; color: #3a3a3a; font-variant-numeric: tabular-nums; text-decoration: none; text-overflow: ellipsis; vertical-align: bottom; white-space: nowrap; }
+.pickup-record-reference,
+.pickup-storage-state,
+.pickup-payment-dialog h2 { min-width: 0; max-width: 100%; }
 a.pickup-ref:hover,
 a.pickup-ref:focus-visible { color: #1f1f1f; }

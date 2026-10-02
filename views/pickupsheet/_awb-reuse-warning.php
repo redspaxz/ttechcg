@@ -14,7 +14,7 @@ if ($awbConflicts === []) {
     <p>An AWB can be entered only once within <?= $e($awbReuseDays) ?> days of its collection date, and these are already on other pickup sheets from that period. Correct the numbers to save this sheet.</p>
     <ul>
         <?php foreach ($awbConflicts as $conflict): ?>
-            <li>AWB <strong><?= $e($conflict['awbNumber'] ?? '') ?></strong> is on sheet <a class="pickup-ref" href="<?= $e($basePath) ?>/dhl/pickupsheet/submissions?reference=<?= $e(rawurlencode((string) ($conflict['referenceNumber'] ?? ''))) ?>" target="_blank" rel="noopener"><?= $e($conflict['referenceNumber'] ?? '') ?></a>, collected <?= $e($conflict['collectionDate'] ?? '') ?></li>
+            <li>AWB <strong><?= $e($conflict['awbNumber'] ?? '') ?></strong> is on sheet <a class="pickup-ref" title="<?= $e($conflict['referenceNumber'] ?? '') ?>" href="<?= $e($basePath) ?>/dhl/pickupsheet/submissions?reference=<?= $e(rawurlencode((string) ($conflict['referenceNumber'] ?? ''))) ?>" target="_blank" rel="noopener"><?= $e($conflict['referenceNumber'] ?? '') ?></a>, collected <?= $e($conflict['collectionDate'] ?? '') ?></li>
         <?php endforeach; ?>
     </ul>
 </div>
