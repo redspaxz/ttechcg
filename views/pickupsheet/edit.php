@@ -39,15 +39,15 @@ $renderEditRow = static function (string|int $index, array $values = []) use ($e
 };
 ?>
 <section class="pickup-workspace">
-    <div class="container pickup-workspace-header">
-        <strong class="pickup-wordmark">Edit Pickupsheet</strong>
-        <div class="pickup-header-links">
-            <span class="pickup-session-user" title="<?= $e($recordsUsername) ?>"><?= $e($checkerName) ?> · <?= $e($recordsRole) ?></span>
-            <a class="pickup-back" href="<?= $e($basePath) ?>/dhl/pickupsheet/submissions">Submitted sheets <span aria-hidden="true">&#8599;</span></a>
-            <a class="pickup-back" href="<?= $e($basePath) ?>/dhl/pickupsheet/settings">User settings <span aria-hidden="true">&#8599;</span></a>
-            <form method="post" action="<?= $e($basePath) ?>/dhl/pickupsheet/logout"><input type="hidden" name="_token" value="<?= $e($csrfToken) ?>"><button class="pickup-link-button" type="submit">Sign out</button></form>
-        </div>
-    </div>
+    <?php
+    $navTitle = 'Edit Pickupsheet';
+    $navCurrent = 'submissions';
+    $navName = (string) ($checkerName);
+    $navRole = (string) ($recordsRole);
+    $navUsername = (string) ($recordsUsername);
+    $navClass = '';
+    require __DIR__ . '/_workspace-header.php';
+    ?>
     <div class="container pickup-form-shell">
         <header class="pickup-form-heading"><div><p class="eyebrow eyebrow-red">Audited correction</p><h1>Edit record</h1><p>The reference, original consent, and creation timestamp remain unchanged. Every saved correction records before-and-after values.</p></div><span class="pickup-storage-state"><i aria-hidden="true"></i><?= $e($pickupSheet->referenceNumber) ?></span></header>
         <?php if (is_string($flash ?? null) && $flash !== ''): ?><div class="notice notice-success" role="status"><?= $e($flash) ?></div><?php endif; ?>

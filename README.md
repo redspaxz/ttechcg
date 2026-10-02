@@ -254,6 +254,8 @@ The header, administration links and KPI cards stay visible above folder-style t
 
 ### Mobile layout
 
+**Workspace menu.** Every Pickupsheet page uses one shared header, `views/pickupsheet/_workspace-header.php`. It shows the same menu on every page, filtered by role (Dashboard and Manage access for administrators, Customer CRM for operators and administrators, and New pickup sheet, Submitted sheets and User settings for everyone), marks the current page with `aria-current="page"`, and ends with Sign out. Above 900px the links sit in the header. At 900px and below the pinned header becomes a slim bar with the page name and a **Menu** button, which opens the links as a full-width list with 48px rows. The menu closes on Escape, a link tap, a tap outside it, or when the screen widens. Without JavaScript the links stay listed in the header.
+
 The administrator dashboard is built for phones down to 360px wide:
 
 - no card is wider than the screen; wide content such as the 14-day cash chart and the activity tables scrolls sideways inside its own card

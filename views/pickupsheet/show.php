@@ -37,17 +37,15 @@ $renderShipmentRow = static function (int|string $index, mixed $row = []) use ($
 };
 ?>
 <section class="pickup-workspace">
-    <div class="container pickup-workspace-header">
-        <strong class="pickup-wordmark">Pickupsheet</strong>
-        <div class="pickup-header-links">
-            <span class="pickup-session-user" title="<?= $e($recordsUsername ?? '') ?>"><?= $e($checkerName) ?> · <?= $e($recordsRole ?? '') ?></span>
-            <?php if (($recordsRole ?? '') === 'admin'): ?><a class="pickup-back" href="<?= $e($basePath) ?>/dhl/pickupsheet/dashboard">Dashboard <span aria-hidden="true">↗</span></a><?php endif; ?>
-            <?php if ((bool) ($canCrmView ?? false)): ?><a class="pickup-back" href="<?= $e($basePath) ?>/dhl/pickupsheet/customers">Customer CRM <span aria-hidden="true">↗</span></a><?php endif; ?>
-            <a class="pickup-back" href="<?= $e($basePath) ?>/dhl/pickupsheet/submissions">Submitted sheets <span aria-hidden="true">↗</span></a>
-            <a class="pickup-back" href="<?= $e($basePath) ?>/dhl/pickupsheet/settings">User settings <span aria-hidden="true">↗</span></a>
-            <form method="post" action="<?= $e($basePath) ?>/dhl/pickupsheet/logout"><input type="hidden" name="_token" value="<?= $e($csrfToken) ?>"><button class="pickup-link-button" type="submit">Sign out</button></form>
-        </div>
-    </div>
+    <?php
+    $navTitle = 'Pickupsheet';
+    $navCurrent = 'create';
+    $navName = (string) ($checkerName);
+    $navRole = (string) ($recordsRole ?? '');
+    $navUsername = (string) ($recordsUsername ?? '');
+    $navClass = '';
+    require __DIR__ . '/_workspace-header.php';
+    ?>
 
     <div class="container pickup-form-shell">
         <header class="pickup-form-heading">

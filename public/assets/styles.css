@@ -3359,3 +3359,30 @@ button, a, input, select, textarea { -webkit-tap-highlight-color: transparent; }
 .records-collection-agent-field > span { color: #493800; font-size: 0.66rem; font-weight: 850; letter-spacing: 0.06em; text-transform: uppercase; }
 .records-collection-agent-field input { width: 100%; min-height: 46px; padding: 10px 12px; border: 1px solid #8b7626; border-radius: 8px; background: #fff; color: #241b00; font: inherit; }
 .records-collection-agent-field input:focus { border-color: var(--pickup-accent); outline: 3px solid rgba(212, 5, 17, 0.12); }
+
+/* Pickupsheet workspace menu. Desktop lists the links in the header; at 900px and below they fold behind a Menu
+   button so the pinned header stays one slim bar. data-nav-ready is set by app.js, so without JavaScript the
+   stacked link layout above still applies. */
+.pickup-nav-toggle { display: none; }
+.pickup-header-links .pickup-back[aria-current="page"] { color: #241b00; text-decoration: underline; text-decoration-color: var(--pickup-accent); text-decoration-thickness: 2px; text-underline-offset: 5px; }
+@media (max-width: 900px) {
+    .pickup-workspace-header[data-nav-ready] { flex-direction: row; flex-wrap: wrap; align-items: center; justify-content: space-between; min-height: 56px; gap: 0 12px; padding-block: 6px; }
+    .pickup-workspace-header[data-nav-ready] .pickup-wordmark { min-width: 0; overflow: hidden; font-size: 1.25rem; text-overflow: ellipsis; white-space: nowrap; }
+    .pickup-workspace-header[data-nav-ready] .pickup-nav-toggle { display: inline-flex; flex: 0 0 auto; align-items: center; gap: 9px; min-width: 44px; min-height: 44px; padding: 0 14px; border: 1px solid #241b00; border-radius: 8px; background: var(--pickup-surface); color: #241b00; cursor: pointer; font: inherit; font-size: 0.78rem; font-weight: 850; }
+    .pickup-workspace-header[data-nav-ready] .pickup-nav-toggle:focus-visible { outline: 3px solid rgba(212, 5, 17, 0.35); outline-offset: 2px; }
+    .pickup-nav-toggle-icon { display: grid; gap: 3px; width: 16px; }
+    .pickup-nav-toggle-icon i { display: block; height: 2px; border-radius: 2px; background: currentColor; transition: transform 160ms ease, opacity 160ms ease; }
+    .pickup-workspace-header[data-nav-open] .pickup-nav-toggle-icon i:nth-child(1) { transform: translateY(5px) rotate(45deg); }
+    .pickup-workspace-header[data-nav-open] .pickup-nav-toggle-icon i:nth-child(2) { opacity: 0; }
+    .pickup-workspace-header[data-nav-open] .pickup-nav-toggle-icon i:nth-child(3) { transform: translateY(-5px) rotate(-45deg); }
+    .pickup-workspace-header[data-nav-ready] .pickup-header-links { display: none; }
+    .pickup-workspace-header[data-nav-open] .pickup-header-links { display: flex; flex-direction: column; flex-wrap: nowrap; align-items: stretch; gap: 0; width: 100%; max-height: calc(100dvh - 72px); margin-top: 6px; padding: 2px 0 12px; overflow-y: auto; border-top: 1px solid rgba(69, 50, 0, 0.26); }
+    .pickup-workspace-header[data-nav-open] .pickup-session-user { padding: 12px 4px 8px; }
+    .pickup-workspace-header[data-nav-open] .pickup-back { display: flex; flex: 0 0 auto; width: 100%; min-height: 48px; align-items: center; padding: 0 4px; border-bottom: 1px solid rgba(69, 50, 0, 0.16); color: #241b00; font-size: 0.9rem; }
+    .pickup-workspace-header[data-nav-open] .pickup-back[aria-current="page"] { padding-left: 12px; box-shadow: inset 4px 0 0 var(--pickup-accent); font-weight: 900; text-decoration: none; }
+    .pickup-workspace-header[data-nav-open] .pickup-sign-out { margin-top: 12px; }
+    .pickup-workspace-header[data-nav-open] .pickup-sign-out .pickup-link-button { width: 100%; min-height: 48px; border: 1px solid #241b00; border-radius: 8px; background: var(--pickup-surface); color: #241b00; font-size: 0.85rem; }
+}
+@media (prefers-reduced-motion: reduce) {
+    .pickup-nav-toggle-icon i { transition: none; }
+}

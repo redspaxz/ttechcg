@@ -36,17 +36,15 @@ $collectionAgentName = (string) ($collectionAgent['name'] ?? '');
 $jumpCloudGroups = is_array($config['jumpcloud_role_groups'] ?? null) ? $config['jumpcloud_role_groups'] : [];
 ?>
 <section class="pickup-view-workspace">
-    <div class="container pickup-workspace-header">
-        <strong class="pickup-wordmark">Pickupsheet</strong>
-        <div class="pickup-header-links">
-            <span class="pickup-session-user" title="<?= $e($recordsUsername ?? '') ?>"><?= $e($recordsFullName ?? $recordsUsername ?? '') ?> &middot; admin</span>
-            <a class="pickup-back" href="<?= $e($basePath) ?>/dhl/pickupsheet/dashboard">Dashboard <span aria-hidden="true">&#8599;</span></a>
-            <a class="pickup-back" href="<?= $e($basePath) ?>/dhl/pickupsheet/submissions">Submitted sheets <span aria-hidden="true">&#8599;</span></a>
-            <a class="pickup-back" href="<?= $e($basePath) ?>/dhl/pickupsheet/">New pickup sheet <span aria-hidden="true">&#8599;</span></a>
-            <a class="pickup-back" href="<?= $e($basePath) ?>/dhl/pickupsheet/settings">User settings <span aria-hidden="true">&#8599;</span></a>
-            <form method="post" action="<?= $e($basePath) ?>/dhl/pickupsheet/logout"><input type="hidden" name="_token" value="<?= $e($csrfToken) ?>"><button class="pickup-link-button" type="submit">Sign out</button></form>
-        </div>
-    </div>
+    <?php
+    $navTitle = 'Pickupsheet';
+    $navCurrent = 'access';
+    $navName = (string) ($recordsFullName ?? $recordsUsername ?? '');
+    $navRole = (string) ('admin');
+    $navUsername = (string) ($recordsUsername ?? '');
+    $navClass = '';
+    require __DIR__ . '/_workspace-header.php';
+    ?>
 
     <div class="container records-users-shell">
         <header class="pickup-submissions-heading">

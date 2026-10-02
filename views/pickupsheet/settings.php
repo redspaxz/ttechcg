@@ -10,15 +10,15 @@ $mfaEnrolled = ($mfaEnrolled ?? false) === true;
 $mfaReplacing = ($mfaReplacing ?? false) === true;
 ?>
 <section class="pickup-view-workspace pickup-settings-workspace">
-    <div class="container pickup-workspace-header">
-        <strong class="pickup-wordmark">User settings</strong>
-        <div class="pickup-header-links">
-            <span class="pickup-session-user" title="<?= $e($principal->username ?? '') ?>"><?= $e($principal->fullName() ?? '') ?> &middot; <?= $e($principal->role ?? '') ?></span>
-            <?php if (($principal->role ?? '') === 'admin'): ?><a class="pickup-back" href="<?= $e($basePath) ?>/dhl/pickupsheet/dashboard">Dashboard <span aria-hidden="true">&#8599;</span></a><?php endif; ?>
-            <a class="pickup-back" href="<?= $e($basePath) ?>/dhl/pickupsheet/submissions">Submitted sheets <span aria-hidden="true">&#8599;</span></a>
-            <form method="post" action="<?= $e($basePath) ?>/dhl/pickupsheet/logout"><input type="hidden" name="_token" value="<?= $e($csrfToken) ?>"><button class="pickup-link-button" type="submit">Sign out</button></form>
-        </div>
-    </div>
+    <?php
+    $navTitle = 'User settings';
+    $navCurrent = 'settings';
+    $navName = (string) ($principal->fullName());
+    $navRole = (string) ($principal->role);
+    $navUsername = (string) ($principal->username);
+    $navClass = '';
+    require __DIR__ . '/_workspace-header.php';
+    ?>
 
     <div class="container pickup-settings-shell">
         <?php if (is_string($flash ?? null) && $flash !== ''): ?><div class="notice notice-success" role="status"><?= $e($flash) ?></div><?php endif; ?>

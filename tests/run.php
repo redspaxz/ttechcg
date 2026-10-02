@@ -2018,6 +2018,18 @@ $assert($operatorPrint->status() === 200 && $operatorExport->status() === 200, '
 $assert(!str_contains($operatorSubmissions->body(), 'Manage access'), 'An operator should not be shown administrator account controls.');
 $assert(!str_contains($operatorSubmissions->body(), 'Page cash total') && !str_contains($operatorSubmissions->body(), 'Unpaid balance'), 'An operator should not receive administrator financial metrics.');
 $assert(str_contains($operatorSubmissions->body(), 'Customer CRM'), 'An operator should receive a direct link to the customer directory.');
+$assert(substr_count($openSubmissions->body(), 'data-pickup-nav-toggle') === 1 && str_contains($openSubmissions->body(), 'href="/dhl/pickupsheet/submissions" aria-current="page">Submitted sheets</a>') && str_contains($openSubmissions->body(), '>Dashboard</a>') && str_contains($openSubmissions->body(), '>Manage access</a>') && str_contains($openSubmissions->body(), '>New pickup sheet</a>'), 'Administrators should get the full workspace menu with the current page marked.');
+$assert(str_contains($operatorSubmissions->body(), '>Customer CRM</a>') && !str_contains($operatorSubmissions->body(), '>Dashboard</a>') && !str_contains($operatorSubmissions->body(), '>Manage access</a>'), 'Operators should get the CRM in the menu but not administrator links.');
+$assert(!str_contains($viewerSubmissions->body(), '>Customer CRM</a>') && !str_contains($viewerSubmissions->body(), '>Dashboard</a>') && str_contains($viewerSubmissions->body(), '>New pickup sheet</a>') && str_contains($viewerSubmissions->body(), '>User settings</a>'), 'Viewers should get only the sheet and settings links in the menu.');
+$assert(!str_contains($openSubmissions->body(), '&#8599;') && !str_contains($openSubmissions->body(), '↗'), 'Workspace menu links should not show external-link arrows.');
+$menuScript = (string) $readSource(dirname(__DIR__) . '/public/assets/app.js');
+$menuStyles = (string) $readSource(dirname(__DIR__) . '/public/assets/styles.css');
+$assert(str_contains($menuScript, "document.querySelectorAll('[data-pickup-nav]')") && str_contains($menuScript, "event.key === 'Escape' && nav.hasAttribute('data-nav-open')") && str_contains($menuScript, "window.matchMedia('(min-width: 901px)')"), 'The mobile Menu button should open, close on Escape, and reset on wide screens.');
+$assert(str_contains($menuStyles, '.pickup-workspace-header[data-nav-ready] .pickup-header-links { display: none; }') && str_contains($menuStyles, 'min-height: 44px; padding: 0 14px;') && str_contains($menuStyles, '.pickup-workspace-header[data-nav-open] .pickup-back { display: flex; flex: 0 0 auto; width: 100%; min-height: 48px;'), 'At 900px and below the header should fold to a slim bar with a Menu button and full-width 48px menu rows.');
+foreach (['admin-mfa-reset', 'backup', 'customer-form', 'customers', 'dashboard', 'edit', 'settings', 'show', 'submissions', 'users'] as $menuView) {
+    $menuSource = (string) $readSource(dirname(__DIR__) . '/views/pickupsheet/' . $menuView . '.php');
+    $assert(str_contains($menuSource, "require __DIR__ . '/_workspace-header.php';") && !str_contains($menuSource, 'pickup-header-links'), 'Every Pickupsheet page should use the shared workspace header: ' . $menuView);
+}
 $assert(!str_contains($operatorSubmissions->body(), 'Edit record'), 'An operator should not receive record-edit actions.');
 $assert(str_contains($operatorSubmissions->body(), 'Mark paid') && !str_contains($operatorSubmissions->body(), 'data-pickup-delete'), 'An operator should receive the paid confirmation but not the delete action.');
 $assert(str_contains($operatorSubmissions->body(), 'Print / PDF') && str_contains($operatorSubmissions->body(), 'Export Excel'), 'An operator should be shown print and export actions.');
@@ -3105,8 +3117,8 @@ $partnerSources = $readSource(dirname(__DIR__) . '/public/assets/partners/README
 $assert(is_string($partnerSources) && str_contains($partnerSources, 'www.dhl.com/content/dam/dhl/global/core/images/logos/dhl-logo.svg'), 'The official DHL artwork source should be documented.');
 $assert(!str_contains($home, 'href="/dhl/pickupsheet"'), 'Pickupsheet should not be discoverable from the public site chrome or homepage.');
 $assert(str_contains($home, '© ' . date('Y') . ' T&amp;Tech Consulting Group. All rights reserved.') && !str_contains($home, 'class="pickup-footer"'), 'The public site footer should carry the copyright statement with the current year.');
-$assert(str_contains($home, 'styles.css?v=20261001-receipt-placeholder'), 'Market-performance dashboard styles and prior Pickupsheet refinements should use a cache-safe stylesheet version.');
-$assert(str_contains($home, 'app.js?v=20261001-close-follow-up'), 'AJAX audit-log accordions and prior OWASP-aligned interactions should use a cache-safe script version.');
+$assert(str_contains($home, 'styles.css?v=20261002-mobile-menu'), 'Market-performance dashboard styles and prior Pickupsheet refinements should use a cache-safe stylesheet version.');
+$assert(str_contains($home, 'app.js?v=20261002-mobile-menu'), 'AJAX audit-log accordions and prior OWASP-aligned interactions should use a cache-safe script version.');
 $assert(str_contains($home, 'analytics.js?v=20260825-security-hardening'), 'The current consent-aware Google Analytics loader should render on every page.');
 $assert(str_contains($home, 'data-analytics-accept'), 'The site should offer an explicit analytics acceptance control.');
 $assert(str_contains($home, 'data-analytics-decline'), 'The site should offer an explicit analytics decline control.');

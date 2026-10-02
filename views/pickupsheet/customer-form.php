@@ -51,17 +51,15 @@ $eyebrow = match (true) {
 };
 ?>
 <section class="pickup-view-workspace pickup-crm-workspace">
-    <div class="container pickup-workspace-header">
-        <strong class="pickup-wordmark">Pickupsheet CRM</strong>
-        <div class="pickup-header-links">
-            <span class="pickup-session-user"><?= $e($recordsFullName ?? $recordsUsername ?? '') ?> &middot; <?= $e($recordsRole ?? '') ?></span>
-            <a class="pickup-back" href="<?= $e($basePath) ?>/dhl/pickupsheet/customers">Customer directory <span aria-hidden="true">&#8599;</span></a>
-            <?php if (($recordsRole ?? '') === 'admin'): ?><a class="pickup-back" href="<?= $e($basePath) ?>/dhl/pickupsheet/dashboard">Dashboard <span aria-hidden="true">&#8599;</span></a><?php endif; ?>
-            <a class="pickup-back" href="<?= $e($basePath) ?>/dhl/pickupsheet/submissions">Submitted sheets <span aria-hidden="true">&#8599;</span></a>
-            <a class="pickup-back" href="<?= $e($basePath) ?>/dhl/pickupsheet/settings">User settings <span aria-hidden="true">&#8599;</span></a>
-            <form method="post" action="<?= $e($basePath) ?>/dhl/pickupsheet/logout"><input type="hidden" name="_token" value="<?= $e($csrfToken) ?>"><button class="pickup-link-button" type="submit">Sign out</button></form>
-        </div>
-    </div>
+    <?php
+    $navTitle = 'Pickupsheet CRM';
+    $navCurrent = 'crm';
+    $navName = (string) ($recordsFullName ?? $recordsUsername ?? '');
+    $navRole = (string) ($recordsRole ?? '');
+    $navUsername = (string) ($recordsUsername ?? '');
+    $navClass = '';
+    require __DIR__ . '/_workspace-header.php';
+    ?>
 
     <div class="container pickup-customer-shell">
         <a class="pickup-customer-return" href="<?= $e($basePath) ?>/dhl/pickupsheet/customers"><span aria-hidden="true">&larr;</span> Back to customer directory</a>

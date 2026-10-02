@@ -1405,3 +1405,32 @@ document.querySelector('.pickup-login-form')?.addEventListener('submit', (event)
     const input = event.target.querySelector('[data-password-input]');
     if (input) input.type = 'password';
 });
+
+// Pickupsheet workspace menu: at 900px and below the header links fold behind a Menu button.
+document.querySelectorAll('[data-pickup-nav]').forEach((nav) => {
+    const toggle = nav.querySelector('[data-pickup-nav-toggle]');
+    const label = nav.querySelector('[data-pickup-nav-label]');
+    const menu = nav.querySelector('[data-pickup-nav-menu]');
+    if (!toggle || !menu) return;
+    toggle.hidden = false;
+    nav.setAttribute('data-nav-ready', '');
+    const setOpen = (open, restoreFocus = false) => {
+        nav.toggleAttribute('data-nav-open', open);
+        toggle.setAttribute('aria-expanded', String(open));
+        if (label) label.textContent = open ? 'Close' : 'Menu';
+        if (!open && restoreFocus) toggle.focus();
+    };
+    toggle.addEventListener('click', () => setOpen(toggle.getAttribute('aria-expanded') !== 'true'));
+    menu.addEventListener('click', (event) => {
+        if (event.target.closest?.('a')) setOpen(false);
+    });
+    document.addEventListener('keydown', (event) => {
+        if (event.key === 'Escape' && nav.hasAttribute('data-nav-open')) setOpen(false, true);
+    });
+    document.addEventListener('click', (event) => {
+        if (nav.hasAttribute('data-nav-open') && !nav.contains(event.target)) setOpen(false);
+    });
+    window.matchMedia('(min-width: 901px)').addEventListener?.('change', (event) => {
+        if (event.matches) setOpen(false);
+    });
+});

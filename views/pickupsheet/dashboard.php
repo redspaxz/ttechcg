@@ -202,14 +202,15 @@ $auditDetails = static function (array $log): string {
 };
 ?>
 <section class="pickup-admin-workspace">
-    <div class="container pickup-workspace-header pickup-admin-header">
-        <strong class="pickup-wordmark">Pickupsheet control</strong>
-        <div class="pickup-header-links">
-            <span class="pickup-session-user" title="<?= $e($recordsUsername) ?>"><?= $e($recordsFullName ?? $recordsUsername) ?> · admin</span>
-            <a class="pickup-back" href="<?= $e($basePath) ?>/dhl/pickupsheet/settings">User settings <span aria-hidden="true">&#8599;</span></a>
-            <form method="post" action="<?= $e($basePath) ?>/dhl/pickupsheet/logout"><input type="hidden" name="_token" value="<?= $e($csrfToken) ?>"><button class="pickup-link-button" type="submit">Sign out</button></form>
-        </div>
-    </div>
+    <?php
+    $navTitle = 'Pickupsheet control';
+    $navCurrent = 'dashboard';
+    $navName = (string) ($recordsFullName ?? $recordsUsername);
+    $navRole = (string) ('admin');
+    $navUsername = (string) ($recordsUsername);
+    $navClass = 'pickup-admin-header';
+    require __DIR__ . '/_workspace-header.php';
+    ?>
 
     <div class="container pickup-admin-shell pickup-dashboard-shell">
         <header class="pickup-admin-heading">

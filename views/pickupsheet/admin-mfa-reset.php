@@ -7,14 +7,15 @@ $localReauthentication = ($requiresLocalReauthentication ?? false) === true;
 $ssoFresh = ($ssoAuthenticationFresh ?? false) === true;
 ?>
 <section class="pickup-view-workspace pickup-settings-workspace">
-    <div class="container pickup-workspace-header">
-        <strong class="pickup-wordmark">Security confirmation</strong>
-        <div class="pickup-header-links">
-            <span class="pickup-session-user"><?= $e($principal->fullName() ?? '') ?> &middot; admin</span>
-            <a class="pickup-back" href="<?= $e($basePath) ?>/dhl/pickupsheet/submissions/users">Manage users <span aria-hidden="true">&#8599;</span></a>
-            <form method="post" action="<?= $e($basePath) ?>/dhl/pickupsheet/logout"><input type="hidden" name="_token" value="<?= $e($csrfToken) ?>"><button class="pickup-link-button" type="submit">Sign out</button></form>
-        </div>
-    </div>
+    <?php
+    $navTitle = 'Security confirmation';
+    $navCurrent = 'access';
+    $navName = (string) ($principal->fullName());
+    $navRole = (string) ('admin');
+    $navUsername = (string) ($principal->username);
+    $navClass = '';
+    require __DIR__ . '/_workspace-header.php';
+    ?>
 
     <div class="container pickup-settings-shell pickup-security-confirm-shell">
         <header class="pickup-settings-heading">
