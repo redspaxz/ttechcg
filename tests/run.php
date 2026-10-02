@@ -2021,6 +2021,10 @@ $assert(str_contains($operatorSubmissions->body(), 'Customer CRM'), 'An operator
 $assert(substr_count($openSubmissions->body(), 'data-pickup-nav-toggle') === 1 && str_contains($openSubmissions->body(), 'href="/dhl/pickupsheet/submissions" aria-current="page">Submitted sheets</a>') && str_contains($openSubmissions->body(), '>Dashboard</a>') && str_contains($openSubmissions->body(), '>Manage access</a>') && str_contains($openSubmissions->body(), '>New pickup sheet</a>'), 'Administrators should get the full workspace menu with the current page marked.');
 $assert(str_contains($operatorSubmissions->body(), '>Customer CRM</a>') && !str_contains($operatorSubmissions->body(), '>Dashboard</a>') && !str_contains($operatorSubmissions->body(), '>Manage access</a>'), 'Operators should get the CRM in the menu but not administrator links.');
 $assert(!str_contains($viewerSubmissions->body(), '>Customer CRM</a>') && !str_contains($viewerSubmissions->body(), '>Dashboard</a>') && str_contains($viewerSubmissions->body(), '>New pickup sheet</a>') && str_contains($viewerSubmissions->body(), '>User settings</a>'), 'Viewers should get only the sheet and settings links in the menu.');
+$assert(preg_match('/<span class="pickup-record-reference"><span class="pickup-ref">PS-[0-9]{8}-/', $openSubmissions->body()) === 1 && str_contains((string) $readSource(dirname(__DIR__) . '/public/assets/styles.css'), "a.pickup-ref { color: #3a3a3a; font-variant-numeric: tabular-nums; text-decoration: none; white-space: nowrap; }"), 'Reference numbers should stay on one line in dark gray with no underline.');
+foreach (['_customer-shipments', '_dashboard-recent-sheets', '_awb-reuse-warning', 'edit'] as $referenceView) {
+    $assert(str_contains((string) $readSource(dirname(__DIR__) . '/views/pickupsheet/' . $referenceView . '.php'), 'class="pickup-ref"'), 'Reference numbers should use the shared reference style in ' . $referenceView . '.');
+}
 $assert(!str_contains($openSubmissions->body(), '&#8599;') && !str_contains($openSubmissions->body(), '↗'), 'Workspace menu links should not show external-link arrows.');
 $menuScript = (string) $readSource(dirname(__DIR__) . '/public/assets/app.js');
 $menuStyles = (string) $readSource(dirname(__DIR__) . '/public/assets/styles.css');
@@ -3117,7 +3121,7 @@ $partnerSources = $readSource(dirname(__DIR__) . '/public/assets/partners/README
 $assert(is_string($partnerSources) && str_contains($partnerSources, 'www.dhl.com/content/dam/dhl/global/core/images/logos/dhl-logo.svg'), 'The official DHL artwork source should be documented.');
 $assert(!str_contains($home, 'href="/dhl/pickupsheet"'), 'Pickupsheet should not be discoverable from the public site chrome or homepage.');
 $assert(str_contains($home, '© ' . date('Y') . ' T&amp;Tech Consulting Group. All rights reserved.') && !str_contains($home, 'class="pickup-footer"'), 'The public site footer should carry the copyright statement with the current year.');
-$assert(str_contains($home, 'styles.css?v=20261002-mobile-menu'), 'Market-performance dashboard styles and prior Pickupsheet refinements should use a cache-safe stylesheet version.');
+$assert(str_contains($home, 'styles.css?v=20261002-reference-style'), 'Market-performance dashboard styles and prior Pickupsheet refinements should use a cache-safe stylesheet version.');
 $assert(str_contains($home, 'app.js?v=20261002-mobile-menu'), 'AJAX audit-log accordions and prior OWASP-aligned interactions should use a cache-safe script version.');
 $assert(str_contains($home, 'analytics.js?v=20260825-security-hardening'), 'The current consent-aware Google Analytics loader should render on every page.');
 $assert(str_contains($home, 'data-analytics-accept'), 'The site should offer an explicit analytics acceptance control.');

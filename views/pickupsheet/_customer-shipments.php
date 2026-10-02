@@ -27,7 +27,7 @@ $sheetUrl = static fn (string $reference): string => ($basePath ?? '') . '/dhl/p
         <?php $shipmentStatus = (string) ($shipment['status'] ?? 'open'); ?>
         <tr>
             <td data-label="Date"><?= $e($shipment['collectionDate'] ?? '') ?></td>
-            <td data-label="Reference"><a href="<?= $e($sheetUrl((string) ($shipment['referenceNumber'] ?? ''))) ?>"><?= $e($shipment['referenceNumber'] ?? '') ?></a></td>
+            <td data-label="Reference"><a class="pickup-ref" href="<?= $e($sheetUrl((string) ($shipment['referenceNumber'] ?? ''))) ?>"><?= $e($shipment['referenceNumber'] ?? '') ?></a></td>
             <td data-label="AWB"><?= \App\Modules\Pickupsheet\UI\AwbLink::html((string) $shipment['awbNumber'] ?? '', (string) ($shipment['collectionDate'] ?? '')) ?></td>
             <td data-label="Destination"><?= $e($shipment['destination'] ?? '') ?></td>
             <td data-label="Amount" class="pickup-shipments-amount"><?= $e(number_format((int) ($shipment['amountXaf'] ?? 0))) ?> XAF</td>

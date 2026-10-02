@@ -14,7 +14,7 @@ $currentLogPage = max(1, (int) ($currentLogPage ?? $auditLogs['page'] ?? 1));
     <?php if ($items === []): ?><tr><td colspan="7">No pickup sheets have been generated.</td></tr><?php endif; ?>
     <?php foreach ($items as $sheet): ?>
         <tr>
-            <td><?= $e($sheet->referenceNumber) ?></td>
+            <td><span class="pickup-ref"><?= $e($sheet->referenceNumber) ?></span></td>
             <td><?= $sheet->isPaid() ? 'Paid' : 'Open' ?><?php if ($sheet->isPaid() && $sheet->paymentReceiptNumber !== null): ?><small>Receipt <?= $e($sheet->paymentReceiptNumber) ?></small><?php endif; ?></td>
             <td><?= $e($sheet->collectionDate) ?></td>
             <td><?= $e($sheet->agentName) ?></td>
