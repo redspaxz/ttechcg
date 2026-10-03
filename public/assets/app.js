@@ -921,6 +921,18 @@ document.addEventListener('click', (event) => {
     // A click on the backdrop lands on the dialog element itself.
     if (event.target.matches?.('.pickup-payment-dialog')) event.target.close();
 });
+// The Pickupsheet privacy notice opens in a modal so staff never leave the app to read it.
+document.addEventListener('click', (event) => {
+    const dialog = document.querySelector('[data-privacy-dialog]');
+    if (!dialog || typeof dialog.showModal !== 'function') return;
+    if (event.target.closest?.('[data-privacy-dialog-open]')) {
+        event.preventDefault();
+        if (!dialog.open) dialog.showModal();
+        dialog.querySelector('.pickup-privacy-copy')?.scrollTo?.(0, 0);
+        return;
+    }
+    if (event.target.closest?.('[data-privacy-dialog-close]') || event.target === dialog) dialog.close();
+});
 // After a successful save, closing the dialog reloads the list so the sheet shows its new state.
 document.addEventListener('close', (event) => {
     if (event.target.matches?.('.pickup-payment-dialog') && event.target.dataset.paid === '1') {

@@ -21,8 +21,8 @@ $analyticsPageView = $isPickupsheet ? 'disabled' : 'enabled';
     <meta name="robots" content="<?= $e($pageRobots) ?>">
     <title><?= $e($pageTitle ?? 'T&Tech Consulting Group') ?> | T&amp;Tech</title>
     <link rel="icon" href="<?= $e($assetBase) ?>/ttechcg-mark.svg" type="image/svg+xml">
-    <link rel="stylesheet" href="<?= $e($assetBase) ?>/styles.css?v=20261002-new-customers">
-    <script src="<?= $e($assetBase) ?>/app.js?v=20261002-mobile-menu" defer></script>
+    <link rel="stylesheet" href="<?= $e($assetBase) ?>/styles.css?v=20261003-pickup-privacy">
+    <script src="<?= $e($assetBase) ?>/app.js?v=20261003-pickup-privacy" defer></script>
     <script src="<?= $e($assetBase) ?>/analytics.js?v=20260825-security-hardening" defer></script>
 </head>
 <body<?= $isPickupsheet ? ' class="pickup-app"' : '' ?>>
@@ -56,8 +56,9 @@ $analyticsPageView = $isPickupsheet ? 'disabled' : 'enabled';
 
     <?php if ($isPickupsheet): ?>
     <footer class="pickup-footer">
-        <p>© <?= $e(date('Y')) ?> T&amp;Tech Consulting Group. All rights reserved. <span aria-hidden="true">&middot;</span> <a href="<?= $e($url('/privacy')) ?>">Privacy</a></p>
+        <p>© <?= $e(date('Y')) ?> T&amp;Tech Consulting Group. All rights reserved. <span aria-hidden="true">&middot;</span> <button class="pickup-footer-link" type="button" data-privacy-dialog-open aria-haspopup="dialog" aria-controls="pickupsheet-privacy">Privacy</button></p>
     </footer>
+    <?php require __DIR__ . '/../pickupsheet/_privacy-notice.php'; ?>
     <?php else: ?>
     <footer class="site-footer">
         <div class="container footer-top">

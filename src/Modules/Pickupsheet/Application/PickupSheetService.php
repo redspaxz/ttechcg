@@ -15,7 +15,7 @@ use InvalidArgumentException;
 
 final class PickupSheetService
 {
-    public const PRIVACY_NOTICE_VERSION = '2026-08-24';
+    public const PRIVACY_NOTICE_VERSION = '2026-10-03';
     private const MAX_SHIPMENTS = 50;
 
     public function __construct(

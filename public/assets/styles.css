@@ -3336,12 +3336,35 @@ button, a, input, select, textarea { -webkit-tap-highlight-color: transparent; }
 .pickup-footer p { margin: 0; }
 .pickup-footer a { color: #493800; font-weight: 850; text-decoration: underline; text-underline-offset: 3px; }
 .pickup-footer a:hover, .pickup-footer a:focus-visible { color: var(--pickup-accent); }
+.pickup-footer-link { padding: 0; border: 0; background: none; color: #493800; font: inherit; font-weight: 850; text-decoration: underline; text-underline-offset: 3px; cursor: pointer; }
+.pickup-footer-link:hover, .pickup-footer-link:focus-visible { color: var(--pickup-accent); }
+.pickup-inline-link { display: inline; padding: 0; border: 0; background: none; color: #241b00; font: inherit; font-weight: 800; text-decoration: underline; text-underline-offset: 3px; cursor: pointer; }
+.pickup-inline-link:hover, .pickup-inline-link:focus-visible { color: var(--dhl-red); }
+
+/* Pickupsheet privacy notice: opens in a modal inside the app instead of leaving for the public site. */
+.pickup-privacy-dialog { display: none; width: min(680px, calc(100vw - 32px)); max-height: calc(100dvh - 32px); padding: 0; overflow: hidden; border: 0; border-radius: 14px; background: #fffdf5; color: #241b00; box-shadow: 0 24px 60px rgba(36, 27, 0, 0.32); }
+.pickup-privacy-dialog[open] { display: flex; flex-direction: column; }
+.pickup-privacy-dialog::backdrop { background: rgba(36, 27, 0, 0.55); }
+.pickup-privacy-dialog > header { display: flex; align-items: flex-start; justify-content: space-between; gap: 16px; padding: 20px 20px 14px; border-bottom: 1px solid rgba(69, 50, 0, 0.14); }
+.pickup-privacy-dialog > header p { margin: 0 0 4px; color: #0b633a; font-size: 0.66rem; font-weight: 850; letter-spacing: 0.08em; text-transform: uppercase; }
+.pickup-privacy-dialog h2 { margin: 0; font-size: 1.1rem; }
+.pickup-privacy-dialog small { display: block; margin-top: 4px; color: #655000; font-size: 0.72rem; font-weight: 700; }
+.pickup-privacy-close { flex: 0 0 auto; width: 36px; height: 36px; border: 1px solid rgba(36, 27, 0, 0.2); border-radius: 50%; background: #fff; color: #241b00; font: inherit; font-size: 1.2rem; line-height: 1; cursor: pointer; }
+.pickup-privacy-copy { flex: 1 1 auto; min-height: 0; padding: 4px 20px; overflow-y: auto; overscroll-behavior: contain; }
+.pickup-privacy-copy section { padding: 14px 0; border-bottom: 1px solid rgba(69, 50, 0, 0.1); }
+.pickup-privacy-copy section:last-child { border-bottom: 0; }
+.pickup-privacy-copy h3 { margin: 0 0 6px; font-size: 0.9rem; }
+.pickup-privacy-copy p { margin: 0; color: #493800; font-size: 0.8rem; line-height: 1.65; }
+.pickup-privacy-copy p + p { margin-top: 8px; }
+.pickup-privacy-copy a { color: #0b633a; font-weight: 800; }
+.pickup-privacy-actions { display: flex; justify-content: flex-end; padding: 12px 20px calc(12px + env(safe-area-inset-bottom, 0px)); border-top: 1px solid rgba(69, 50, 0, 0.14); }
+.pickup-privacy-actions button { min-height: 42px; padding: 9px 18px; border: 1px solid #0b633a; border-radius: 8px; background: #0b633a; color: #fff; font: inherit; font-size: 0.74rem; font-weight: 800; cursor: pointer; }
 /* On narrow phones the copyright and Privacy link wrap to two lines, so reserve two lines of height. */
 @media (max-width: 480px) {
     .pickup-app { --pickup-footer-height: 64px; }
 }
 @media print {
-    .pickup-footer { display: none; }
+    .pickup-footer, .pickup-privacy-dialog { display: none; }
     .pickup-app { padding-bottom: 0; }
 }
 

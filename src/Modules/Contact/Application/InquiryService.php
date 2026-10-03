@@ -13,7 +13,7 @@ use InvalidArgumentException;
 
 final class InquiryService
 {
-    public const PRIVACY_NOTICE_VERSION = '2026-08-24';
+    public const PRIVACY_NOTICE_VERSION = '2026-10-03';
 
     private const SERVICES = [
         'network-outsourcing',

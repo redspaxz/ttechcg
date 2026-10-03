@@ -145,7 +145,7 @@ $renderShipmentRow = static function (int|string $index, mixed $row = []) use ($
                 </fieldset>
                 <label class="consent-field pickup-consent">
                     <input type="checkbox" name="privacy_consent" value="1" required <?= ($old['privacy_consent'] ?? '') === '1' ? 'checked' : '' ?>>
-                    <span>I consent to T&amp;Tech processing the agent, consignor, shipment, and account-associated checker information to operate the pickup-sheet service, as described in the <a href="<?= $e($basePath) ?>/privacy" target="_blank" rel="noopener">privacy notice</a>.</span>
+                    <span>I consent to T&amp;Tech processing the agent, consignor, shipment, and account-associated checker information to operate the pickup-sheet service, as described in the <button class="pickup-inline-link" type="button" data-privacy-dialog-open aria-haspopup="dialog" aria-controls="pickupsheet-privacy">Pickupsheet privacy notice</button>.</span>
                 </label>
             </div>
 
