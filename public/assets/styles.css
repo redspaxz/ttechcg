@@ -2547,7 +2547,7 @@ button, a, input, select, textarea { -webkit-tap-highlight-color: transparent; }
     scrollbar-width: none;
     border: 0;
     outline: 0;
-    border-radius: 14px;
+    border-radius: 0;
     background: #fffdf5;
     color: #241b00;
     box-shadow: 0 24px 60px rgba(36, 27, 0, 0.32);
@@ -3342,7 +3342,7 @@ button, a, input, select, textarea { -webkit-tap-highlight-color: transparent; }
 .pickup-inline-link:hover, .pickup-inline-link:focus-visible { color: var(--dhl-red); }
 
 /* Pickupsheet privacy notice: opens in a modal inside the app instead of leaving for the public site. */
-.pickup-privacy-dialog { display: none; width: min(680px, calc(100vw - 32px)); max-height: calc(100dvh - 32px); padding: 0; overflow: hidden; border: 0; border-radius: 14px; background: #fffdf5; color: #241b00; box-shadow: 0 24px 60px rgba(36, 27, 0, 0.32); }
+.pickup-privacy-dialog { display: none; width: min(680px, calc(100vw - 32px)); max-height: calc(100dvh - 32px); padding: 0; overflow: hidden; border: 0; border-radius: 0; background: #fffdf5; color: #241b00; box-shadow: 0 24px 60px rgba(36, 27, 0, 0.32); }
 .pickup-privacy-dialog[open] { display: flex; flex-direction: column; }
 .pickup-privacy-dialog::backdrop { background: rgba(36, 27, 0, 0.55); }
 .pickup-privacy-dialog > header { display: flex; align-items: flex-start; justify-content: space-between; gap: 16px; padding: 20px 20px 14px; border-bottom: 1px solid rgba(69, 50, 0, 0.14); }
