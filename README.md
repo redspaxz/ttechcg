@@ -35,6 +35,8 @@ HTTP request
   -> server-rendered view / response
 ```
 
+Detailed diagrams for each flow are in [docs/architecture/flows.md](docs/architecture/flows.md).
+
 ## Overview
 
 This project serves two related surfaces in one codebase:
@@ -74,7 +76,10 @@ This project combines a corporate website, secure access workflows, operational 
 - `openssl` enabled
 - `curl` enabled
 - MySQL 8 or compatible server
+- `mbstring` and `intl` recommended (uppercasing accented names, CRM accent folding)
 - Node.js only for JavaScript validation/testing
+
+The full list is in [docs/architecture/technical-requirements.md](docs/architecture/technical-requirements.md).
 
 ## Quick start
 
@@ -342,7 +347,9 @@ One organization should have one customer profile. The CRM enforces this in four
 
 **Shipment synchronization.** Consignors are grouped with the same collation, so spelling variants on sheets become one profile. Profile keys come from the first name a profile was created with. A renamed profile keeps its key, so a new sender who later uses the old name gets a random key instead of colliding. Autocomplete requests do not synchronize; the CRM pages and the add form do that when they open.
 
-**Renaming.** Renaming a customer updates the consignor on every existing shipment for that customer, on open, paid and deleted sheets. Matching ignores case, accents and surrounding spaces, and the confirmation says how many shipments changed. New sheets collapse repeated spaces in consignor names, and migration 020 collapses them on existing shipments and profiles, folding profiles that differed only by spacing. A spelling that differs in any other way, such as added punctuation, is a separate customer: merge it first so a rename covers its sheets too.
+**Renaming.** Renaming a customer updates the consignor on every existing shipment for that customer, on open, paid and deleted sheets. Matching ignores case, accents and surrounding spaces, and the confirmation says how many shipments changed. New sheets collapse repeated spaces in consignor names, and migration 020 collapses them on existing shipments and profiles, folding profiles that differed only by spacing. A spelling that differs in any other way is a separate customer: merge it first so a rename covers its sheets too.
+
+**Name rules.** Consignor, customer, contact, collection agent and checker names are stored in uppercase and may contain only letters (accents allowed), digits, spaces and hyphens. Inputs marked `data-name-field` uppercase and filter as you type, and the server rejects other symbols (`App\Shared\Text\NameText`). Agent and checker names come from settings and account names, so their symbols are dropped instead. Existing records are not rewritten; a CRM profile saved before the rule keeps its symbols until it is renamed.
 
 **Reviewed merges.** Administrators see "Possible duplicate customers" on the CRM page when there is at least one suggested pair; with no suggestions the card is not shown:
 
@@ -371,11 +378,15 @@ Merge history is stored in `pickup_customer_merges`, with a JSON snapshot per me
 
 **Customer IDs.** Every profile has a readable ID: its database ID padded to six digits, such as `000042`, shown on the profile, in the directory, and in the Excel export. Directory search finds a customer by `000042` or `42`, and still accepts the older `CUS-000042` form found in exports made before version 1.0.0. Formatting and parsing live in `CustomerProfile::referenceFor()` and `CustomerProfile::idFromReference()`.
 
+**Consignor links.** For users with `crm_view`, consignor names in the Submitted sheets shipment table link to `/dhl/pickupsheet/customers/open?name=…`, which opens the matching profile (aliases included) or, when none exists after a sync, the directory searched by that name.
+
+**Back link.** The profile's back link returns to where it was opened: "Back to submitted sheets" (same page and search), "Back to dashboard", or "Back to customer directory" (same page and filters). Links pass `from=`, and the profile remembers it per customer in the session so it survives saves and other redirects. Only same-site Pickupsheet paths are accepted.
+
 **Shipment history links.** Clicking a pickup sheet reference in a customer's Recent shipments table opens that sheet's print view. The link carries the customer key and the profile's current shipment and points page numbers and page sizes. "Back to customer profile" returns to the same pages and lands on the Recent shipments section (`#customer-shipments`). The print controller rebuilds the return link itself and drops page values that are not valid.
 
 **Activity and follow-ups.** The Activity section on a customer profile logs calls, visits, emails, meetings and notes with a date and summary (no future dates). The same form sets the next follow-up: change it to reschedule, or clear it to close the follow-up. When a follow-up is scheduled, a **Close follow-up** button also appears on the Next follow-up card and in the overdue alert. After a confirmation it clears the date and adds a note to Activity, such as "Follow-up due 2026-08-30 closed.", so the history shows who closed it and when. It is logged in the security log as `pickupsheet.crm_customer_follow_up_close`. Anyone with `crm_update` can log activity and close follow-ups. The "Follow-ups due" figure on the CRM page links to the matching filtered list.
 
-**Directory.** Filter by search text (including merged-away names), status, follow-up (due, scheduled later, not scheduled) and owner (mine, unassigned), and sort by priority, name, latest shipment, shipment value or reward points. `%` and `_` in the search box are matched literally. "Export to Excel" downloads the filtered list, up to 5,000 customers; it needs the `export` permission and is rate limited and logged.
+**Directory.** Filter by search text (including merged-away names, and phone numbers typed with or without spaces, dashes or `+237`), status, follow-up (due, scheduled later, not scheduled) and owner (mine, unassigned), and sort by priority, name, latest shipment, shipment value or reward points. `%` and `_` in the search box are matched literally. "Export to Excel" downloads the filtered list, up to 5,000 customers; it needs the `export` permission and is rate limited and logged.
 
 **Owners.** Administrators assign a customer to themselves or to any active local operator or administrator account; the owner shows on the profile and in the directory. Operator edits keep the existing owner.
 
@@ -545,5 +556,8 @@ Later releases are tagged `vMAJOR.MINOR.PATCH` and listed here. To check out thi
 
 This README is the developer-facing guide for setup, maintenance, and operational onboarding. The project also contains more detailed product and security documentation under `docs/` and the source code itself:
 
+- [docs/architecture/flows.md](docs/architecture/flows.md): flow diagrams for request handling, sign-in and access, the pickup sheet lifecycle, and CRM and loyalty
+- [docs/architecture/technical-requirements.md](docs/architecture/technical-requirements.md): platform, roles and permissions, security controls, rate limits, and quality gates
+- [docs/architecture/data-requirements.md](docs/architecture/data-requirements.md): data model, field rules, derived values, personal data retention, and backups
 - [docs/security/iso-27001-application-controls.md](docs/security/iso-27001-application-controls.md): application security controls
 - [docs/uat/admin-dashboard-reporting-uat.md](docs/uat/admin-dashboard-reporting-uat.md): UAT script and sign-off for the administrator dashboard, market analysis and reporting
