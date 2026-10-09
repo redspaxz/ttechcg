@@ -38,7 +38,7 @@ $queryForPage = static function (int $targetPage) use ($search, $statusFilter, $
                 <td data-label="Shipments"><strong><?= $e(number_format($customer->totalCashXaf)) ?> XAF</strong><small><?= $e(number_format($customer->shipmentCount)) ?> <?= $customer->shipmentCount === 1 ? 'shipment' : 'shipments' ?><?= $customer->lastShipmentOn !== null ? ' &middot; last ' . $e($customer->lastShipmentOn) : '' ?></small></td>
                 <td data-label="Rewards"><strong><?= $e(number_format($customer->rewardBalance())) ?> <?= $customer->rewardBalance() === 1 ? 'point' : 'points' ?></strong><small><?= $e($customer->loyaltyTier()) ?></small></td>
                 <td data-label="Follow-up"><?php if ($customer->nextFollowUpOn !== null): ?><strong class="<?= $customer->followUpDue() ? 'pickup-follow-up-due' : '' ?>"><?= $e($customer->nextFollowUpOn) ?></strong><small><?= $customer->followUpDue() ? 'Due or overdue' : 'Scheduled' ?></small><?php else: ?><span class="pickup-crm-muted">Not scheduled</span><?php endif; ?></td>
-                <td class="pickup-crm-open-cell"><a href="<?= $e($basePath) ?>/dhl/pickupsheet/customers/edit?customer=<?= $e(rawurlencode($customer->customerKey)) ?>" aria-label="Open profile for <?= $e($customer->displayName) ?>">Open</a></td>
+                <td class="pickup-crm-open-cell"><a href="<?= $e($basePath) ?>/dhl/pickupsheet/customers/edit?<?= $e(http_build_query(['customer' => $customer->customerKey, 'from' => '/dhl/pickupsheet/customers?' . $queryForPage((int) ($customers['page'] ?? 1))], '', '&', PHP_QUERY_RFC3986)) ?>" aria-label="Open profile for <?= $e($customer->displayName) ?>">Open</a></td>
             </tr>
         <?php endforeach; ?>
         </tbody>

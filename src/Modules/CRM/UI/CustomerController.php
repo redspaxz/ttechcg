@@ -23,6 +23,12 @@ use RuntimeException;
 
 final class CustomerController
 {
+    private const ORIGIN_LABELS = [
+        '/dhl/pickupsheet/customers' => 'Back to customer directory',
+        '/dhl/pickupsheet/submissions' => 'Back to submitted sheets',
+        '/dhl/pickupsheet/dashboard' => 'Back to dashboard',
+    ];
+
     public function __construct(
         private readonly CustomerService $service,
         private readonly View $view,
@@ -194,7 +200,9 @@ final class CustomerController
             return Response::redirect($request->basePath . '/dhl/pickupsheet/customers?' . http_build_query(['q' => trim($name)], '', '&', PHP_QUERY_RFC3986));
         }
 
-        return Response::redirect($this->profileUrl($request, $existing['customer']->customerKey));
+        $from = $request->queryString('from');
+        return Response::redirect($this->profileUrl($request, $existing['customer']->customerKey)
+            . ($from === '' ? '' : '&' . http_build_query(['from' => $from], '', '&', PHP_QUERY_RFC3986)));
     }
 
     public function shipmentPage(Request $request): Response
@@ -769,8 +777,44 @@ final class CustomerController
             'canCreateCustomers' => $principal->can('crm'),
             'canEditCustomerNames' => $principal->can('crm'),
             'canAdjustRewards' => $principal->can('crm'),
-        ]);
+        ] + $this->profileOrigin($request, $customer));
         return Response::html($body, 200, $this->privateHeaders());
+    }
+
+    /**
+     * Where the profile's back link returns to. A link into a profile names its page with ?from=; it is
+     * remembered for that customer so the back link survives saves and other redirects to the profile.
+     *
+     * @return array{returnUrl: string, returnLabel: string}
+     */
+    private function profileOrigin(Request $request, ?CustomerProfile $customer): array
+    {
+        $origin = '/dhl/pickupsheet/customers';
+        if ($customer !== null) {
+            $from = $request->queryString('from');
+            if (isset(self::ORIGIN_LABELS[$this->originPage($from)])) {
+                $_SESSION['_crm_profile_origin'] = ['customer' => $customer->customerKey, 'url' => $from];
+            }
+            $stored = $_SESSION['_crm_profile_origin'] ?? null;
+            if (is_array($stored) && ($stored['customer'] ?? null) === $customer->customerKey && is_string($stored['url'] ?? null)) {
+                $origin = $stored['url'];
+            }
+        }
+
+        return [
+            'returnUrl' => $request->basePath . $origin,
+            'returnLabel' => self::ORIGIN_LABELS[$this->originPage($origin)] ?? self::ORIGIN_LABELS['/dhl/pickupsheet/customers'],
+        ];
+    }
+
+    /** The page path of an allowed origin, or an empty string for anything else. */
+    private function originPage(string $url): string
+    {
+        // Only same-site Pickupsheet paths with simple query strings, never a scheme or host.
+        if (preg_match('#^(/dhl/pickupsheet/[a-z]+)(?:\?[A-Za-z0-9_.%+=&-]*)?$#', $url, $match) !== 1) {
+            return '';
+        }
+        return $match[1];
     }
 
     private function authorize(Request $request, string $permission, bool $logGranted = true): RecordsPrincipal|Response

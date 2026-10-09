@@ -62,7 +62,7 @@ $eyebrow = match (true) {
     ?>
 
     <div class="container pickup-customer-shell">
-        <a class="pickup-customer-return" href="<?= $e($basePath) ?>/dhl/pickupsheet/customers"><span aria-hidden="true">&larr;</span> Back to customer directory</a>
+        <a class="pickup-customer-return" href="<?= $e($returnUrl ?? $basePath . '/dhl/pickupsheet/customers') ?>"><span aria-hidden="true">&larr;</span> <?= $e($returnLabel ?? 'Back to customer directory') ?></a>
         <header class="pickup-crm-heading pickup-customer-profile-heading<?= $customer !== null && !$editing ? ' is-profile' : '' ?>">
             <?php if ($customer !== null && !$editing): ?>
                 <div class="pickup-profile-identity">

@@ -434,7 +434,7 @@ $auditDetails = static function (array $log): string {
                                 <?php $points = $customer->rewardBalance(); ?>
                                 <li>
                                     <span class="pickup-sender-rank" aria-label="Rank <?= $e($index + 1) ?>"><?= $e($index + 1) ?></span>
-                                    <a class="pickup-sender-name" href="<?= $e($basePath) ?>/dhl/pickupsheet/customers/edit?customer=<?= $e(rawurlencode($customer->customerKey)) ?>" title="<?= $e($customer->displayName) ?>"><?= $e($customer->displayName) ?></a>
+                                    <a class="pickup-sender-name" href="<?= $e($basePath) ?>/dhl/pickupsheet/customers/edit?customer=<?= $e(rawurlencode($customer->customerKey)) ?>&amp;from=%2Fdhl%2Fpickupsheet%2Fdashboard" title="<?= $e($customer->displayName) ?>"><?= $e($customer->displayName) ?></a>
                                     <progress max="<?= $e($maximumCustomerPoints) ?>" value="<?= $e($points) ?>" aria-label="<?= $e($customer->displayName) ?>: <?= $e($points) ?> points"><?= $e($points) ?></progress>
                                     <strong><?= $e(number_format($points)) ?> <?= $points === 1 ? 'point' : 'points' ?> · <?= $e($customer->loyaltyTier()) ?></strong>
                                 </li>

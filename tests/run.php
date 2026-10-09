@@ -573,7 +573,7 @@ $crmLinkedFixture = $view->renderPartial('pickupsheet/_submission-records', [
     'errors' => [],
     'canCrmView' => true,
 ]);
-$assert(str_contains($crmLinkedFixture, 'class="pickup-consignor-link" href="/dhl/pickupsheet/customers/open?name='), 'Consignor names on submitted sheets should link to their CRM profile for CRM viewers.');
+$assert(str_contains($crmLinkedFixture, 'class="pickup-consignor-link" href="/dhl/pickupsheet/customers/open?name=') && str_contains($crmLinkedFixture, '&amp;from=%2Fdhl%2Fpickupsheet%2Fsubmissions%3Fpage%3D2'), 'Consignor names on submitted sheets should link to their CRM profile for CRM viewers.');
 $assert(substr_count($paginationFixture, '<article class="pickup-record">') === 2, 'The second ten-record page should render only its two remaining sheets.');
 $assert(!str_contains($paginationFixture, 'pickup-view-summary') && !str_contains($paginationFixture, 'Page cash total') && !str_contains($paginationFixture, 'Unpaid balance'), 'Submitted-sheet fragments should not render metric cards for administrators.');
 $assert(!str_contains($paginationFixture, 'Sheets on this page'), 'Submitted sheets should not display a sheet-count metric card.');
@@ -2614,6 +2614,19 @@ $openCustomer = $customerController->open(new Request('GET', '/dhl/pickupsheet/c
 $assert($openCustomer->status() === 303 && ($openCustomer->headers()['Location'] ?? '') === '/dhl/pickupsheet/customers/edit?customer=' . $customerKey, 'A submitted-sheet consignor link should open the matching CRM profile.');
 $openAliasCustomer = $customerController->open(new Request('GET', '/dhl/pickupsheet/customers/open', ['name' => 'Controller Clien'], [], '', $recordsServer));
 $assert(($openAliasCustomer->headers()['Location'] ?? '') === '/dhl/pickupsheet/customers/edit?customer=' . $customerKey, 'A merged-away consignor name should open the retained CRM profile.');
+$openFromSheets = $customerController->open(new Request('GET', '/dhl/pickupsheet/customers/open', ['name' => 'Controller Client', 'from' => '/dhl/pickupsheet/submissions?page=2&q=AWB'], [], '', $recordsServer));
+$assert(($openFromSheets->headers()['Location'] ?? '') === '/dhl/pickupsheet/customers/edit?customer=' . $customerKey . '&from=%2Fdhl%2Fpickupsheet%2Fsubmissions%3Fpage%3D2%26q%3DAWB', 'A consignor link should carry its submitted-sheets origin to the profile.');
+$profileFromSheets = $customerController->edit(new Request('GET', '/dhl/pickupsheet/customers/edit', ['customer' => $customerKey, 'from' => '/dhl/pickupsheet/submissions?page=2&q=AWB'], [], '', $recordsServer));
+$assert(str_contains($profileFromSheets->body(), 'class="pickup-customer-return" href="/dhl/pickupsheet/submissions?page=2&amp;q=AWB"><span aria-hidden="true">&larr;</span> Back to submitted sheets</a>'), 'A profile opened from submitted sheets should return to that page of sheets.');
+$profileAfterRedirect = $customerController->edit(new Request('GET', '/dhl/pickupsheet/customers/edit', ['customer' => $customerKey], [], '', $recordsServer));
+$assert(str_contains($profileAfterRedirect->body(), 'Back to submitted sheets'), 'The profile should remember its origin across saves and other redirects back to it.');
+$profileFromDashboard = $customerController->edit(new Request('GET', '/dhl/pickupsheet/customers/edit', ['customer' => $customerKey, 'from' => '/dhl/pickupsheet/dashboard'], [], '', $recordsServer));
+$assert(str_contains($profileFromDashboard->body(), 'href="/dhl/pickupsheet/dashboard"><span aria-hidden="true">&larr;</span> Back to dashboard</a>'), 'A profile opened from the dashboard should return to the dashboard.');
+$profileFromElsewhere = $customerController->edit(new Request('GET', '/dhl/pickupsheet/customers/edit', ['customer' => $customerKey, 'from' => '//evil.example/dhl/pickupsheet/submissions'], [], '', $recordsServer));
+$assert(str_contains($profileFromElsewhere->body(), 'Back to dashboard') && !str_contains($profileFromElsewhere->body(), 'evil.example'), 'An off-site origin should be ignored.');
+unset($_SESSION['_crm_profile_origin']);
+$profileWithoutOrigin = $customerController->edit(new Request('GET', '/dhl/pickupsheet/customers/edit', ['customer' => $customerKey], [], '', $recordsServer));
+$assert(str_contains($profileWithoutOrigin->body(), 'href="/dhl/pickupsheet/customers"><span aria-hidden="true">&larr;</span> Back to customer directory</a>'), 'A profile without a known origin should return to the customer directory.');
 $openUnknownCustomer = $customerController->open(new Request('GET', '/dhl/pickupsheet/customers/open', ['name' => 'No Such Consignor & Co'], [], '', $recordsServer));
 $assert($openUnknownCustomer->status() === 303 && ($openUnknownCustomer->headers()['Location'] ?? '') === '/dhl/pickupsheet/customers?q=No%20Such%20Consignor%20%26%20Co', 'An unmatched consignor link should fall back to a CRM directory search.');
 $aliasCustomerSearch = json_decode($customerController->search(new Request('GET', '/dhl/pickupsheet/customers/search', ['q' => 'Controller Clien'], [], '', $recordsServer))->body(), true);

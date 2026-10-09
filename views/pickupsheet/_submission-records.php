@@ -37,6 +37,8 @@ $pageUrl = static function (int $target) use ($basePath, $search): string {
 
     return ($basePath ?? '') . '/dhl/pickupsheet/submissions?' . http_build_query($query, '', '&', PHP_QUERY_RFC3986);
 };
+// Profiles opened from a consignor link return to this page of submitted sheets.
+$originUrl = substr($pageUrl($page), strlen($basePath ?? ''));
 ?>
 <?php if (!$pickupOperational): ?>
     <div class="notice notice-error" role="alert">Pickup-sheet storage is unavailable. Check the MySQL connection.</div>
@@ -198,7 +200,7 @@ $pageUrl = static function (int $target) use ($basePath, $search): string {
                             <?php foreach ($pickupSheet->shipments as $shipment): ?>
                                 <tr>
                                     <td data-label="Number"><?= $e($shipment->lineNumber) ?></td>
-                                    <td data-label="Consignor"><?php if ($canCrmView): ?><a class="pickup-consignor-link" href="<?= $e($basePath) ?>/dhl/pickupsheet/customers/open?name=<?= $e(rawurlencode((string) $shipment->consignor)) ?>" aria-label="Open CRM profile for <?= $e($shipment->consignor) ?>"><?= $e($shipment->consignor) ?></a><?php else: ?><?= $e($shipment->consignor) ?><?php endif; ?></td>
+                                    <td data-label="Consignor"><?php if ($canCrmView): ?><a class="pickup-consignor-link" href="<?= $e($basePath) ?>/dhl/pickupsheet/customers/open?<?= $e(http_build_query(['name' => (string) $shipment->consignor, 'from' => $originUrl], '', '&', PHP_QUERY_RFC3986)) ?>" aria-label="Open CRM profile for <?= $e($shipment->consignor) ?>"><?= $e($shipment->consignor) ?></a><?php else: ?><?= $e($shipment->consignor) ?><?php endif; ?></td>
                                     <td data-label="AWB number"><?= \App\Modules\Pickupsheet\UI\AwbLink::html((string) $shipment->awbNumber, $pickupSheet->collectionDate) ?></td>
                                     <td data-label="Destination"><?= $e($shipment->destination) ?></td>
                                     <td data-label="Amount"><?= $e(number_format($shipment->amountXaf)) ?></td>
