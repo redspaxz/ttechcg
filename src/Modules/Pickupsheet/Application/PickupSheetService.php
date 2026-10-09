@@ -9,6 +9,7 @@ use App\Modules\Pickupsheet\Domain\ConsignorDirectory;
 use App\Modules\Pickupsheet\Domain\PickupSheet;
 use App\Modules\Pickupsheet\Domain\PickupSheetRepository;
 use App\Modules\Pickupsheet\Domain\PickupShipment;
+use App\Shared\Text\NameText;
 use DateTimeImmutable;
 use DateTimeZone;
 use InvalidArgumentException;
@@ -301,7 +302,7 @@ final class PickupSheetService
     private function pickupSheetFromInput(array $input, ?PickupSheet $existing = null): PickupSheet
     {
         // An edited sheet keeps the agent it was created with; only new sheets take the submitted name.
-        $agentName = $existing !== null ? $existing->agentName : $this->stringValue($input['agent_name'] ?? '');
+        $agentName = $existing !== null ? $existing->agentName : NameText::sanitize($this->stringValue($input['agent_name'] ?? ''));
         $collectionDate = $this->stringValue($input['collection_date'] ?? '');
         $privacyConsent = $this->stringValue($input['privacy_consent'] ?? '');
 
@@ -339,14 +340,15 @@ final class PickupSheetService
             }
 
             $values = [
-                // Collapse repeated spaces so one sender is not split into several CRM customers.
-                'consignor' => preg_replace('/\s+/u', ' ', $this->stringValue($row['consignor'] ?? '')) ?? '',
+                // Collapse repeated spaces and case so one sender is not split into several CRM customers.
+                'consignor' => NameText::normalize($this->stringValue($row['consignor'] ?? '')),
                 'awb_number' => preg_replace('/\s+/', '', $this->stringValue($row['awb_number'] ?? '')) ?? '',
                 'destination' => strtoupper($this->stringValue($row['destination'] ?? '')),
                 'amount' => str_replace([',', ' '], '', $this->stringValue($row['amount'] ?? '')),
                 'pieces' => $this->stringValue($row['pieces'] ?? ''),
                 'weight_kg' => $this->normalizeWeightInput($this->stringValue($row['weight_kg'] ?? '')),
-                'checked_by' => $this->stringValue($row['checked_by'] ?? ''),
+                // Checker names come from account names, so symbols are dropped rather than rejected.
+                'checked_by' => NameText::sanitize($this->stringValue($row['checked_by'] ?? '')),
             ];
 
             $shipmentValues = $values;
@@ -428,6 +430,9 @@ final class PickupSheetService
 
         if (strlen($row['consignor']) < 2 || strlen($row['consignor']) > 160) {
             throw new InvalidArgumentException($prefix . 'provide a consignor name.');
+        }
+        if (!NameText::isAllowed($row['consignor'])) {
+            throw new InvalidArgumentException($prefix . 'the consignor name ' . NameText::RULE . '.');
         }
         if (!preg_match('/^[0-9]{8,20}$/', $row['awb_number'])) {
             throw new InvalidArgumentException($prefix . 'AWB number must contain 8 to 20 digits.');

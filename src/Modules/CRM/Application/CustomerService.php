@@ -6,6 +6,7 @@ namespace App\Modules\CRM\Application;
 
 use App\Modules\CRM\Domain\CustomerProfile;
 use App\Modules\CRM\Domain\CustomerRepository;
+use App\Shared\Text\NameText;
 use DateTimeImmutable;
 use InvalidArgumentException;
 use Normalizer;
@@ -361,7 +362,10 @@ final class CustomerService
         if (strlen($displayName) < 2 || $this->containsControlCharacters($displayName)) {
             throw new InvalidArgumentException('Provide a customer or organization name.');
         }
-        $displayName = $this->collapsedName($displayName);
+        $displayName = NameText::normalize($displayName);
+        if (!$this->allowedName($displayName, $existing?->displayName)) {
+            throw new InvalidArgumentException('The customer or organization name ' . NameText::RULE . '.');
+        }
         $nameOwner = $this->repository->findByName($displayName);
         if ($nameOwner !== null && $nameOwner['customer']->customerKey !== $existing?->customerKey) {
             throw new DuplicateCustomerException($nameOwner['customer'], $nameOwner['alias']);
@@ -377,8 +381,9 @@ final class CustomerService
         $notes = $this->multilineText($input['notes'] ?? '', 2000);
         $nextFollowUpOn = $this->date($input['next_follow_up_on'] ?? '');
 
-        if ($contactName !== '' && $this->containsControlCharacters($contactName)) {
-            throw new InvalidArgumentException('The contact name contains invalid characters.');
+        $contactName = NameText::normalize($contactName);
+        if (!$this->allowedName($contactName, $existing?->contactName)) {
+            throw new InvalidArgumentException('The contact name ' . NameText::RULE . '.');
         }
         if ($email !== '' && filter_var($email, FILTER_VALIDATE_EMAIL) === false) {
             throw new InvalidArgumentException('Provide a valid customer email address.');
@@ -643,6 +648,12 @@ final class CustomerService
     private function containsControlCharacters(string $value): bool
     {
         return preg_match('/[\x00-\x1F\x7F]/', $value) === 1;
+    }
+
+    /** Names saved before the symbol rule may keep their symbols until someone renames them. */
+    private function allowedName(string $name, ?string $existingName): bool
+    {
+        return NameText::isAllowed($name) || ($existingName !== null && $name === NameText::normalize($existingName));
     }
 
     private function collapsedName(string $name): string

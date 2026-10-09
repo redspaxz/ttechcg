@@ -57,6 +57,20 @@ final class CustomerProfile
         return preg_match('/^\s*(?:cus-?)?0*([1-9][0-9]{0,17})\s*$/i', $reference, $match) === 1 ? (int) $match[1] : null;
     }
 
+    /**
+     * Phones are stored as "+237 670 000 000", so a search typed as "670000000", "+237670000000", or
+     * "670-000-000" is reduced to its digits and compared with the stored digits. Returns null when
+     * the search does not look like a phone number.
+     */
+    public static function phoneSearchDigits(string $search): ?string
+    {
+        if (preg_match('/^[0-9\s+().-]+$/', $search) !== 1) {
+            return null;
+        }
+        $digits = preg_replace('/\D+/', '', $search) ?? '';
+        return strlen($digits) >= 3 ? $digits : null;
+    }
+
     public function followUpDue(?string $today = null): bool
     {
         return $this->nextFollowUpOn !== null

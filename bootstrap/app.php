@@ -338,7 +338,8 @@ $router->get('/dhl/pickupsheet/customers/page', fn (Request $request): Response 
 $router->get('/dhl/pickupsheet/customers/export', fn (Request $request): Response => $customerController->export($request));
 $router->get('/dhl/pickupsheet/customers/new', fn (Request $request): Response => $customerController->create($request));
 $router->get('/dhl/pickupsheet/customers/search', fn (Request $request): Response => $customerController->search($request));
-$router->get('/dhl/pickupsheet/customers/edit', fn (Request $request): Response => $customerController->edit($request));
+$router->get('/dhl/pickupsheet/customers/open', fn (Request $request): Response => $customerController->open($request));
+$router->get('/dhl/pickupsheet/customers/edit',fn (Request $request): Response => $customerController->edit($request));
 $router->get('/dhl/pickupsheet/customers/shipments/page', fn (Request $request): Response => $customerController->shipmentPage($request));
 $router->get('/dhl/pickupsheet/customers/points/page', fn (Request $request): Response => $customerController->pointsPage($request));
 $router->post('/dhl/pickupsheet/customers/save', fn (Request $request): Response => $customerController->save($request));

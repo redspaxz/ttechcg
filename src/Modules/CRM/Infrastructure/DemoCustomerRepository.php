@@ -104,6 +104,10 @@ final class DemoCustomerRepository implements CustomerRepository
             if ($searchId !== null && $searchId === (int) ($profile['id'] ?? 0)) {
                 return true;
             }
+            $phoneDigits = CustomerProfile::phoneSearchDigits($search);
+            if ($phoneDigits !== null && str_contains(preg_replace('/\D+/', '', (string) ($profile['phone'] ?? '')) ?? '', $phoneDigits)) {
+                return true;
+            }
             $haystack = implode(' ', [
                 $profile['displayName'] ?? '', $profile['contactName'] ?? '', $profile['email'] ?? '',
                 $profile['phone'] ?? '', $profile['city'] ?? '', ...($aliasNames[(string) $profile['customerKey']] ?? []),

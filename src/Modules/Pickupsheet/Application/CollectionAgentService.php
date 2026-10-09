@@ -5,6 +5,7 @@ declare(strict_types=1);
 namespace App\Modules\Pickupsheet\Application;
 
 use App\Modules\Pickupsheet\Domain\CollectionAgentRepository;
+use App\Shared\Text\NameText;
 use InvalidArgumentException;
 
 /**
@@ -35,9 +36,12 @@ final class CollectionAgentService
         if (preg_match('/^[a-f0-9]{24}$/', $actorId) !== 1) {
             throw new InvalidArgumentException('The administrator identity is invalid.');
         }
-        $name = trim((string) preg_replace('/\s+/u', ' ', $name));
-        if (preg_match('/[\x00-\x1F\x7F]/', $name) === 1 || strlen($name) < 2 || strlen($name) > 100) {
+        $name = NameText::normalize($name);
+        if (strlen($name) < 2 || strlen($name) > 100) {
             throw new InvalidArgumentException('Enter a collection agent name of 2 to 100 characters.');
+        }
+        if (!NameText::isAllowed($name)) {
+            throw new InvalidArgumentException('The collection agent name ' . NameText::RULE . '.');
         }
         return $this->repository->save($name, $actorId);
     }

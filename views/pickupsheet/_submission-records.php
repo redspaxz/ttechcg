@@ -12,6 +12,7 @@ $canEdit = (bool) ($canEdit ?? false);
 $canMarkPaid = (bool) ($canMarkPaid ?? false);
 $canEditReceipt = (bool) ($canEditReceipt ?? false);
 $canDelete = (bool) ($canDelete ?? false);
+$canCrmView = (bool) ($canCrmView ?? false);
 $pagination = is_array($pagination ?? null) ? $pagination : [];
 $search = trim(is_string($search ?? null) ? $search : '');
 $page = max(1, (int) ($pagination['page'] ?? 1));
@@ -197,7 +198,7 @@ $pageUrl = static function (int $target) use ($basePath, $search): string {
                             <?php foreach ($pickupSheet->shipments as $shipment): ?>
                                 <tr>
                                     <td data-label="Number"><?= $e($shipment->lineNumber) ?></td>
-                                    <td data-label="Consignor"><?= $e($shipment->consignor) ?></td>
+                                    <td data-label="Consignor"><?php if ($canCrmView): ?><a class="pickup-consignor-link" href="<?= $e($basePath) ?>/dhl/pickupsheet/customers/open?name=<?= $e(rawurlencode((string) $shipment->consignor)) ?>" aria-label="Open CRM profile for <?= $e($shipment->consignor) ?>"><?= $e($shipment->consignor) ?></a><?php else: ?><?= $e($shipment->consignor) ?><?php endif; ?></td>
                                     <td data-label="AWB number"><?= \App\Modules\Pickupsheet\UI\AwbLink::html((string) $shipment->awbNumber, $pickupSheet->collectionDate) ?></td>
                                     <td data-label="Destination"><?= $e($shipment->destination) ?></td>
                                     <td data-label="Amount"><?= $e(number_format($shipment->amountXaf)) ?></td>

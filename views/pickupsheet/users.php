@@ -98,7 +98,7 @@ $jumpCloudGroups = is_array($config['jumpcloud_role_groups'] ?? null) ? $config[
                 <small><?= is_string($collectionAgent['updatedAt'] ?? null) ? 'Last changed ' . $e($collectionAgent['updatedAt']) . ' UTC' : 'Not assigned yet' ?></small>
             </div>
             <p class="records-login-method-note">Every new pickup sheet is stamped with this agent name. People creating sheets see it but cannot change it. Existing sheets keep the name they were created with.</p>
-            <label class="records-collection-agent-field"><span>Collection agent name</span><input name="collection_agent_name" value="<?= $e($old['collection_agent_name'] ?? $collectionAgentName) ?>" minlength="2" maxlength="100" required autocomplete="off" placeholder="Full name of the collection agent"></label>
+            <label class="records-collection-agent-field"><span>Collection agent name</span><input name="collection_agent_name" value="<?= $e($old['collection_agent_name'] ?? $collectionAgentName) ?>" minlength="2" maxlength="100" required autocomplete="off" placeholder="Full name of the collection agent" data-name-field></label>
             <div class="records-login-method-actions"><p class="records-login-method-note"><?= $collectionAgentName !== '' ? 'Currently assigned: <strong>' . $e($collectionAgentName) . '</strong>' : 'No agent is assigned, so pickup sheets cannot be created yet.' ?></p><button class="button button-dark" type="submit">Save collection agent</button></div>
         </form>
 

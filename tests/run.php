@@ -261,7 +261,29 @@ $assert($pickupSheet->shipments[0]->collectionTime === $pickupSheet->shipments[1
 $assert($pickupSheet->shipments[0]->collectionTime !== '99:99', 'A client-supplied collection time should be ignored.');
 $assert($pickupSheet->privacyConsentAt !== '', 'Pickup-sheet consent should retain a timestamp.');
 $assert(($pickupService->recent(1)[0]->referenceNumber ?? '') === $pickupSheet->referenceNumber, 'Recent pickup sheets should be available to the submissions view.');
-$assert($pickupService->findByReference($pickupSheet->referenceNumber)?->agentName === 'Edmund Ngochi', 'A pickup sheet should be retrievable by its reference number.');
+$assert($pickupService->findByReference($pickupSheet->referenceNumber)?->agentName === 'EDMUND NGOCHI', 'A pickup sheet should be retrievable by its reference number.');
+$assert($pickupSheet->shipments[0]->consignor === 'NEKEZIAH PIUS T' && $pickupSheet->shipments[0]->checkedBy === 'ELIZABETH A', 'Consignor and checker names should be stored in uppercase.');
+$assert(App\Shared\Text\NameText::sanitize("O'Brien & Sons, Ltd.") === 'OBRIEN SONS LTD' && App\Shared\Text\NameText::isAllowed('SOCIÉTÉ ABC-2') && !App\Shared\Text\NameText::isAllowed('ABC & CO'), 'Name fields should allow letters, digits, spaces, and hyphens only.');
+$symbolConsignorRejected = false;
+try {
+    $pickupService->submit([
+        'agent_name' => 'Symbol Agent',
+        'collection_date' => '2026-07-29',
+        'privacy_consent' => '1',
+        'shipments' => [['consignor' => 'Smith & Co.', 'awb_number' => '1661272999', 'destination' => 'DLA', 'amount' => '1000', 'pieces' => '1', 'weight_kg' => '1', 'checked_by' => 'Symbol Checker']],
+    ]);
+} catch (InvalidArgumentException $exception) {
+    $symbolConsignorRejected = str_contains($exception->getMessage(), 'only letters, numbers, spaces, and hyphens');
+}
+$assert($symbolConsignorRejected, 'A consignor name with symbols other than a hyphen should be rejected.');
+$assert(App\Shared\Text\NameText::normalize('  jean-paul   freight ') === 'JEAN-PAUL FREIGHT', 'Hyphens should be kept and names uppercased with spacing tidied.');
+$symbolAgentRejected = false;
+try {
+    (new CollectionAgentService(new DemoCollectionAgentRepository()))->assign('Agent #1', str_repeat('a', 24));
+} catch (InvalidArgumentException $exception) {
+    $symbolAgentRejected = str_contains($exception->getMessage(), 'only letters, numbers, spaces, and hyphens');
+}
+$assert($symbolAgentRejected, 'A collection agent name with symbols should be rejected.');
 $assert($pickupService->findByReference('invalid-reference') === null, 'Invalid pickup-sheet references should not reach persistence.');
 
 for ($sheetIndex = 2; $sheetIndex <= 12; $sheetIndex++) {
@@ -350,16 +372,16 @@ $senderPerformanceService->submit([
 ]);
 $topSenders = $senderPerformanceService->topSenders(12, 10);
 $assert(count($topSenders) === 10, 'Sender performance should be limited to the top ten senders.');
-$assert(($topSenders[0]['sender'] ?? '') === 'Sender 01' && ($topSenders[0]['shipmentCount'] ?? 0) === 4, 'Sender performance should group name casing and rank the most frequent sender first.');
-$assert(($topSenders[1]['sender'] ?? '') === 'Sender 02' && ($topSenders[1]['shipmentCount'] ?? 0) === 3, 'Sender performance should sort shipment counts from most to least.');
+$assert(($topSenders[0]['sender'] ?? '') === 'SENDER 01' && ($topSenders[0]['shipmentCount'] ?? 0) === 4, 'Sender performance should group name casing and rank the most frequent sender first.');
+$assert(($topSenders[1]['sender'] ?? '') === 'SENDER 02' && ($topSenders[1]['shipmentCount'] ?? 0) === 3, 'Sender performance should sort shipment counts from most to least.');
 $assert(!in_array('Legacy Leader', array_column($topSenders, 'sender'), true), 'Sender performance should exclude shipments older than the rolling twelve-month window.');
 $consignorSuggestions = $senderPerformanceService->consignorSuggestions('', 50);
 $sortedConsignorSuggestions = $consignorSuggestions;
 usort($sortedConsignorSuggestions, static fn (string $left, string $right): int => strcasecmp($left, $right));
-$assert($consignorSuggestions === $sortedConsignorSuggestions && ($consignorSuggestions[0] ?? '') === 'Legacy Leader', 'Consignor suggestions should be listed in case-insensitive A-Z order.');
+$assert($consignorSuggestions === $sortedConsignorSuggestions && ($consignorSuggestions[0] ?? '') === 'LEGACY LEADER', 'Consignor suggestions should be listed in case-insensitive A-Z order.');
 $assert(count(array_filter($consignorSuggestions, static fn (string $name): bool => strtolower($name) === 'sender 01')) === 1, 'Consignor suggestions should group casing variants.');
-$assert(in_array('Legacy Leader', $consignorSuggestions, true), 'Consignor suggestions should include previously used names outside the performance-chart window.');
-$assert($senderPerformanceService->consignorSuggestions('Sender 02', 12) === ['Sender 02'], 'Consignor suggestions should match saved names by a case-insensitive prefix.');
+$assert(in_array('LEGACY LEADER', $consignorSuggestions, true), 'Consignor suggestions should include previously used names outside the performance-chart window.');
+$assert($senderPerformanceService->consignorSuggestions('Sender 02', 12) === ['SENDER 02'], 'Consignor suggestions should match saved names by a case-insensitive prefix.');
 $senderPerformanceService->submit([
     'agent_name' => 'Alphabetical Agent',
     'collection_date' => (new DateTimeImmutable('today'))->format('Y-m-d'),
@@ -371,8 +393,8 @@ $senderPerformanceService->submit([
         ['consignor' => 'ACB Query Sender', 'awb_number' => '7200000004', 'destination' => 'DLA', 'amount' => '1000', 'pieces' => '1', 'weight_kg' => '0.5', 'checked_by' => 'Alphabetical Checker'],
     ],
 ]);
-$assert($senderPerformanceService->consignorSuggestions('A', 12) === ['ACB Query Sender', 'ABC Query Sender'], 'Autocomplete should reject non-prefix matches and rank a more frequently used matching consignor first.');
-$assert($senderPerformanceService->consignorSuggestions('ABC Query Sender', 12) === ['ABC Query Sender'], 'An exact consignor query should receive the highest relevance priority.');
+$assert($senderPerformanceService->consignorSuggestions('A', 12) === ['ACB QUERY SENDER', 'ABC QUERY SENDER'], 'Autocomplete should reject non-prefix matches and rank a more frequently used matching consignor first.');
+$assert($senderPerformanceService->consignorSuggestions('ABC Query Sender', 12) === ['ABC QUERY SENDER'], 'An exact consignor query should receive the highest relevance priority.');
 $marketAnalysis = $senderPerformanceService->marketAnalysis(90, 12, 8);
 $assert(($marketAnalysis['current']['shipmentCount'] ?? 0) === 22 && ($marketAnalysis['current']['totalCashXaf'] ?? 0) === 22000, 'Market analysis should aggregate the latest comparison period from shipment-level records.');
 $assert(($marketAnalysis['current']['uniqueSenders'] ?? 0) === 15 && ($marketAnalysis['trendUniqueSenders'] ?? 0) === 15, 'Market analysis should group sender casing and report active market participants.');
@@ -542,6 +564,16 @@ $paginationFixture = $view->renderPartial('pickupsheet/_submission-records', [
     'canExport' => true,
     'canManage' => true,
 ]);
+$assert(!str_contains($paginationFixture, 'pickup-consignor-link'), 'Consignor names should stay plain text for users without CRM access.');
+$crmLinkedFixture = $view->renderPartial('pickupsheet/_submission-records', [
+    'basePath' => '',
+    'pickupOperational' => true,
+    'pickupSheets' => $secondPickupPage['items'],
+    'pagination' => $secondPickupPage,
+    'errors' => [],
+    'canCrmView' => true,
+]);
+$assert(str_contains($crmLinkedFixture, 'class="pickup-consignor-link" href="/dhl/pickupsheet/customers/open?name='), 'Consignor names on submitted sheets should link to their CRM profile for CRM viewers.');
 $assert(substr_count($paginationFixture, '<article class="pickup-record">') === 2, 'The second ten-record page should render only its two remaining sheets.');
 $assert(!str_contains($paginationFixture, 'pickup-view-summary') && !str_contains($paginationFixture, 'Page cash total') && !str_contains($paginationFixture, 'Unpaid balance'), 'Submitted-sheet fragments should not render metric cards for administrators.');
 $assert(!str_contains($paginationFixture, 'Sheets on this page'), 'Submitted sheets should not display a sheet-count metric card.');
@@ -1092,13 +1124,20 @@ $renamedCustomer = $renameCustomerService->save($renameCustomerKey, [
     'phone' => '670000000',
     'status' => 'active',
 ], str_repeat('a', 24));
+$symbolCustomerRejected = false;
+try {
+    $renameCustomerService->save($renameCustomerKey, ['display_name' => 'Renamed & Co', 'status' => 'active'], str_repeat('a', 24));
+} catch (InvalidArgumentException $exception) {
+    $symbolCustomerRejected = str_contains($exception->getMessage(), 'only letters, numbers, spaces, and hyphens');
+}
+$assert($symbolCustomerRejected, 'A CRM customer name with symbols other than a hyphen should be rejected.');
 $renamedSheet = $renamePickupService->findByReference($renameSheet->referenceNumber);
-$assert($renamedSheet?->shipments[0]->consignor === 'Renamed Customer Company', 'Changing a CRM organization name should update matching consignors on existing pickup sheets.');
+$assert($renamedSheet?->shipments[0]->consignor === 'RENAMED CUSTOMER COMPANY', 'Changing a CRM organization name should update matching consignors on existing pickup sheets.');
 $assert($renamedCustomer->customerKey === $renameCustomerKey && $renamedCustomer->shipmentCount === 1 && $renamedCustomer->totalCashXaf === 25000, 'A renamed CRM profile should retain its stable identity and linked shipment metrics.');
 $assert($renamedCustomer->countryCode === 'CM' && $renamedCustomer->phone === '+237 670 000 000', 'CRM profiles should default to Cameroon and automatically add +237 to a local phone number.');
 $assert(($renameCustomerService->recentShipments($renameCustomerKey)[0]['referenceNumber'] ?? '') === $renameSheet->referenceNumber, 'A renamed CRM profile should retain its existing shipment history.');
-$assert($renamePickupService->consignorSuggestions('Ren', 10) === ['Renamed Customer Company'], 'Consignor autocomplete should immediately use a customer name changed in CRM.');
-$assert($renameCustomerService->suggestions('renamed') === ['Renamed Customer Company'], 'CRM autocomplete should suggest existing customer profiles by a case-insensitive prefix.');
+$assert($renamePickupService->consignorSuggestions('Ren', 10) === ['RENAMED CUSTOMER COMPANY'], 'Consignor autocomplete should immediately use a customer name changed in CRM.');
+$assert($renameCustomerService->suggestions('renamed') === ['RENAMED CUSTOMER COMPANY'], 'CRM autocomplete should suggest existing customer profiles by a case-insensitive prefix.');
 
 $duplicateRejected = false;
 try {
@@ -1112,7 +1151,7 @@ try {
     $duplicateRejected = str_contains($exception->getMessage(), 'already uses this organization name');
 }
 $assert($duplicateRejected, 'CRM should reject a duplicate organization name instead of overwriting the existing profile.');
-$assert($renameCustomerService->find($renameCustomerKey)?->contactName === 'Customer Contact', 'A rejected duplicate CRM submission should leave the existing profile unchanged.');
+$assert($renameCustomerService->find($renameCustomerKey)?->contactName === 'CUSTOMER CONTACT', 'A rejected duplicate CRM submission should leave the existing profile unchanged.');
 
 $nearDuplicate = $renameCustomerService->save(null, [
     'display_name' => 'Renamed Customer Compny',
@@ -1125,7 +1164,7 @@ $duplicateSuggestions = $renameCustomerService->duplicateSuggestions();
 $assert(count($duplicateSuggestions) === 1 && ($duplicateSuggestions[0]['confidence'] ?? 0) >= 88, 'CRM should conservatively suggest a near-matching customer name for review.');
 $mergedCustomer = $renameCustomerService->merge($renameCustomerKey, $nearDuplicate->customerKey, str_repeat('a', 24));
 $assert($renameCustomerService->find($nearDuplicate->customerKey) === null, 'Merging CRM duplicates should remove the redundant profile.');
-$assert($mergedCustomer->displayName === 'Renamed Customer Company' && $mergedCustomer->email === 'duplicate@example.com' && $mergedCustomer->status === 'attention', 'A CRM merge should retain the selected name and preserve useful fields from the duplicate.');
+$assert($mergedCustomer->displayName === 'RENAMED CUSTOMER COMPANY' && $mergedCustomer->email === 'duplicate@example.com' && $mergedCustomer->status === 'attention', 'A CRM merge should retain the selected name and preserve useful fields from the duplicate.');
 $assert($mergedCustomer->shipmentCount === 1 && $mergedCustomer->rewardBalance() === 32, 'A CRM merge should preserve shipment history and transfer reward adjustments to the retained profile.');
 
 $renamePickupService->submit([
@@ -1145,23 +1184,23 @@ $renamePickupService->submit([
 $renameCustomerService->synchronize();
 $assert($renameCustomerService->find($nearDuplicate->customerKey) === null && $renameCustomerService->find($renameCustomerKey)?->shipmentCount === 2, 'Shipments entered under a merged-away name should resolve to the retained profile instead of recreating the duplicate.');
 $aliasOwner = $renameCustomerService->existingCustomer('renamed customer compny');
-$assert(($aliasOwner['alias'] ?? null) === 'Renamed Customer Compny' && ($aliasOwner['customer'] ?? null)?->customerKey === $renameCustomerKey, 'CRM should report which profile absorbed a merged-away name.');
+$assert(($aliasOwner['alias'] ?? null) === 'RENAMED CUSTOMER COMPNY' && ($aliasOwner['customer'] ?? null)?->customerKey === $renameCustomerKey, 'CRM should report which profile absorbed a merged-away name.');
 $aliasRejected = null;
 try {
     $renameCustomerService->save(null, ['display_name' => 'Renamed Customer Compny', 'status' => 'lead'], str_repeat('b', 24));
 } catch (DuplicateCustomerException $exception) {
     $aliasRejected = $exception;
 }
-$assert($aliasRejected?->existing->customerKey === $renameCustomerKey && str_contains($aliasRejected->getMessage(), 'was merged into Renamed Customer Company'), 'A merged-away name should not be reusable for a new profile and should point to the retained profile.');
+$assert($aliasRejected?->existing->customerKey === $renameCustomerKey && str_contains($aliasRejected->getMessage(), 'was merged into RENAMED CUSTOMER COMPANY'), 'A merged-away name should not be reusable for a new profile and should point to the retained profile.');
 
 $recentMerges = $renameCustomerService->recentMerges();
-$assert(count($recentMerges) === 1 && $recentMerges[0]['sourceName'] === 'Renamed Customer Compny' && $recentMerges[0]['targetName'] === 'Renamed Customer Company', 'CRM should list recent merges that can still be undone.');
+$assert(count($recentMerges) === 1 && $recentMerges[0]['sourceName'] === 'RENAMED CUSTOMER COMPNY' && $recentMerges[0]['targetName'] === 'RENAMED CUSTOMER COMPANY', 'CRM should list recent merges that can still be undone.');
 $restoredDuplicate = $renameCustomerService->undoMerge((string) $recentMerges[0]['id'], str_repeat('a', 24));
 $restoredTarget = $renameCustomerService->find($renameCustomerKey);
 $assert($restoredDuplicate->customerKey === $nearDuplicate->customerKey && $restoredDuplicate->email === 'duplicate@example.com' && $restoredDuplicate->rewardBalance() === 7, 'Undoing a merge should restore the separate profile with its reward adjustments.');
 $assert($restoredDuplicate->shipmentCount === 0 && $restoredTarget?->shipmentCount === 2, 'Undo should only hand back shipments that were moved by the merge itself.');
 $assert($restoredTarget?->email === '' && $restoredTarget->status === 'active' && !str_contains($restoredTarget->notes, 'Merged from'), 'Undo should restore retained-profile fields that nobody edited after the merge.');
-$assert(($renameCustomerService->existingCustomer('Renamed Customer Compny')['customer'] ?? null)?->customerKey === $nearDuplicate->customerKey && $renameCustomerService->recentMerges() === [], 'Undo should retire the alias and remove the merge from the undo list.');
+$assert(($renameCustomerService->existingCustomer('RENAMED CUSTOMER COMPNY')['customer'] ?? null)?->customerKey === $nearDuplicate->customerKey && $renameCustomerService->recentMerges() === [], 'Undo should retire the alias and remove the merge from the undo list.');
 $undoRepeated = false;
 try {
     $renameCustomerService->undoMerge((string) $recentMerges[0]['id'], str_repeat('a', 24));
@@ -1171,7 +1210,7 @@ try {
 $assert($undoRepeated, 'A merge should not be undone twice.');
 
 $reusedOriginalName = $renameCustomerService->save(null, ['display_name' => 'Original Customer Name', 'status' => 'lead'], str_repeat('b', 24));
-$assert($reusedOriginalName->customerKey !== $renameCustomerKey && $renameCustomerService->find($renameCustomerKey)?->displayName === 'Renamed Customer Company', 'A new customer may take a renamed profile\'s former name without colliding with its original key.');
+$assert($reusedOriginalName->customerKey !== $renameCustomerKey && $renameCustomerService->find($renameCustomerKey)?->displayName === 'RENAMED CUSTOMER COMPANY', 'A new customer may take a renamed profile\'s former name without colliding with its original key.');
 
 $renameCustomerService->save(null, ['display_name' => 'Douala Branch 1', 'status' => 'active'], str_repeat('b', 24));
 $renameCustomerService->save(null, ['display_name' => 'Douala Branch 2', 'status' => 'active'], str_repeat('b', 24));
@@ -1190,9 +1229,9 @@ $scaledSuggestions = array_map(
     $renameCustomerService->duplicateSuggestions(20),
 );
 $suggestedNames = array_merge(...$scaledSuggestions);
-$assert(in_array('Zzyzx Freight Logistic', $suggestedNames, true) && in_array('Renamed Customer Compny', $suggestedNames, true), 'Duplicate review should cover every profile, not only the first 200 names.');
-$assert(in_array('Societe Generale Cameroun', $suggestedNames, true) && in_array('Société Générale Cameroun', $suggestedNames, true), 'Duplicate review should treat accented and unaccented spellings as likely duplicates.');
-$assert(!in_array('Douala Branch 1', $suggestedNames, true), 'Names that differ only by a branch or site number should not be suggested as duplicates.');
+$assert(in_array('ZZYZX FREIGHT LOGISTIC', $suggestedNames, true) && in_array('RENAMED CUSTOMER COMPNY', $suggestedNames, true), 'Duplicate review should cover every profile, not only the first 200 names.');
+$assert(in_array('SOCIETE GENERALE CAMEROUN', $suggestedNames, true) && in_array('SOCIÉTÉ GÉNÉRALE CAMEROUN', $suggestedNames, true), 'Duplicate review should treat accented and unaccented spellings as likely duplicates.');
+$assert(!in_array('DOUALA BRANCH 1', $suggestedNames, true), 'Names that differ only by a branch or site number should not be suggested as duplicates.');
 $numberedMergeRejected = false;
 try {
     $douala = $renameCustomerService->existingCustomer('Douala Branch 1')['customer'];
@@ -1223,7 +1262,7 @@ $spacedSheet = $renamePickupService->submit([
         'checked_by' => 'CRM Spacing Checker',
     ]],
 ]);
-$assert($spacedSheet->shipments[0]->consignor === 'Spaced Out Sender', 'Pickup sheets should collapse repeated spaces in consignor names so one sender maps to one CRM customer.');
+$assert($spacedSheet->shipments[0]->consignor === 'SPACED OUT SENDER', 'Pickup sheets should collapse repeated spaces in consignor names so one sender maps to one CRM customer.');
 foreach (['RCP-12345' => 'Receipt number must contain at least 6 digits.', 'ABCDEF' => 'Receipt number must contain at least 6 digits.', '12345' => 'Receipt number must be 6 to 64 characters using letters, numbers, dots, slashes, underscores, or hyphens.'] as $shortReceipt => $shortReceiptMessage) {
     $shortReceiptError = null;
     try {
@@ -1237,7 +1276,7 @@ $renamePickupService->markPaid($spacedSheet->referenceNumber, 'RCPT-SPACED-10000
 $renameCustomerService->synchronize();
 $spacedCustomer = $renameCustomerService->existingCustomer('Spaced Out Sender')['customer'];
 $renameCustomerService->save($spacedCustomer->customerKey, ['display_name' => 'Spaced Out Sender SARL', 'status' => 'active'], str_repeat('a', 24));
-$assert($renamePickupService->findByReference($spacedSheet->referenceNumber)?->shipments[0]->consignor === 'Spaced Out Sender SARL', 'Renaming a customer should also update consignors on paid pickup sheets.');
+$assert($renamePickupService->findByReference($spacedSheet->referenceNumber)?->shipments[0]->consignor === 'SPACED OUT SENDER SARL', 'Renaming a customer should also update consignors on paid pickup sheets.');
 
 $rewardSheet = $renamePickupService->submit([
     'agent_name' => 'CRM Reward Shortfall Agent',
@@ -1306,9 +1345,10 @@ $keptOwner = $renameCustomerService->updateDetailsWithoutNames($activityCustomer
 $assert($ownedCustomer->assignedName === 'Owner Person' && $keptOwner->assignedActorId === str_repeat('c', 24), 'Customers should keep an owner that operator edits do not clear.');
 
 $filtered = static fn (array $filters): array => array_map(static fn ($customer): string => $customer->displayName, $renameCustomerService->paginated($filters, 1, 50)['items']);
-$assert(in_array('Activity Logistics', $filtered(['follow_up' => 'due']), true) && !in_array('Activity Logistics', $filtered(['follow_up' => 'none']), true), 'The directory should filter customers whose follow-up is due.');
-$assert($filtered(['owner' => str_repeat('c', 24)]) === ['Activity Logistics'] && !in_array('Activity Logistics', $filtered(['owner' => 'unassigned']), true), 'The directory should filter customers by owner.');
+$assert(in_array('ACTIVITY LOGISTICS', $filtered(['follow_up' => 'due']), true) && !in_array('ACTIVITY LOGISTICS', $filtered(['follow_up' => 'none']), true), 'The directory should filter customers whose follow-up is due.');
+$assert($filtered(['owner' => str_repeat('c', 24)]) === ['ACTIVITY LOGISTICS'] && !in_array('ACTIVITY LOGISTICS', $filtered(['owner' => 'unassigned']), true), 'The directory should filter customers by owner.');
 $assert($filtered(['search' => '%']) === [], 'Search should treat % literally instead of matching every customer.');
+$assert(in_array('RENAMED CUSTOMER COMPANY', $filtered(['search' => '670000000']), true) && in_array('RENAMED CUSTOMER COMPANY', $filtered(['search' => '+237670000000']), true) && in_array('RENAMED CUSTOMER COMPANY', $filtered(['search' => '670-000 000']), true), 'Phone search should match stored numbers regardless of spaces, dashes, or the country code.');
 $sortedNames = $filtered(['sort' => 'name']);
 $sortedCopy = $sortedNames;
 usort($sortedCopy, 'strcasecmp');
@@ -1329,11 +1369,11 @@ $renameCustomerService->synchronize();
 $assert($renameCustomerService->find($activityCustomer->customerKey) === null && $renameCustomerService->activities($activityCustomer->customerKey) === [], 'Deleting a customer should erase the profile and its activity.');
 $renameCustomerService->delete($shortfallCustomer->customerKey, str_repeat('a', 24));
 $renameCustomerService->synchronize();
-$assert($renameCustomerService->existingCustomer('Shortfall Traders') === null, 'A deleted customer should not be recreated from sheets that already carry the name.');
+$assert($renameCustomerService->existingCustomer('SHORTFALL TRADERS') === null, 'A deleted customer should not be recreated from sheets that already carry the name.');
 
 $leadDirectoryPickups = new PickupSheetService($renamePickupRepository, new CustomerConsignorDirectory(new DemoCustomerRepository($renamePickupRepository)));
 $renameCustomerService->save(null, ['display_name' => 'Brand New Lead Company', 'status' => 'lead'], str_repeat('a', 24));
-$assert(in_array('Brand New Lead Company', $leadDirectoryPickups->consignorSuggestions('Brand', 10), true), 'New pickup sheets should suggest CRM customers that have no sheets yet.');
+$assert(in_array('BRAND NEW LEAD COMPANY', $leadDirectoryPickups->consignorSuggestions('Brand', 10), true), 'New pickup sheets should suggest CRM customers that have no sheets yet.');
 
 AwbReusePolicy::configure(90);
 $assert(AwbReusePolicy::window('2026-09-29') === ['2026-07-02', '2026-12-27'], 'The AWB reuse window should cover 90 days either side of the collection date.');
@@ -1415,7 +1455,7 @@ $leaderboardPickupService->submit([
 ]);
 $leaderboardCustomerService = new CustomerService(new DemoCustomerRepository($leaderboardPickupRepository));
 $leaderboard = $leaderboardCustomerService->topByPoints(5);
-$assert(count($leaderboard) === 5 && $leaderboard[0]->displayName === 'Points Customer F' && $leaderboard[0]->rewardBalance() === 60 && $leaderboard[4]->displayName === 'Points Customer B', 'The loyalty leaderboard should return only the five highest balances in descending point order.');
+$assert(count($leaderboard) === 5 && $leaderboard[0]->displayName === 'POINTS CUSTOMER F' && $leaderboard[0]->rewardBalance() === 60 && $leaderboard[4]->displayName === 'POINTS CUSTOMER B', 'The loyalty leaderboard should return only the five highest balances in descending point order.');
 
 $_SESSION = [];
 $pickupCsrf = new Csrf();
@@ -1850,12 +1890,12 @@ $assignAgent = $pickupController->updateCollectionAgent(new Request('POST', '/dh
     '_token' => $pickupCsrf->token(),
     'collection_agent_name' => '  Controller   Agent ',
 ], '', $recordsServer));
-$assert($assignAgent->status() === 303 && ($_SESSION['_records_users_flash'] ?? '') === 'Collection agent set to Controller Agent. New pickup sheets use this name.', 'An administrator should assign the collection agent from the admin panel, with spacing tidied.');
+$assert($assignAgent->status() === 303 && ($_SESSION['_records_users_flash'] ?? '') === 'Collection agent set to CONTROLLER AGENT. New pickup sheets use this name.', 'An administrator should assign the collection agent from the admin panel, with spacing tidied.');
 unset($_SESSION['_records_users_flash']);
 $assignedAgentAdminPage = $pickupController->users(new Request('GET', '/dhl/pickupsheet/submissions/users', [], [], '', $recordsServer));
-$assert(str_contains($assignedAgentAdminPage->body(), 'id="collection-agent-title"') && str_contains($assignedAgentAdminPage->body(), 'name="collection_agent_name" value="Controller Agent"'), 'The admin panel should show the assigned collection agent.');
+$assert(str_contains($assignedAgentAdminPage->body(), 'id="collection-agent-title"') && str_contains($assignedAgentAdminPage->body(), 'name="collection_agent_name" value="CONTROLLER AGENT"'), 'The admin panel should show the assigned collection agent.');
 $assignedAgentForm = $pickupController->index(new Request('GET', '/dhl/pickupsheet/'));
-$assert(str_contains($assignedAgentForm->body(), '<strong>Controller Agent</strong>') && str_contains($assignedAgentForm->body(), 'Assigned by an administrator.') && !str_contains($assignedAgentForm->body(), 'name="agent_name"'), 'The sheet form should show the assigned agent read-only.');
+$assert(str_contains($assignedAgentForm->body(), '<strong>CONTROLLER AGENT</strong>') && str_contains($assignedAgentForm->body(), 'Assigned by an administrator.') && !str_contains($assignedAgentForm->body(), 'name="agent_name"'), 'The sheet form should show the assigned agent read-only.');
 $pickupChallenge = $pickupCaptcha->issue();
 $pickupParts = preg_split('/\s+/', $pickupChallenge['question']);
 $pickupAnswer = is_array($pickupParts) && $pickupParts[1] === '+'
@@ -1886,8 +1926,8 @@ unset($_SESSION['_pickup_records_flash']);
 $savedControllerSheet = $_SESSION['_demo_pickup_sheets'][0] ?? null;
 $assert($savedControllerSheet instanceof App\Modules\Pickupsheet\Domain\PickupSheet, 'The controller should persist a pickup-sheet aggregate.');
 $assert($savedControllerSheet->status === 'open' && !$savedControllerSheet->isPaid(), 'Every new pickup sheet should start with open status.');
-$assert($savedControllerSheet->agentName === 'Controller Agent', 'A new sheet should use the assigned collection agent and ignore a submitted agent name.');
-$assert(($savedControllerSheet->shipments[0]->checkedBy ?? '') === 'Records Administrator', 'The server should ignore a submitted checker and persist the authenticated account name.');
+$assert($savedControllerSheet->agentName === 'CONTROLLER AGENT', 'A new sheet should use the assigned collection agent and ignore a submitted agent name.');
+$assert(($savedControllerSheet->shipments[0]->checkedBy ?? '') === 'RECORDS ADMINISTRATOR', 'The server should ignore a submitted checker and persist the authenticated account name.');
 $assert((bool) preg_match('/^[0-9]{2}:[0-9]{2}$/', $savedControllerSheet->shipments[0]->collectionTime ?? ''), 'The controller should persist the server-generated submission time.');
 $savedReference = $savedControllerSheet->referenceNumber;
 $trackingHref = htmlspecialchars(DhlTrackingUrl::forAwb('1234567890'), ENT_QUOTES, 'UTF-8');
@@ -1917,20 +1957,20 @@ $pickupController->store(new Request('POST', '/dhl/pickupsheet', [], [
     ]],
 ], ''));
 $operatorSheet = end($_SESSION['_demo_pickup_sheets']);
-$assert($operatorSheet instanceof App\Modules\Pickupsheet\Domain\PickupSheet && $operatorSheet->agentName === 'Controller Agent' && $operatorSheet->collectionDate === date('Y-m-d'), 'The server should ignore a submitted collection date and agent name from operators, recording today and the assigned agent.');
+$assert($operatorSheet instanceof App\Modules\Pickupsheet\Domain\PickupSheet && $operatorSheet->agentName === 'CONTROLLER AGENT' && $operatorSheet->collectionDate === date('Y-m-d'), 'The server should ignore a submitted collection date and agent name from operators, recording today and the assigned agent.');
 array_pop($_SESSION['_demo_pickup_sheets']);
 unset($_SESSION['_last_pickup_sheet_at']);
 $recordsSession->login($adminPrincipal);
 
 $consignorSearch = $pickupController->searchConsignors(new Request('GET', '/dhl/pickupsheet/consignors/search', ['q' => 'controller'], [], '', $recordsServer));
 $consignorSearchPayload = json_decode($consignorSearch->body(), true);
-$assert($consignorSearch->status() === 200 && ($consignorSearchPayload['suggestions'] ?? []) === ['Controller Client'], 'Authenticated consignor search should return matching saved names.');
+$assert($consignorSearch->status() === 200 && ($consignorSearchPayload['suggestions'] ?? []) === ['CONTROLLER CLIENT'], 'Authenticated consignor search should return matching saved names.');
 $assert(($consignorSearch->headers()['Cache-Control'] ?? '') === 'private, no-store, max-age=0', 'Consignor search responses should not be stored in shared or browser caches.');
 
 $openSubmissions = $pickupController->submissions(new Request('GET', '/dhl/pickupsheet/submissions', [], [], '', $recordsServer));
 $assert(str_contains($openSubmissions->body(), $savedReference), 'The direct table should show each sheet reference.');
 $assert(!str_contains($openSubmissions->body(), 'dhl-logo.svg'), 'The submitted-sheets screen should not display the DHL logo.');
-$assert(str_contains($openSubmissions->body(), 'Controller Client'), 'The direct table should show shipment rows.');
+$assert(str_contains($openSubmissions->body(), 'CONTROLLER CLIENT'), 'The direct table should show shipment rows.');
 $assert(str_contains($openSubmissions->body(), 'href="' . $trackingHref . '" target="_blank" rel="noopener noreferrer"'), 'Submitted AWBs should open their exact DHL tracking URL safely in a new tab.');
 $assert(str_contains($openSubmissions->body(), 'Print / PDF'), 'Each submitted sheet should provide a print-to-PDF action.');
 $assert(str_contains($openSubmissions->body(), 'Export Excel'), 'Each submitted sheet should provide an Excel export action.');
@@ -1958,7 +1998,7 @@ $emptySearchFragment = $pickupController->submissionsPage(new Request('GET', '/d
 $assert($emptySearchFragment->status() === 200 && str_contains($emptySearchFragment->body(), 'No matching sheets.'), 'The AJAX search endpoint should return a clear empty-result state.');
 $pageFragment = $pickupController->submissionsPage(new Request('GET', '/dhl/pickupsheet/submissions/page', ['page' => '1'], [], '', $recordsServer));
 $assert($pageFragment->status() === 200, 'A valid Pickupsheet session should load a paginated AJAX fragment.');
-$assert(str_contains($pageFragment->body(), 'Controller Client'), 'The AJAX page fragment should contain its shipment records.');
+$assert(str_contains($pageFragment->body(), 'CONTROLLER CLIENT'), 'The AJAX page fragment should contain its shipment records.');
 $assert(str_contains($pageFragment->body(), 'href="' . $trackingHref . '"'), 'AJAX-loaded AWBs should retain their DHL tracking links.');
 $assert(!str_contains($pageFragment->body(), '<!doctype html>'), 'The AJAX endpoint should return only the replaceable records fragment.');
 $recordsSession->logout();
@@ -2119,10 +2159,10 @@ $assert($adminEdit->status() === 200 && str_contains($adminEdit->body(), 'Record
 $assert(str_contains($adminEdit->body(), '<div class="pickup-submit-actions"><a class="pickup-cancel" href="/dhl/pickupsheet/submissions">Cancel</a><button class="button button-red pickup-submit" type="submit">'), 'The record editor should offer a Cancel button beside Save that returns to the submitted sheets without saving.');
 $assert($adminUpdate->status() === 303, 'An administrator should save an audited pickup-sheet correction.');
 $assert(str_contains($adminEdit->body(), 'Set when the sheet was created.') && !str_contains($adminEdit->body(), 'name="agent_name"'), 'The record editor should show the sheet agent read-only.');
-$assert((new PickupSheetService($pickupRepository))->findByReference($savedReference)?->agentName === 'Controller Agent', 'Editing a sheet should keep the agent it was created with.');
+$assert((new PickupSheetService($pickupRepository))->findByReference($savedReference)?->agentName === 'CONTROLLER AGENT', 'Editing a sheet should keep the agent it was created with.');
 $adminUpdatedSheet = (new PickupSheetService(new DemoPickupSheetRepository()))->findByReference($savedReference);
 $assert($adminUpdatedSheet?->totalCashReceivedXaf === 14000 && !$adminUpdatedSheet->isPaid(), 'An administrator edit should persist while retaining open status.');
-$assert(($adminUpdatedSheet->shipments[0]->checkedBy ?? '') === 'Records Administrator', 'An administrator edit should stamp Check By with the administrator account name.');
+$assert(($adminUpdatedSheet->shipments[0]->checkedBy ?? '') === 'RECORDS ADMINISTRATOR', 'An administrator edit should stamp Check By with the administrator account name.');
 $duplicateAwbUpdate = $pickupController->updatePickupSheet(new Request('POST', '/dhl/pickupsheet/submissions/edit', [], [
     '_token' => $pickupCsrf->token(),
     'reference' => $savedReference,
@@ -2144,7 +2184,7 @@ $assert($duplicateAwbUpdate->status() === 303 && str_contains($duplicateAwbEdit-
 $_SESSION['_pickup_edit_awb_conflicts'] = [['awbNumber' => '1234567890', 'referenceNumber' => 'PS-20260720-EXAMPLE', 'collectionDate' => '2026-07-20']];
 $awbWarningEdit = $pickupController->edit(new Request('GET', '/dhl/pickupsheet/submissions/edit', ['reference' => $savedReference]));
 $assert(str_contains($awbWarningEdit->body(), 'data-awb-reuse-warning') && str_contains($awbWarningEdit->body(), 'PS-20260720-EXAMPLE</a>, collected 2026-07-20') && !str_contains($awbWarningEdit->body(), 'confirmed_awb_reuse') && str_contains($awbWarningEdit->body(), 'Correct the numbers to save this sheet.'), 'The edit form should list clashing AWBs without offering an override.');
-$assert(str_contains($awbWarningEdit->body(), '<datalist id="consignor-suggestions" data-consignor-suggestions data-search-endpoint="/dhl/pickupsheet/consignors/search">') && str_contains($awbWarningEdit->body(), 'data-field="consignor" data-consignor-input') && str_contains($awbWarningEdit->body(), '<option value="Controller Client"></option>') && str_contains($awbWarningEdit->body(), 'id="consignor-suggestion-help"'), 'Editing a pickup sheet should offer the same consignor autocomplete as a new sheet.');
+$assert(str_contains($awbWarningEdit->body(), '<datalist id="consignor-suggestions" data-consignor-suggestions data-search-endpoint="/dhl/pickupsheet/consignors/search">') && str_contains($awbWarningEdit->body(), 'data-field="consignor" data-consignor-input') && str_contains($awbWarningEdit->body(), '<option value="CONTROLLER CLIENT"></option>') && str_contains($awbWarningEdit->body(), 'id="consignor-suggestion-help"'), 'Editing a pickup sheet should offer the same consignor autocomplete as a new sheet.');
 $missingReceiptPayment = $pickupController->markPickupSheetPaid(new Request('POST', '/dhl/pickupsheet/submissions/paid', [], [
     '_token' => $pickupCsrf->token(),
     ...$recordCaptchaFields(),
@@ -2336,7 +2376,7 @@ $assert(str_contains($adminDashboard->body(), 'pickup-cash-pie-chart') && str_co
 $assert(str_contains($adminDashboard->body(), 'stroke-dasharray="0.00 100.00"'), 'A fully settled cash balance should render an empty unpaid pie segment.');
 $assert(str_contains($adminDashboard->body(), 'fill="none" stroke="#168a45" stroke-width="58"') && str_contains($adminDashboard->body(), 'fill="none" stroke="#d40511" stroke-width="58"') && str_contains($adminDashboard->body(), '<dt>Paid cash</dt><dd>14,000 XAF</dd>'), 'The cash pie should retain explicit green paid and red unpaid SVG segments before its stylesheet loads.');
 $assert(str_contains($adminDashboard->body(), 'pickup-sender-chart') && str_contains($adminDashboard->body(), 'Top 10 senders'), 'The administrator dashboard should render the rolling sender performance chart.');
-$assert(str_contains($adminDashboard->body(), 'Controller Client') && str_contains($adminDashboard->body(), '1 shipment'), 'The sender chart should display shipment frequency for the ranked consignor.');
+$assert(str_contains($adminDashboard->body(), 'CONTROLLER CLIENT') && str_contains($adminDashboard->body(), '1 shipment'), 'The sender chart should display shipment frequency for the ranked consignor.');
 $assert(str_contains($adminDashboard->body(), 'pickup-loyalty-chart') && str_contains($adminDashboard->body(), 'Top 5 customers by points') && str_contains($adminDashboard->body(), '12 points · Bronze'), 'The administrator dashboard should rank the five highest customer reward balances from highest to lowest.');
 $assert(str_contains($adminDashboard->body(), 'User login frequency') && str_contains($adminDashboard->body(), 'Last 30 days'), 'The administrator dashboard should show per-user login frequency for the documented window.');
 $assert(str_contains($adminDashboard->body(), 'Records Administrator') && str_contains($adminDashboard->body(), 'Active now'), 'The administrator dashboard should identify active user sessions by account name.');
@@ -2364,10 +2404,10 @@ $customerDirectory = $customerController->index(new Request('GET', '/dhl/pickups
 $customerKey = hash('sha256', strtolower('Controller Client'));
 $customerProfile = $customerController->edit(new Request('GET', '/dhl/pickupsheet/customers/edit', ['customer' => $customerKey]));
 $assert($customerDirectory->status() === 200 && str_contains($customerDirectory->body(), 'Customer CRM'), 'An administrator should open the customer CRM.');
-$assert(str_contains($customerDirectory->body(), 'Controller Client') && str_contains($customerDirectory->body(), '14,000 XAF'), 'CRM should synchronize shipment consignors and their operational value.');
+$assert(str_contains($customerDirectory->body(), 'CONTROLLER CLIENT') && str_contains($customerDirectory->body(), '14,000 XAF'), 'CRM should synchronize shipment consignors and their operational value.');
 $assert(str_contains($customerDirectory->body(), 'data-ajax-pager-id="customer-directory"') && str_contains($customerDirectory->body(), 'data-ajax-pager-form="customer-directory"'), 'The customer directory and its filters should use progressive AJAX pagination.');
 $assert(str_contains($customerDirectory->body(), 'class="pickup-crm-directory-content"'), 'The AJAX customer directory should retain its card-specific content wrapper and padding.');
-$assert(str_contains($customerDirectory->body(), 'Possible duplicate customers') && str_contains($customerDirectory->body(), 'data-crm-merge-form') && str_contains($customerDirectory->body(), 'Controller Clien'), 'Administrators should receive actionable possible-duplicate suggestions in CRM.');
+$assert(str_contains($customerDirectory->body(), 'Possible duplicate customers') && str_contains($customerDirectory->body(), 'data-crm-merge-form') && str_contains($customerDirectory->body(), 'CONTROLLER CLIEN'), 'Administrators should receive actionable possible-duplicate suggestions in CRM.');
 $customerDirectoryFragment = $customerController->page(new Request('GET', '/dhl/pickupsheet/customers/page', ['page' => '1']));
 $assert($customerDirectoryFragment->status() === 200 && str_contains($customerDirectoryFragment->body(), 'Customer directory') && str_contains($customerDirectoryFragment->body(), 'data-ajax-current-page="1"'), 'The customer directory endpoint should return a normal-link-compatible page fragment.');
 $assert($customerProfile->status() === 200 && str_contains($customerProfile->body(), 'Recent shipments') && str_contains($customerProfile->body(), 'pickup-customer-history-content') && str_contains($customerProfile->body(), $savedReference), 'A synchronized customer profile should show linked shipment history inside its compact AJAX card content.');
@@ -2425,11 +2465,11 @@ $renameControllerCustomer = static fn (string $name): Response => $customerContr
 ]));
 $renameControllerCustomer('Controller Client Group');
 $renamedControllerProfile = $customerController->edit(new Request('GET', '/dhl/pickupsheet/customers/edit', ['customer' => $customerKey]));
-$assert(str_contains($renamedControllerProfile->body(), 'Controller Client Group now appears as the consignor on 1 existing pickup-sheet shipment.'), 'A customer rename should confirm how many existing pickup-sheet shipments now show the new name.');
+$assert(str_contains($renamedControllerProfile->body(), 'CONTROLLER CLIENT GROUP now appears as the consignor on 1 existing pickup-sheet shipment.'), 'A customer rename should confirm how many existing pickup-sheet shipments now show the new name.');
 $renameControllerCustomer('Controller Client');
 $customerController->edit(new Request('GET', '/dhl/pickupsheet/customers/edit', ['customer' => $customerKey]));
 $updatedCustomerProfile = $customerController->edit(new Request('GET', '/dhl/pickupsheet/customers/edit', ['customer' => $customerKey]));
-$assert(str_contains($updatedCustomerProfile->body(), 'Camille Customer') && str_contains($updatedCustomerProfile->body(), 'camille@example.com') && str_contains($updatedCustomerProfile->body(), '670 000 000'), 'Saved CRM contact details should persist.');
+$assert(str_contains($updatedCustomerProfile->body(), 'CAMILLE CUSTOMER') && str_contains($updatedCustomerProfile->body(), 'camille@example.com') && str_contains($updatedCustomerProfile->body(), '670 000 000'), 'Saved CRM contact details should persist.');
 $assert(str_contains($updatedCustomerProfile->body(), '<a class="pickup-customer-return" href="/dhl/pickupsheet/customers"><span aria-hidden="true">&larr;</span> Back to customer directory</a>'), 'A customer profile should offer a return button to the customer directory.');
 $assert(str_contains($updatedCustomerProfile->body(), 'class="pickup-customer-details"') && !str_contains($updatedCustomerProfile->body(), 'class="pickup-customer-form"') && !str_contains($updatedCustomerProfile->body(), 'name="email"'), 'A customer profile should open with read-only details instead of editable fields.');
 $assert(str_contains($updatedCustomerProfile->body(), '<a class="pickup-profile-action" href="/dhl/pickupsheet/customers/edit?customer=' . $customerKey . '&amp;mode=edit">Edit details</a>'), 'The read-only customer profile should offer an Edit details action.');
@@ -2471,11 +2511,11 @@ $manualMerge = $customerController->merge(new Request('POST', '/dhl/pickupsheet/
     'source_customer_name' => 'nwf logistics douala',
     'return_to' => 'profile',
 ]));
-$assert($manualMerge->status() === 303 && ($manualMerge->headers()['Location'] ?? '') === '/dhl/pickupsheet/customers/edit?customer=' . $manualTarget->customerKey && $customerService->find($manualSource->customerKey) === null && $customerService->find($manualTarget->customerKey)?->contactName === 'Manual Merge Contact', 'An administrator should merge a differently named duplicate from the profile, keeping its contact details.');
-$assert(str_contains((string) ($_SESSION['_crm_flash'] ?? ''), 'Merged NWF Logistics Douala into Northwind Freight Partners.'), 'A manual merge should confirm which profile was merged into which.');
+$assert($manualMerge->status() === 303 && ($manualMerge->headers()['Location'] ?? '') === '/dhl/pickupsheet/customers/edit?customer=' . $manualTarget->customerKey && $customerService->find($manualSource->customerKey) === null && $customerService->find($manualTarget->customerKey)?->contactName === 'MANUAL MERGE CONTACT', 'An administrator should merge a differently named duplicate from the profile, keeping its contact details.');
+$assert(str_contains((string) ($_SESSION['_crm_flash'] ?? ''), 'Merged NWF LOGISTICS DOUALA into NORTHWIND FREIGHT PARTNERS.'), 'A manual merge should confirm which profile was merged into which.');
 unset($_SESSION['_crm_flash']);
 $manualMergeId = (string) ($customerService->recentMerges()[0]['id'] ?? '');
-$assert(($customerService->recentMerges()[0]['sourceName'] ?? '') === 'NWF Logistics Douala', 'A manual merge should appear in Recent merges so it can be undone.');
+$assert(($customerService->recentMerges()[0]['sourceName'] ?? '') === 'NWF LOGISTICS DOUALA', 'A manual merge should appear in Recent merges so it can be undone.');
 $customerService->undoMerge($manualMergeId, str_repeat('a', 24));
 $customerService->delete($manualSource->customerKey, str_repeat('a', 24));
 $customerService->delete($manualTarget->customerKey, str_repeat('a', 24));
@@ -2492,7 +2532,7 @@ $mergeCustomer = $customerController->merge(new Request('POST', '/dhl/pickupshee
 ]));
 $assert($mergeCustomer->status() === 303 && $customerService->find($controllerDuplicate->customerKey) === null, 'An administrator should be able to merge a suggested duplicate into the selected CRM profile.');
 $customerDirectoryAfterMerge = $customerController->index(new Request('GET', '/dhl/pickupsheet/customers'));
-$assert(str_contains($customerDirectoryAfterMerge->body(), 'Recent merges') && str_contains($customerDirectoryAfterMerge->body(), 'data-crm-undo-merge-form') && str_contains($customerDirectoryAfterMerge->body(), 'Controller Clien &rarr; Controller Client'), 'Administrators should see recent merges with an undo control.');
+$assert(str_contains($customerDirectoryAfterMerge->body(), 'Recent merges') && str_contains($customerDirectoryAfterMerge->body(), 'data-crm-undo-merge-form') && str_contains($customerDirectoryAfterMerge->body(), 'CONTROLLER CLIEN &rarr; CONTROLLER CLIENT'), 'Administrators should see recent merges with an undo control.');
 $controllerMergeId = (string) ($customerService->recentMerges()[0]['id'] ?? '');
 $invalidUndoCsrf = $customerController->undoMerge(new Request('POST', '/dhl/pickupsheet/customers/merge/undo', [], [
     '_token' => 'invalid-token',
@@ -2503,7 +2543,7 @@ $undoCustomerMerge = $customerController->undoMerge(new Request('POST', '/dhl/pi
     '_token' => $pickupCsrf->token(),
     'merge_id' => $controllerMergeId,
 ]));
-$assert($undoCustomerMerge->status() === 303 && $customerService->find($controllerDuplicate->customerKey)?->contactName === 'Duplicate Controller Contact', 'An administrator should be able to undo a CRM merge.');
+$assert($undoCustomerMerge->status() === 303 && $customerService->find($controllerDuplicate->customerKey)?->contactName === 'DUPLICATE CONTROLLER CONTACT', 'An administrator should be able to undo a CRM merge.');
 $customerController->merge(new Request('POST', '/dhl/pickupsheet/customers/merge', [], [
     '_token' => $pickupCsrf->token(),
     'target_customer_key' => $customerKey,
@@ -2569,9 +2609,15 @@ try {
 }
 $assert($undoAfterDismiss && $customerService->find($controllerDuplicate->customerKey) === null, 'An ignored merge should no longer be undoable.');
 $existingCustomerSearch = json_decode($customerController->search(new Request('GET', '/dhl/pickupsheet/customers/search', ['q' => 'controller client'], [], '', $recordsServer))->body(), true);
-$assert(($existingCustomerSearch['existing']['name'] ?? '') === 'Controller Client' && ($existingCustomerSearch['existing']['url'] ?? '') === '/dhl/pickupsheet/customers/edit?customer=' . $customerKey, 'CRM autocomplete should link an exactly matching name to its existing profile.');
+$assert(($existingCustomerSearch['existing']['name'] ?? '') === 'CONTROLLER CLIENT' && ($existingCustomerSearch['existing']['url'] ?? '') === '/dhl/pickupsheet/customers/edit?customer=' . $customerKey, 'CRM autocomplete should link an exactly matching name to its existing profile.');
+$openCustomer = $customerController->open(new Request('GET', '/dhl/pickupsheet/customers/open', ['name' => '  controller   client '], [], '', $recordsServer));
+$assert($openCustomer->status() === 303 && ($openCustomer->headers()['Location'] ?? '') === '/dhl/pickupsheet/customers/edit?customer=' . $customerKey, 'A submitted-sheet consignor link should open the matching CRM profile.');
+$openAliasCustomer = $customerController->open(new Request('GET', '/dhl/pickupsheet/customers/open', ['name' => 'Controller Clien'], [], '', $recordsServer));
+$assert(($openAliasCustomer->headers()['Location'] ?? '') === '/dhl/pickupsheet/customers/edit?customer=' . $customerKey, 'A merged-away consignor name should open the retained CRM profile.');
+$openUnknownCustomer = $customerController->open(new Request('GET', '/dhl/pickupsheet/customers/open', ['name' => 'No Such Consignor & Co'], [], '', $recordsServer));
+$assert($openUnknownCustomer->status() === 303 && ($openUnknownCustomer->headers()['Location'] ?? '') === '/dhl/pickupsheet/customers?q=No%20Such%20Consignor%20%26%20Co', 'An unmatched consignor link should fall back to a CRM directory search.');
 $aliasCustomerSearch = json_decode($customerController->search(new Request('GET', '/dhl/pickupsheet/customers/search', ['q' => 'Controller Clien'], [], '', $recordsServer))->body(), true);
-$assert(($aliasCustomerSearch['existing']['alias'] ?? '') === 'Controller Clien' && ($aliasCustomerSearch['existing']['name'] ?? '') === 'Controller Client', 'CRM autocomplete should explain that a merged-away name belongs to the retained profile.');
+$assert(($aliasCustomerSearch['existing']['alias'] ?? '') === 'CONTROLLER CLIEN' && ($aliasCustomerSearch['existing']['name'] ?? '') === 'CONTROLLER CLIENT', 'CRM autocomplete should explain that a merged-away name belongs to the retained profile.');
 $duplicateCustomerSave = $customerController->save(new Request('POST', '/dhl/pickupsheet/customers/save', [], [
     '_token' => $pickupCsrf->token(),
     'customer_key' => '',
@@ -2580,7 +2626,7 @@ $duplicateCustomerSave = $customerController->save(new Request('POST', '/dhl/pic
     'country_code' => 'CM',
 ]));
 $duplicateCustomerForm = $customerController->create(new Request('GET', '/dhl/pickupsheet/customers/new'));
-$assert($duplicateCustomerSave->status() === 303 && str_contains($duplicateCustomerForm->body(), 'already uses this organization name') && str_contains($duplicateCustomerForm->body(), 'class="pickup-crm-existing-link" href="/dhl/pickupsheet/customers/edit?customer=' . $customerKey . '">Open Controller Client</a>'), 'A rejected duplicate customer should link to the existing profile.');
+$assert($duplicateCustomerSave->status() === 303 && str_contains($duplicateCustomerForm->body(), 'already uses this organization name') && str_contains($duplicateCustomerForm->body(), 'class="pickup-crm-existing-link" href="/dhl/pickupsheet/customers/edit?customer=' . $customerKey . '">Open CONTROLLER CLIENT</a>'), 'A rejected duplicate customer should link to the existing profile.');
 $assert(str_contains($duplicateCustomerForm->body(), 'data-existing-customer-hint'), 'The add-customer form should reserve a live region for existing-profile matches.');
 $invalidActivityCsrf = $customerController->addActivity(new Request('POST', '/dhl/pickupsheet/customers/activities', [], [
     '_token' => 'invalid-token',
@@ -2633,9 +2679,9 @@ $controllerCustomerReference = (string) $customerService->find($customerKey)?->r
 $assert(preg_match('/^[0-9]{6}$/', $controllerCustomerReference) === 1, 'Every CRM customer should have a readable customer ID.');
 $assert(App\Modules\CRM\Domain\CustomerProfile::idFromReference('CUS-000042') === 42 && App\Modules\CRM\Domain\CustomerProfile::idFromReference('cus42') === 42 && App\Modules\CRM\Domain\CustomerProfile::idFromReference('CUS-0') === null && App\Modules\CRM\Domain\CustomerProfile::idFromReference('Controller') === null && App\Modules\CRM\Domain\CustomerProfile::referenceFor(7) === '000007' && App\Modules\CRM\Domain\CustomerProfile::idFromReference('000042') === 42 && App\Modules\CRM\Domain\CustomerProfile::idFromReference('42') === 42 && App\Modules\CRM\Domain\CustomerProfile::idFromReference('000000') === null, 'Customer IDs should show as six digits without a prefix and still accept the older CUS- form.');
 $idDirectory = $customerController->index(new Request('GET', '/dhl/pickupsheet/customers', ['q' => strtolower($controllerCustomerReference)]));
-$assert(str_contains($idDirectory->body(), '<th scope="col">Customer ID</th>') && str_contains($idDirectory->body(), '<span class="pickup-customer-id">' . $controllerCustomerReference . '</span>') && str_contains($idDirectory->body(), 'Controller Client'), 'The directory should show a Customer ID column and find a customer by its ID.');
+$assert(str_contains($idDirectory->body(), '<th scope="col">Customer ID</th>') && str_contains($idDirectory->body(), '<span class="pickup-customer-id">' . $controllerCustomerReference . '</span>') && str_contains($idDirectory->body(), 'CONTROLLER CLIENT'), 'The directory should show a Customer ID column and find a customer by its ID.');
 $directoryStyles = (string) $readSource(dirname(__DIR__) . '/public/assets/styles.css');
-$assert(str_contains($idDirectory->body(), '<table class="pickup-crm-directory-table">') && str_contains($idDirectory->body(), 'data-label="Shipments"') && str_contains($idDirectory->body(), 'aria-label="Open profile for Controller Client"') && str_contains($directoryStyles, '.pickup-crm-directory-table-wrap .pickup-crm-directory-table { width: 100%; min-width: 0; table-layout: fixed;') && str_contains($directoryStyles, '.pickup-crm-directory-content { padding: 5px; }'), 'The customer directory should fit its card without horizontal scrolling, label cells for the stacked mobile layout, and pad the card by 5px.');
+$assert(str_contains($idDirectory->body(), '<table class="pickup-crm-directory-table">') && str_contains($idDirectory->body(), 'data-label="Shipments"') && str_contains($idDirectory->body(), 'aria-label="Open profile for CONTROLLER CLIENT"') && str_contains($directoryStyles, '.pickup-crm-directory-table-wrap .pickup-crm-directory-table { width: 100%; min-width: 0; table-layout: fixed;') && str_contains($directoryStyles, '.pickup-crm-directory-content { padding: 5px; }'), 'The customer directory should fit its card without horizontal scrolling, label cells for the stacked mobile layout, and pad the card by 5px.');
 $assert(str_contains($directoryStyles, '.pickup-crm-directory-table .col-open { width: 88px; }') && preg_match('/\.pickup-crm-open-cell a \{[^}]*white-space: nowrap;/', $directoryStyles) === 1 && str_contains($directoryStyles, 'td.pickup-crm-open-cell { padding-right: 10px; padding-left: 6px; text-align: right; overflow-wrap: normal;') && preg_match('/\.pickup-crm-open-cell a:focus-visible \{[^}]*outline: 3px solid/', $directoryStyles) === 1, 'The Open button should fit its column on one line and keep a visible keyboard focus ring.');
 $shipmentsProfile = $customerController->edit(new Request('GET', '/dhl/pickupsheet/customers/edit', ['customer' => $customerKey]));
 $assert(str_contains($shipmentsProfile->body(), '<table class="pickup-shipments-table">') && str_contains($shipmentsProfile->body(), '<td data-label="Amount" class="pickup-shipments-amount">14,000 XAF</td>') && str_contains($shipmentsProfile->body(), 'class="pickup-shipment-status is-') && str_contains($directoryStyles, '.pickup-shipments-table-wrap .pickup-shipments-table { width: 100%; min-width: 0; table-layout: fixed;') && str_contains($directoryStyles, '.pickup-customer-history-content { padding: 5px; }'), 'Recent shipments should fit its card without horizontal scrolling and pad the card by 5px.');
@@ -2653,7 +2699,7 @@ $assert(str_contains($idProfile->body(), 'ID ' . $controllerCustomerReference) &
 $assert(str_contains($idProfile->body(), 'aria-label="Customer profile sections"') && str_contains($idProfile->body(), 'href="#customer-shipments"') && str_contains($idProfile->body(), 'id="customer-shipments"') && str_contains($idProfile->body(), 'href="#customer-activity">Log activity</a>'), 'The profile should offer section navigation and a quick Log activity action.');
 $customerSearch = $customerController->search(new Request('GET', '/dhl/pickupsheet/customers/search', ['q' => 'controller'], [], '', $recordsServer));
 $customerSearchPayload = json_decode($customerSearch->body(), true);
-$assert($customerSearch->status() === 200 && ($customerSearchPayload['suggestions'] ?? []) === ['Controller Client'], 'Authenticated CRM autocomplete should return matching customer names.');
+$assert($customerSearch->status() === 200 && ($customerSearchPayload['suggestions'] ?? []) === ['CONTROLLER CLIENT'], 'Authenticated CRM autocomplete should return matching customer names.');
 $assert(($customerSearch->headers()['Cache-Control'] ?? '') === 'private, no-store, max-age=0', 'CRM autocomplete results should not be cached.');
 $invalidRewardCsrf = $customerController->adjustRewards(new Request('POST', '/dhl/pickupsheet/customers/rewards', [], [
     '_token' => 'invalid-token',
@@ -2753,7 +2799,7 @@ $operatorInvalidSave = $customerController->save(new Request('POST', '/dhl/picku
 ]));
 $operatorInvalidProfile = $customerController->edit(new Request('GET', '/dhl/pickupsheet/customers/edit', ['customer' => $customerKey]));
 $assert($operatorInvalidSave->status() === 303 && str_contains($operatorInvalidProfile->body(), 'class="pickup-customer-form"') && str_contains($operatorInvalidProfile->body(), 'value="not-an-email"') && str_contains($operatorInvalidProfile->body(), 'valid customer email'), 'A rejected save should reopen the edit form with the submitted values and the error.');
-$assert(str_contains($operatorUpdatedProfile->body(), 'Controller Client') && str_contains($operatorUpdatedProfile->body(), 'Camille Customer') && !str_contains($operatorUpdatedProfile->body(), 'Forged Organization Name') && !str_contains($operatorUpdatedProfile->body(), 'Forged Contact Name'), 'The server must preserve both customer and contact names when an operator submits forged name fields.');
+$assert(str_contains($operatorUpdatedProfile->body(), 'CONTROLLER CLIENT') && str_contains($operatorUpdatedProfile->body(), 'CAMILLE CUSTOMER') && !str_contains($operatorUpdatedProfile->body(), 'FORGED ORGANIZATION NAME') && !str_contains($operatorUpdatedProfile->body(), 'FORGED CONTACT NAME'), 'The server must preserve both customer and contact names when an operator submits forged name fields.');
 $assert(str_contains($operatorUpdatedProfile->body(), 'operator-updated@example.com') && str_contains($operatorUpdatedProfile->body(), '+237') && str_contains($operatorUpdatedProfile->body(), '699 111 222') && str_contains($operatorUpdatedProfile->body(), 'Bonapriso Business District') && str_contains($operatorUpdatedProfile->body(), 'Douala') && str_contains($operatorUpdatedProfile->body(), 'Operator updated the customer profile details.') && str_contains($operatorUpdatedProfile->body(), '2026-09-15'), 'An operator should update all permitted customer profile details.');
 $recordsSession->login($adminPrincipal);
 $adminUsers = $pickupController->users(new Request('GET', '/dhl/pickupsheet/submissions/users', [], [], '', $recordsServer));
@@ -3033,7 +3079,7 @@ $assert(substr($exportResponse->body(), -22, 4) === "PK\x05\x06", 'The native XL
 $assert(($exportResponse->headers()['Content-Type'] ?? '') === 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet', 'The shipment workbook should use the native XLSX media type.');
 $assert(str_contains($exportResponse->body(), '<c r="A1" s="1" t="inlineStr"><is><t>Consignor</t></is></c>'), 'The spreadsheet should begin directly with the consignor heading.');
 $assert(!str_contains($exportResponse->body(), '<t>#</t>'), 'The spreadsheet should exclude the sequential row-number column.');
-$assert(str_contains($exportResponse->body(), 'Controller Client'), 'The spreadsheet export should contain shipment data.');
+$assert(str_contains($exportResponse->body(), 'CONTROLLER CLIENT'), 'The spreadsheet export should contain shipment data.');
 $assert(!str_contains($exportResponse->body(), 'Reference number'), 'The spreadsheet should exclude pickup-sheet reference metadata.');
 $assert(!str_contains($exportResponse->body(), 'Agent name'), 'The spreadsheet should exclude pickup-sheet agent metadata.');
 $assert(!str_contains($exportResponse->body(), 'Collection date'), 'The spreadsheet should exclude pickup-sheet date metadata.');
@@ -3127,8 +3173,8 @@ $partnerSources = $readSource(dirname(__DIR__) . '/public/assets/partners/README
 $assert(is_string($partnerSources) && str_contains($partnerSources, 'www.dhl.com/content/dam/dhl/global/core/images/logos/dhl-logo.svg'), 'The official DHL artwork source should be documented.');
 $assert(!str_contains($home, 'href="/dhl/pickupsheet"'), 'Pickupsheet should not be discoverable from the public site chrome or homepage.');
 $assert(str_contains($home, '© ' . date('Y') . ' T&amp;Tech Consulting Group. All rights reserved.') && !str_contains($home, 'class="pickup-footer"'), 'The public site footer should carry the copyright statement with the current year.');
-$assert(str_contains($home, 'styles.css?v=20261003-square-modals'), 'Market-performance dashboard styles and prior Pickupsheet refinements should use a cache-safe stylesheet version.');
-$assert(str_contains($home, 'app.js?v=20261003-pickup-privacy'), 'AJAX audit-log accordions and prior OWASP-aligned interactions should use a cache-safe script version.');
+$assert(str_contains($home, 'styles.css?v=20261009-consignor-links'), 'Market-performance dashboard styles and prior Pickupsheet refinements should use a cache-safe stylesheet version.');
+$assert(str_contains($home, 'app.js?v=20261009-name-fields'), 'AJAX audit-log accordions and prior OWASP-aligned interactions should use a cache-safe script version.');
 $assert(str_contains($home, 'analytics.js?v=20260825-security-hardening'), 'The current consent-aware Google Analytics loader should render on every page.');
 $assert(str_contains($home, 'data-analytics-accept'), 'The site should offer an explicit analytics acceptance control.');
 $assert(str_contains($home, 'data-analytics-decline'), 'The site should offer an explicit analytics decline control.');

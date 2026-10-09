@@ -167,6 +167,36 @@ final class CustomerController
         }
     }
 
+    /** Opens the profile that owns a consignor name, as linked from submitted pickup sheets. */
+    public function open(Request $request): Response
+    {
+        $principal = $this->authorize($request, 'crm_view');
+        if ($principal instanceof Response) {
+            return $principal;
+        }
+
+        $name = $request->queryString('name');
+        try {
+            $existing = $this->service->existingCustomer($name);
+            if ($existing === null) {
+                // Profiles are created from shipments lazily; a new consignor may not have one yet.
+                $this->service->synchronize();
+                $existing = $this->service->existingCustomer($name);
+            }
+        } catch (InvalidArgumentException) {
+            $existing = null;
+        } catch (RuntimeException $exception) {
+            error_log($exception->__toString());
+            return Response::html('Customer data is temporarily unavailable.', 503, $this->privateHeaders());
+        }
+
+        if ($existing === null) {
+            return Response::redirect($request->basePath . '/dhl/pickupsheet/customers?' . http_build_query(['q' => trim($name)], '', '&', PHP_QUERY_RFC3986));
+        }
+
+        return Response::redirect($this->profileUrl($request, $existing['customer']->customerKey));
+    }
+
     public function shipmentPage(Request $request): Response
     {
         return $this->customerTablePage($request, 'shipments');

@@ -925,6 +925,12 @@ final class MysqlCustomerRepository implements CustomerRepository
                 $conditions[array_key_last($conditions)] = '(c.id = :search_id OR ' . substr($conditions[array_key_last($conditions)], 1);
                 $parameters['search_id'] = $searchId;
             }
+            $phoneDigits = CustomerProfile::phoneSearchDigits($search);
+            if ($phoneDigits !== null) {
+                $conditions[array_key_last($conditions)] = "(REPLACE(REPLACE(REPLACE(REPLACE(REPLACE(REPLACE(c.phone, ' ', ''), '+', ''), '-', ''), '.', ''), '(', ''), ')', '') LIKE :search_phone_digits OR "
+                    . substr($conditions[array_key_last($conditions)], 1);
+                $parameters['search_phone_digits'] = '%' . $phoneDigits . '%';
+            }
         }
         $status = (string) ($filters['status'] ?? '');
         if ($status !== '') {

@@ -2631,6 +2631,9 @@ button, a, input, select, textarea { -webkit-tap-highlight-color: transparent; }
 .pickup-record-table tr > *:last-child { border-right: 0; }
 .pickup-record-table tfoot tr:last-child > * { border-bottom: 1px solid rgba(69, 50, 0, 0.3); }
 /* AWB numbers already sit in their own table cell, so the tracking link is underlined only on hover and focus. */
+.pickup-consignor-link { color: inherit; font-weight: 750; text-decoration: underline; text-decoration-color: rgba(69, 50, 0, 0.4); text-underline-offset: 3px; }
+.pickup-consignor-link:hover { color: var(--dhl-red); text-decoration-color: currentColor; }
+.pickup-consignor-link:focus-visible { outline: 3px solid rgba(212, 5, 17, 0.24); outline-offset: 3px; }
 .pickup-awb-link {
     color: var(--dhl-red);
     font-weight: 850;

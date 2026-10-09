@@ -1446,3 +1446,24 @@ document.querySelectorAll('[data-pickup-nav]').forEach((nav) => {
         if (event.matches) setOpen(false);
     });
 });
+
+// Name fields hold uppercase letters, digits, spaces, and hyphens only; the server enforces the same rule.
+const disallowedNameCharacters = /[^\p{L}\p{M}\p{N}\s-]+/gu;
+const normalizeNameField = (input) => {
+    if (!input || input.readOnly || typeof input.value !== 'string') return;
+    const { value } = input;
+    const next = value.replace(disallowedNameCharacters, '').toUpperCase();
+    if (next === value) return;
+    const caret = typeof input.selectionStart === 'number' ? input.selectionStart : null;
+    input.value = next;
+    if (caret !== null && document.activeElement === input) {
+        const position = value.slice(0, caret).replace(disallowedNameCharacters, '').toUpperCase().length;
+        input.setSelectionRange?.(position, position);
+    }
+};
+const normalizeNameFieldEvent = (event) => {
+    if (event.target?.matches?.('[data-name-field]')) normalizeNameField(event.target);
+};
+document.addEventListener?.('input', normalizeNameFieldEvent, true);
+document.addEventListener?.('consignor-suggestion-selected', normalizeNameFieldEvent, true);
+document.querySelectorAll?.('[data-name-field]').forEach(normalizeNameField);
