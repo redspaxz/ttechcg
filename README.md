@@ -556,8 +556,12 @@ Later releases are tagged `vMAJOR.MINOR.PATCH` and listed here. To check out thi
 
 This README is the developer-facing guide for setup, maintenance, and operational onboarding. The project also contains more detailed product and security documentation under `docs/` and the source code itself:
 
-- [docs/architecture/flows.md](docs/architecture/flows.md): flow diagrams for request handling, sign-in and access, the pickup sheet lifecycle, and CRM and loyalty
-- [docs/architecture/technical-requirements.md](docs/architecture/technical-requirements.md): platform, roles and permissions, security controls, rate limits, and quality gates
+- [docs/product/product-requirements.md](docs/product/product-requirements.md): problem, goals, users, numbered functional requirements with status, and open questions
+- [docs/architecture/flows.md](docs/architecture/flows.md): flow diagrams for request handling, sign-in and access, the pickup sheet lifecycle, CRM and loyalty, contact enquiries, user administration, and backup and restore
+- [docs/architecture/technical-requirements.md](docs/architecture/technical-requirements.md): platform, roles and permissions, routes, security controls, rate limits, and quality gates
 - [docs/architecture/data-requirements.md](docs/architecture/data-requirements.md): data model, field rules, derived values, personal data retention, and backups
+- [docs/architecture/backend-schema.md](docs/architecture/backend-schema.md): every table, column, index, and foreign key after migrations 001–025
+- [docs/design/design-brief.md](docs/design/design-brief.md): design principles, colour, typography, breakpoints, components, and accessibility
+- [docs/plans/implementation-plan.md](docs/plans/implementation-plan.md): delivered phases, unreleased changes, and the prioritised next work
 - [docs/security/iso-27001-application-controls.md](docs/security/iso-27001-application-controls.md): application security controls
 - [docs/uat/admin-dashboard-reporting-uat.md](docs/uat/admin-dashboard-reporting-uat.md): UAT script and sign-off for the administrator dashboard, market analysis and reporting

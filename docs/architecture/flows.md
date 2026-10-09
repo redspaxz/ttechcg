@@ -1,8 +1,8 @@
 # Application flows
 
-How a request moves through the application, how staff sign in, how a pickup sheet moves from entry to payment, and how shipments become CRM customers. Each diagram is followed by the steps it shows and the rules that apply.
+How a request moves through the application, how staff sign in, how a pickup sheet moves from entry to payment, how shipments become CRM customers, and how enquiries, users, and backups are handled. Each diagram is followed by the steps it shows and the rules that apply.
 
-Related: [Technical requirements](technical-requirements.md) · [Data requirements](data-requirements.md)
+Related: [Product requirements](../product/product-requirements.md) · [Technical requirements](technical-requirements.md) · [Data requirements](data-requirements.md) · [Backend schema](backend-schema.md)
 
 ## 1. Request architecture
 
@@ -148,3 +148,59 @@ flowchart TD
 - **Renames** update the consignor on every past shipment for that customer, and each change is audited per sheet.
 - **Points** are earned at 10 per kilogram shipped on non-deleted sheets, plus bonuses. Redemptions cannot go below the visible balance. Tiers by lifetime earned points: Bronze under 100, Silver 100+, Gold 250+, Platinum 500+.
 - **Profile origin.** Links into a profile pass `from=` (submitted sheets, dashboard, or directory, with their page and filters). The profile remembers it for that customer in the session so the back link survives saves. Only same-site Pickupsheet paths are accepted.
+
+## 5. Public contact enquiry
+
+```mermaid
+flowchart TD
+    A["Visitor opens /contact"] --> B["Form with a server-issued captcha"]
+    B --> C["Submit"]
+    C --> D{"CSRF valid and under<br/>10 per hour?"}
+    D -->|"no"| X["Refuse"]
+    D -->|"yes"| E{"Honeypot field empty?"}
+    E -->|"no"| X2["Silently drop, log contact.honeypot"]
+    E -->|"yes"| F{"Captcha answer correct?"}
+    F -->|"no"| X3["Return form, log contact.captcha"]
+    F -->|"yes"| G{"Name, email, service, 20-2,000<br/>character message, consent?"}
+    G -->|"no"| X4["Return form with the error"]
+    G -->|"yes"| H["Store in inquiries with consent time<br/>and notice version"]
+    H --> I["Email CONTACT_EMAIL from CONTACT_FROM_EMAIL"]
+    I --> J["Thank-you message"]
+```
+
+## 6. User and sign-in administration
+
+```mermaid
+flowchart TD
+    A["Admin opens Manage users and RBAC"] --> B{"Action"}
+    B -->|"Add / edit / deactivate / delete"| C["Local viewer or operator account<br/>username, names, role, password of 12+ characters"]
+    C --> D{"CSRF valid, under 30 per hour,<br/>username free and not reserved?"}
+    D -->|"yes"| E["Save, log the change"]
+    D -->|"no"| X["Refuse with the reason"]
+    B -->|"Reset a user's MFA"| F["Confirm with own password,<br/>own authenticator code, and a checkbox"]
+    F --> G["Remove enrolment. User enrols again at next sign-in"]
+    B -->|"Sign-in methods"| H["Switch local and JumpCloud login on or off"]
+    B -->|"Collection agent"| I["Set the name stamped on new sheets"]
+    B -->|"Admin password"| J["Change the password of a server-defined admin"]
+```
+
+- Administrator accounts are defined in the server environment (`PICKUPSHEET_RBAC_USERS`, or the legacy single-admin variables), not created in the app. Admins can manage only lower-tier local accounts.
+- JumpCloud and Cloudflare Access users are managed in JumpCloud. Their role follows group membership at each sign-in.
+
+## 7. Backup and restore
+
+```mermaid
+flowchart TD
+    A["Admin opens Backup"] --> B{"Action"}
+    B -->|"Download"| C["Enter a 16-200 character passphrase twice"]
+    C --> D["Export every application table in one<br/>read transaction, up to 250,000 rows each"]
+    D --> E["Encrypt: PBKDF2-SHA256 210,000 iterations<br/>then AES-256-GCM"]
+    E --> F{"12 MiB or smaller?"}
+    F -->|"yes"| G["Download the encrypted file, log the event"]
+    F -->|"no"| X["Refuse"]
+    B -->|"Restore"| H["Choose file, enter passphrase,<br/>type RESTORE"]
+    H --> I{"Format, version, passphrase,<br/>and required tables valid?"}
+    I -->|"no"| X2["Refuse: file or passphrase invalid"]
+    I -->|"yes"| J["One transaction: clear tables,<br/>insert parents before children"]
+    J --> K["Log the restore, show row counts"]
+```

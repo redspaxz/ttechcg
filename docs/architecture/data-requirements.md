@@ -2,7 +2,7 @@
 
 What the application stores, the rules each field must meet, where data comes from, and how long it is kept. The schema is defined by the ordered SQL files in `database/migrations/` (001–025). All tables are InnoDB with `utf8mb4_unicode_ci`, so text comparisons ignore case, accents, and trailing spaces.
 
-Related: [Application flows](flows.md) · [Technical requirements](technical-requirements.md)
+Related: [Application flows](flows.md) · [Technical requirements](technical-requirements.md) · [Backend schema](backend-schema.md) (every table and column)
 
 ## Data model
 
@@ -146,7 +146,7 @@ The server enforces these rules. Browser checks mirror some of them but are not 
 | Username | Lowercase. An email up to 100 characters, or 3–100 of `a-z 0-9 . _ -` starting with a letter or digit |
 | First / last name | 1–49 letters, plus spaces, `.`, `'`, `’`, and `-` |
 | Password | At least 12 characters. Stored as an Argon2id or bcrypt hash |
-| Role | `viewer`, `operator`, or `admin` |
+| Role | `viewer` or `operator` for accounts managed in the app. `admin` accounts are defined in the server environment (`PICKUPSHEET_RBAC_USERS`) |
 
 ## Derived data
 

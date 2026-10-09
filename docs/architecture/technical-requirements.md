@@ -2,7 +2,7 @@
 
 What the application needs to run, and the technical rules it must keep. Configuration variables are listed in the [README](../../README.md#environment-configuration). Controls mapped to ISO 27001 are in [iso-27001-application-controls.md](../security/iso-27001-application-controls.md).
 
-Related: [Application flows](flows.md) · [Data requirements](data-requirements.md)
+Related: [Product requirements](../product/product-requirements.md) · [Application flows](flows.md) · [Data requirements](data-requirements.md) · [Backend schema](backend-schema.md)
 
 ## Platform
 
@@ -47,6 +47,31 @@ Permissions are checked on the server for every protected action (`src/Shared/Se
 | `dashboard`, `report` | Dashboard tabs and printable performance reports | | | ✓ |
 | `manage` | Users, MFA resets, sign-in methods, collection agent, admin password | | | ✓ |
 | `backup` | Download and restore encrypted backups | | | ✓ |
+
+## Routes
+
+All Pickupsheet routes are under `/dhl/pickupsheet`. Every `POST` needs a CSRF token. The permission column names the check from the table above, and "signed in" means any role.
+
+| Area | Method and path | Permission |
+|---|---|---|
+| Public | `GET /`, `/services`, `/products`, `/about`, `/privacy`, `/contact`, `POST /contact`, `GET /health` | none |
+| Sign-in | `GET/POST /login`, `GET/POST /login/2fa`, `GET /login/2fa/recovery-codes`, `GET /auth/jumpcloud`, `GET /auth/jumpcloud/callback`, `POST /logout` | none |
+| Own settings | `GET /settings`, `POST /settings/2fa/enroll`, `POST /settings/2fa/reset`, `GET /settings/2fa/recovery-codes` | signed in |
+| Sheets | `GET /` (form), `POST /` (submit), `GET /consignors/search` | `create` |
+| Submitted | `GET /submissions`, `GET /submissions/page` | `list`, `paginate` |
+| Sheet actions | `GET/POST /submissions/edit`, `POST /submissions/delete`, `POST /submissions/receipt` | `edit`, `delete`, `edit_receipt` |
+| Payment | `POST /submissions/paid` | `mark_paid` |
+| Security question | `GET /submissions/captcha` | `list` (the action it guards checks its own permission) |
+| Output | `GET /submissions/print`, `GET /submissions/export` | `print`, `export` |
+| CRM read | `GET /customers`, `/customers/page`, `/customers/search`, `/customers/open`, `/customers/edit`, `/customers/shipments/page`, `/customers/points/page` | `crm_view` |
+| CRM write | `POST /customers/save`, `/customers/activities`, `/customers/follow-up/close` | `crm_update` (`crm` to add or rename) |
+| CRM admin | `GET /customers/new`, `POST /customers/merge`, `/merge/undo`, `/merge/dismiss`, `/duplicates/dismiss`, `/delete`, `/rewards` | `crm` |
+| CRM export | `GET /customers/export` | `crm_view` and `export` |
+| Dashboard | `GET /dashboard`, `/dashboard/user-activity/page`, `/dashboard/audit-logs/page`, `/dashboard/recent-sheets/page` | `dashboard` |
+| Reports | `GET /dashboard/report` | `report` |
+| Administration | `GET/POST /submissions/users`, `POST /submissions/users/update`, `/status`, `/delete`, `GET/POST /submissions/users/mfa/reset`, `POST /submissions/users/login-methods`, `/collection-agent`, `/admin-password` | `manage` |
+| Backup | `GET /admin/backup`, `POST /admin/backup/download`, `POST /admin/backup/restore` | `backup` |
+| Legacy | `/pickupsheet`, `/pickupsheet/submissions`, `/print`, `/export` | Kept for old links |
 
 ## Security requirements
 
