@@ -15,6 +15,7 @@ use App\Shared\Security\Csrf;
 use App\Shared\Security\LoginMethodSettings;
 use App\Shared\Security\LoginMethodSettingsService;
 use App\Shared\Security\LocalMfaService;
+use App\Shared\Security\Pseudonym;
 use App\Shared\Security\RateLimiter;
 use App\Shared\Security\RecordsAccess;
 use App\Shared\Security\RecordsPrincipal;
@@ -565,11 +566,11 @@ final class PickupsheetController
             $updated = $this->service->update(
                 $reference,
                 $input,
-                substr(hash('sha256', $authorization->username), 0, 24),
+                Pseudonym::actorId($authorization->username),
             );
             $_SESSION['_pickup_edit_flash'] = 'Pickup sheet updated. The before-and-after values were added to the audit log.';
             $this->securityLogger->event('pickupsheet.record_edit', $request, 'accepted', [
-                'actor_id' => substr(hash('sha256', $authorization->username), 0, 24),
+                'actor_id' => Pseudonym::actorId($authorization->username),
                 'resource_id' => substr(hash('sha256', $updated->referenceNumber), 0, 24),
                 'shipment_count' => $updated->shipmentCount(),
             ]);
@@ -834,7 +835,7 @@ final class PickupsheetController
             $account = $this->recordsUserService->create($input, $authorization);
             $_SESSION['_records_users_flash'] = sprintf('Account %s created as %s.', $account->username, $account->role);
             $this->securityLogger->event('pickupsheet.records_user_create', $request, 'accepted', [
-                'target_id' => substr(hash('sha256', $account->username), 0, 24),
+                'target_id' => Pseudonym::actorId($account->username),
                 'target_role' => $account->role,
                 'active' => $account->active,
             ]);
@@ -884,7 +885,7 @@ final class PickupsheetController
             $account = $this->recordsUserService->update($input, $authorization);
             $_SESSION['_records_users_flash'] = sprintf('Account %s updated.', $account->username);
             $this->securityLogger->event('pickupsheet.records_user_update', $request, 'accepted', [
-                'target_id' => substr(hash('sha256', $account->username), 0, 24),
+                'target_id' => Pseudonym::actorId($account->username),
                 'target_role' => $account->role,
                 'active' => $account->active,
             ]);
@@ -922,7 +923,7 @@ final class PickupsheetController
             $_SESSION['_records_users_flash'] = sprintf('Account %s %s.', $account->username, $statusLabel);
             $this->securityLogger->event('pickupsheet.records_user_status', $request, 'accepted', [
                 'actor_id' => $this->actorId($authorization),
-                'target_id' => substr(hash('sha256', $account->username), 0, 24),
+                'target_id' => Pseudonym::actorId($account->username),
                 'target_role' => $account->role,
                 'active' => $account->active,
             ]);
@@ -965,7 +966,7 @@ final class PickupsheetController
             $_SESSION['_records_users_flash'] = sprintf('Local account %s deleted.', $account->username);
             $this->securityLogger->event('pickupsheet.records_user_delete', $request, 'accepted', [
                 'actor_id' => $this->actorId($authorization),
-                'target_id' => substr(hash('sha256', $account->username), 0, 24),
+                'target_id' => Pseudonym::actorId($account->username),
                 'target_role' => $account->role,
             ]);
         } catch (InvalidArgumentException $exception) {
@@ -1008,7 +1009,7 @@ final class PickupsheetController
             $_SESSION['_records_users_flash'] = sprintf('Two-factor authentication reset for %s. It must be enrolled at the next sign-in.', $account->username);
             $this->securityLogger->event('pickupsheet.records_user_mfa_reset', $request, 'accepted', [
                 'actor_id' => $this->actorId($authorization),
-                'target_id' => substr(hash('sha256', $account->username), 0, 24),
+                'target_id' => Pseudonym::actorId($account->username),
                 'reauthenticated_with' => $reauthenticationMethod,
             ]);
         } catch (InvalidArgumentException $exception) {
@@ -1457,7 +1458,7 @@ final class PickupsheetController
 
         $principal = $this->recordsSession->principal($this->recordsAccess);
         if ($principal !== null) {
-            $context['actor_id'] = substr(hash('sha256', $principal->username), 0, 24);
+            $context['actor_id'] = Pseudonym::actorId($principal->username);
             $context['role'] = $principal->role;
 
             if ($principal->can($action)) {
@@ -1571,7 +1572,7 @@ final class PickupsheetController
             if ($username === '') {
                 return;
             }
-            $knownUsers[substr(hash('sha256', $username), 0, 24)] = [
+            $knownUsers[Pseudonym::actorId($username)] = [
                 'username' => $username,
                 'fullName' => $fullName,
                 'role' => $role,
@@ -1719,7 +1720,7 @@ final class PickupsheetController
 
     private function actorId(RecordsPrincipal $principal): string
     {
-        return substr(hash('sha256', $principal->username), 0, 24);
+        return Pseudonym::actorId($principal->username);
     }
 
     /** @param list<mixed> $shipments @return list<mixed> */

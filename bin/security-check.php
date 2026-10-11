@@ -17,7 +17,7 @@ $secretPatterns = [
     'private key' => '/-----BEGIN (?:EC |OPENSSH |RSA )?PRIVATE KEY-----/',
     'AWS access key' => '/\bAKIA[0-9A-Z]{16}\b/',
     'GitHub token' => '/\bgh[opsu]_[A-Za-z0-9_]{30,}\b/',
-    'live environment secret' => '/^[ \t]*(?:DB_PASSWORD|JUMPCLOUD_OIDC_CLIENT_SECRET|PICKUPSHEET_MFA_ENCRYPTION_KEY)[ \t]*=[ \t]*(?=\S)(?!(?:replace|paste|change|example)[-_ ]?)/mi',
+    'live environment secret' => '/^[ \t]*(?:DB_PASSWORD|JUMPCLOUD_OIDC_CLIENT_SECRET|PICKUPSHEET_MFA_ENCRYPTION_KEY|SECURITY_PSEUDONYM_KEY)[ \t]*=[ \t]*(?=\S)(?!(?:replace|paste|change|example)[-_ ]?)/mi',
 ];
 
 foreach ($trackedOutput as $relativePath) {

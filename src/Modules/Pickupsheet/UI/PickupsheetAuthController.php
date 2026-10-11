@@ -12,6 +12,7 @@ use App\Shared\Security\JumpCloudOidcProvider;
 use App\Shared\Security\LoginMethodSettings;
 use App\Shared\Security\LoginMethodSettingsService;
 use App\Shared\Security\LocalMfaService;
+use App\Shared\Security\Pseudonym;
 use App\Shared\Security\RateLimiter;
 use App\Shared\Security\RecordsAccess;
 use App\Shared\Security\RecordsPrincipal;
@@ -82,7 +83,7 @@ final class PickupsheetAuthController
                 $this->recordsSession->login($principal);
                 $this->csrf->rotate();
                 $this->securityLogger->event('pickupsheet.cloudflare_access', $request, 'accepted', [
-                    'actor_id' => substr(hash('sha256', $principal->username), 0, 24),
+                    'actor_id' => Pseudonym::actorId($principal->username),
                     'role' => $principal->role,
                     'identity_provider' => 'cloudflare_access',
                 ]);
@@ -181,14 +182,14 @@ final class PickupsheetAuthController
         if ($this->localMfa?->isEnabled() === true) {
             if (!$this->localMfa->isConfigured()) {
                 $this->securityLogger->event('pickupsheet.local_mfa', $request, 'unavailable', [
-                    'actor_id' => substr(hash('sha256', $principal->username), 0, 24),
+                    'actor_id' => Pseudonym::actorId($principal->username),
                 ]);
                 return Response::html('Local sign-in is temporarily unavailable. Contact the system administrator.', 503, $this->privateHeaders());
             }
             try {
                 $this->startPendingMfa($principal);
                 $this->securityLogger->event('pickupsheet.login_password', $request, 'accepted', [
-                    'actor_id' => substr(hash('sha256', $principal->username), 0, 24),
+                    'actor_id' => Pseudonym::actorId($principal->username),
                     'role' => $principal->role,
                 ]);
                 return Response::redirect($request->basePath . '/dhl/pickupsheet/login/2fa');
@@ -202,7 +203,7 @@ final class PickupsheetAuthController
         $this->recordsSession->login($principal);
         $this->csrf->rotate();
         $this->securityLogger->event('pickupsheet.login', $request, 'accepted', [
-            'actor_id' => substr(hash('sha256', $principal->username), 0, 24),
+            'actor_id' => Pseudonym::actorId($principal->username),
             'role' => $principal->role,
         ]);
         return Response::redirect($this->destination($request, $principal));
@@ -306,7 +307,7 @@ final class PickupsheetAuthController
                         $principal->username,
                         $secret,
                         $request->rawInput('code'),
-                        substr(hash('sha256', $principal->username), 0, 24),
+                        Pseudonym::actorId($principal->username),
                     );
                     $method = 'enrollment';
                 }
@@ -323,7 +324,7 @@ final class PickupsheetAuthController
             $this->recordsSession->login($currentPrincipal);
             $this->csrf->rotate();
             $this->securityLogger->event('pickupsheet.login', $request, 'accepted', [
-                'actor_id' => substr(hash('sha256', $currentPrincipal->username), 0, 24),
+                'actor_id' => Pseudonym::actorId($currentPrincipal->username),
                 'role' => $currentPrincipal->role,
                 'second_factor' => $method,
             ]);
@@ -659,7 +660,7 @@ final class PickupsheetAuthController
         $this->recordsSession->login($principal);
         $this->csrf->rotate();
         $this->securityLogger->event('pickupsheet.jumpcloud_callback', $request, 'accepted', [
-            'actor_id' => substr(hash('sha256', $principal->username), 0, 24),
+            'actor_id' => Pseudonym::actorId($principal->username),
             'role' => $principal->role,
             'identity_provider' => 'jumpcloud',
         ]);
@@ -677,7 +678,7 @@ final class PickupsheetAuthController
         $cloudflareIdentity = $principal?->identityProvider === 'cloudflare_access';
         if ($principal !== null) {
             $this->securityLogger->event('pickupsheet.logout', $request, 'accepted', [
-                'actor_id' => substr(hash('sha256', $principal->username), 0, 24),
+                'actor_id' => Pseudonym::actorId($principal->username),
                 'role' => $principal->role,
             ]);
         }
@@ -810,7 +811,7 @@ final class PickupsheetAuthController
         $pending = $_SESSION[self::MFA_PENDING_KEY] ?? [];
         $attempts = is_array($pending) && is_int($pending['attempts'] ?? null) ? $pending['attempts'] + 1 : 1;
         $this->securityLogger->event('pickupsheet.local_mfa', $request, 'denied', [
-            'actor_id' => substr(hash('sha256', $principal->username), 0, 24),
+            'actor_id' => Pseudonym::actorId($principal->username),
             'attempt' => $attempts,
         ]);
         if ($attempts >= 5) {
@@ -868,7 +869,7 @@ final class PickupsheetAuthController
 
     private function actorId(RecordsPrincipal $principal): string
     {
-        return substr(hash('sha256', $principal->username), 0, 24);
+        return Pseudonym::actorId($principal->username);
     }
 
     private function settingsMfaReplacementAuthorized(RecordsPrincipal $principal): bool

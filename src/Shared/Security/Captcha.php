@@ -9,8 +9,14 @@ final class Captcha
     private const SESSION_KEY_PREFIX = '_captcha_challenge_';
     private const TTL_SECONDS = 900;
 
-    public function __construct(private readonly string $context = 'default')
-    {
+    /**
+     * The arithmetic question only confirms intent. $minimumAnswerSeconds adds a time trap for
+     * public forms: scripts that post as soon as the page loads are refused, people are not.
+     */
+    public function __construct(
+        private readonly string $context = 'default',
+        private readonly int $minimumAnswerSeconds = 0,
+    ) {
     }
 
     /** @return array{question: string, nonce: string} */
@@ -33,6 +39,7 @@ final class Captcha
         $_SESSION[$this->sessionKey()] = [
             'nonce' => $nonce,
             'answer' => (string) $answer,
+            'issued_at' => time(),
             'expires_at' => time() + self::TTL_SECONDS,
         ];
 
@@ -50,6 +57,7 @@ final class Captcha
             || !is_string($challenge['answer'] ?? null)
             || !is_int($challenge['expires_at'] ?? null)
             || $challenge['expires_at'] < time()
+            || time() - (int) ($challenge['issued_at'] ?? 0) < $this->minimumAnswerSeconds
         ) {
             return false;
         }

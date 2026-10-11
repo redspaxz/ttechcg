@@ -8,6 +8,7 @@ use App\Modules\Backup\Application\BackupService;
 use App\Shared\Http\Request;
 use App\Shared\Http\Response;
 use App\Shared\Security\Csrf;
+use App\Shared\Security\Pseudonym;
 use App\Shared\Security\RateLimiter;
 use App\Shared\Security\RecordsAccess;
 use App\Shared\Security\RecordsPrincipal;
@@ -132,6 +133,14 @@ final class BackupController
             return $this->redirect($request);
         }
 
+        // Recorded in both streams before any data changes, so the attempt survives a failed or hostile restore.
+        error_log(sprintf(
+            'Pickupsheet backup restore started by actor %s, request %s.',
+            $this->actorId($principal),
+            $request->requestId(),
+        ));
+        $this->log($request, $principal, 'pickupsheet.backup_restore', 'started', ['upload_bytes' => $file['size']]);
+
         try {
             $restored = $this->service->restoreEncrypted($contents, $request->rawInput('passphrase'));
             $_SESSION['_backup_flash'] = sprintf(
@@ -224,7 +233,7 @@ final class BackupController
 
     private function actorId(RecordsPrincipal $principal): string
     {
-        return substr(hash('sha256', $principal->username), 0, 24);
+        return Pseudonym::actorId($principal->username);
     }
 
     private function redirect(Request $request): Response

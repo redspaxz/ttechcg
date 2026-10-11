@@ -5,6 +5,7 @@ declare(strict_types=1);
 namespace App\Shared\Http;
 
 use App\Shared\Security\CloudflareRequestTrust;
+use App\Shared\Security\Pseudonym;
 
 final class Request
 {
@@ -104,39 +105,13 @@ final class Request
         return $this->serverString('HTTP_' . strtoupper(str_replace('-', '_', $name)));
     }
 
-    /** @return null|array{0: string, 1: string} */
-    public function basicCredentials(): ?array
-    {
-        $user = $this->serverString('PHP_AUTH_USER');
-        $password = $this->serverString('PHP_AUTH_PW');
-        if ($user !== '' || $password !== '') {
-            return [$user, $password];
-        }
-
-        $authorization = $this->serverString('HTTP_AUTHORIZATION');
-        if ($authorization === '') {
-            $authorization = $this->serverString('REDIRECT_HTTP_AUTHORIZATION');
-        }
-        if (!preg_match('/^Basic\s+([A-Za-z0-9+\/=]+)$/i', $authorization, $matches)) {
-            return null;
-        }
-
-        $decoded = base64_decode($matches[1], true);
-        if (!is_string($decoded) || !str_contains($decoded, ':')) {
-            return null;
-        }
-
-        [$user, $password] = explode(':', $decoded, 2);
-        return [$user, $password];
-    }
-
     public function clientIdentifier(): string
     {
         $cloudflareAddress = $this->validatedIp($this->trustedCloudflareHeader('CF-Connecting-IP'));
         $remoteAddress = $this->validatedIp($this->serverString('REMOTE_ADDR'));
         $address = $cloudflareAddress ?? $remoteAddress ?? 'unknown';
 
-        return hash('sha256', $address);
+        return Pseudonym::clientId($address);
     }
 
     public function requestId(): string
