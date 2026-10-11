@@ -25,6 +25,13 @@ The phases overlapped. Dates are from the first to the last related commit.
 - Consignor links to CRM profiles (PS-11), uppercase and hyphen-only names (DQ-1, DQ-2), phone search on digits (CRM-3)
 - Profile back link returns to its origin (CRM-10)
 - Architecture, product, design, and plan documentation
+- Security fixes from the [OWASP review](../security/owasp-review.md):
+  - restore keeps the security log and refuses incomplete backups (ADM-6)
+  - keyed actor and client identifiers, with `bin/rekey-pseudonyms.php` (ADM-7)
+  - sign-in timing no longer reveals usernames, and the unused HTTP Basic path is removed (AUTH-8)
+  - a 3-second minimum on the contact-form question (PUB-3)
+- MySQL integration tests in CI (formerly next-work item 3)
+- [Support playbook](../support/support-playbook.md)
 
 ## Next work
 
@@ -35,12 +42,23 @@ Ordered by priority. Each item lists its steps and the check that shows it is do
 **Why:** About 20 user-facing changes since `v1.0.0` are live on `main` without a release record.
 
 1. Add a 1.1.0 row and summary to the Releases table in `README.md`.
-2. Run the full checks (`php tests/run.php`, `php bin/security-check.php`, and the Node tests).
+2. Confirm CI is green, including the new MySQL job.
 3. Tag `v1.1.0` and push the tag.
 
 **Done when:** `git tag` lists `v1.1.0` and the README describes it.
 
-### 2. Decide on legacy names
+### 2. Turn on keyed pseudonyms in production
+
+**Why:** Until `SECURITY_PSEUDONYM_KEY` is set, actor and client identifiers are plain SHA-256 and can be reversed.
+
+1. Generate the key (`openssl rand -base64 32`) and put it in the production `.env`. Store a copy with the backup passphrases and the MFA key.
+2. Take an encrypted backup.
+3. Run `php bin/rekey-pseudonyms.php` and check the counts, then run it again with `--apply`.
+4. Open the dashboard audit log and check that recent actions still show names.
+
+**Done when:** the production error log no longer reports a missing key, and the audit log names actors.
+
+### 3. Decide on legacy names
 
 **Why:** Names saved before DQ-1 and DQ-2 are still mixed case and may contain symbols, so lists show both styles.
 
@@ -49,15 +67,6 @@ Ordered by priority. Each item lists its steps and the check that shows it is do
 3. Back up before running the migration, then run `tests/mysql.php` against a copy of production data.
 
 **Done when:** no stored name has lowercase letters, and the symbol list is empty or accepted by the business.
-
-### 3. Run MySQL tests in CI
-
-**Why:** `tests/mysql.php` covers the real SQL (collation, `REGEXP_REPLACE`, the phone search `REPLACE` chain) but runs only by hand.
-
-1. Add a `mysql:8.4` service to `.github/workflows/verify.yml`.
-2. Run `php bin/migrate.php` and then `php tests/mysql.php` with `DB_*` pointing at the service.
-
-**Done when:** a pull request that breaks a MySQL query fails CI.
 
 ### 4. Set a contact enquiry retention period
 
@@ -107,9 +116,21 @@ Carried over from the README roadmap:
 
 - an external uptime check on `/health`
 - an alert on bursts of `denied` or `rate_limited` security events
-- a deployment runbook covering `.cpanel.yml`, migrations, backup before migrating, and rollback
+- forwarding the PHP error log and security events to an access-restricted external log service, so evidence survives tampering with the database
+- a deployment runbook covering `.cpanel.yml`, migrations, backup before migrating, and rollback. The [support playbook](../support/support-playbook.md) covers health checks and restore, but not deployment
 
 **Done when:** an outage or a sign-in attack raises an alert without anyone watching the dashboard.
+
+### 9. Security decisions left open
+
+Each needs a business decision before any code changes. See the [OWASP review](../security/owasp-review.md#accepted-risks-and-open-decisions).
+
+- **Federated sign-out on group removal.** Decide whether up to 8 hours of access after a JumpCloud group removal is acceptable. If not, shorten the absolute session for JumpCloud and Cloudflare sessions, or check group membership again on each request.
+- **HSTS for subdomains.** List every `ttechcg.com` subdomain. If all serve HTTPS, add `includeSubDomains` in `SecurityHeaders`.
+- **Contact-form bot protection.** Watch the `contact.captcha` and `contact.submission` events. Add Cloudflare Turnstile only if spam gets through (product requirements, open question 8).
+- **Undelete for sheets** (product requirements, open question 7).
+
+**Done when:** each item has a recorded decision, and any chosen change is delivered.
 
 ## How to deliver each change
 

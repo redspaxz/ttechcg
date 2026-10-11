@@ -53,7 +53,7 @@ flowchart TD
     P1 -->|"yes"| P2{"Password hash matches<br/>an active account?"}
     P2 -->|"no"| X
     P2 -->|"yes"| M1{"Local MFA enabled?"}
-    M1 -->|"no"| R
+    M1 -->|"no, outside production only"| R
     M1 -->|"yes"| M2{"Authenticator enrolled?"}
     M2 -->|"no"| M3["Enrol: QR secret, confirm a code,<br/>show one-time recovery codes"]
     M2 -->|"yes"| M4["Enter RFC 6238 code<br/>or a recovery code"]
@@ -67,8 +67,11 @@ flowchart TD
 
 - **Methods.** Local login and JumpCloud can each be switched on or off by an administrator (`pickup_auth_settings`). Cloudflare Access is optional: when the Pickupsheet path sits behind Access, a verified Access session skips the login page.
 - **Roles.** JumpCloud and Cloudflare Access users get their role from group membership (`JUMPCLOUD_RBAC_*_GROUP`). Local users have a stored role. A user in no mapped group is refused.
+- **Production.** Local login is not offered unless MFA is enabled and its key and storage work, so in production every local sign-in passes the MFA step.
+- **Unknown usernames.** They are checked against a dummy hash made with the live algorithm, so a refusal takes as long as a wrong password.
 - **MFA.** Secrets are stored encrypted with `PICKUPSHEET_MFA_ENCRYPTION_KEY`. Recovery codes are stored hashed and work once. A code's time step cannot be reused. MFA attempts are limited to 10 per 15 minutes.
 - **Session end.** Sign-out, 1 hour idle, or 8 hours after sign-in, whichever comes first. Every sign-in, refusal, and sign-out is a security event.
+- **Role changes.** A JumpCloud or Cloudflare Access role is read at sign-in. Removing someone from a group takes effect at their next sign-in, so it can take up to 8 hours. For immediate removal, see the [support playbook](../support/support-playbook.md#remove-access-now).
 
 ## 3. Pickup sheet lifecycle
 
@@ -115,7 +118,7 @@ flowchart TD
 3. The server refuses the payment unless the amount equals the sheet's recalculated total. It then sets `status = paid`, `paid_at`, `paid_by`, and the receipt number, and writes a lifecycle audit row with before and after snapshots.
 4. Paid status cannot be undone. Only an administrator can change the receipt number afterwards. The old number stays in the audit row.
 5. **Edit** (administrators only) rewrites the shipment rows. The sheet keeps its agent and reference, the checker becomes the editing administrator, and before/after snapshots go to `pickup_sheet_edit_audit`. AWB reuse is checked again, excluding the sheet itself.
-6. **Delete** (administrators only) sets `deleted_at` and `deleted_by`. Rows are kept for audit, but the sheet disappears from lists, dashboards, reports, and CRM totals.
+6. **Delete** (administrators only) sets `deleted_at` and `deleted_by`. Rows are kept for audit, but the sheet disappears from lists, dashboards, reports, and CRM totals. The app has no undelete. Only a database administrator can bring a sheet back, by clearing `deleted_at` (see the [support playbook](../support/support-playbook.md)).
 7. **Print / PDF** opens an A4 view, with a PAID watermark once paid. **Export** produces a native XLSX file. Both need their own permission.
 
 ## 4. CRM and loyalty
@@ -153,13 +156,13 @@ flowchart TD
 
 ```mermaid
 flowchart TD
-    A["Visitor opens /contact"] --> B["Form with a server-issued captcha"]
+    A["Visitor opens /contact"] --> B["Form with a server-issued arithmetic question"]
     B --> C["Submit"]
     C --> D{"CSRF valid and under<br/>10 per hour?"}
     D -->|"no"| X["Refuse"]
     D -->|"yes"| E{"Honeypot field empty?"}
     E -->|"no"| X2["Silently drop, log contact.honeypot"]
-    E -->|"yes"| F{"Captcha answer correct?"}
+    E -->|"yes"| F{"Arithmetic answer correct,<br/>and given 3 s or more after the form loaded?"}
     F -->|"no"| X3["Return form, log contact.captcha"]
     F -->|"yes"| G{"Name, email, service, 20-2,000<br/>character message, consent?"}
     G -->|"no"| X4["Return form with the error"]
@@ -201,6 +204,13 @@ flowchart TD
     B -->|"Restore"| H["Choose file, enter passphrase,<br/>type RESTORE"]
     H --> I{"Format, version, passphrase,<br/>and required tables valid?"}
     I -->|"no"| X2["Refuse: file or passphrase invalid"]
-    I -->|"yes"| J["One transaction: clear tables,<br/>insert parents before children"]
+    I -->|"yes"| T{"Every application table<br/>in the file?"}
+    T -->|"no"| X3["Refuse: backup incomplete"]
+    T -->|"yes"| S["Log restore started<br/>(security log and PHP error log)"]
+    S --> J["One transaction: clear application tables,<br/>insert parents before children.<br/>Security log and session activity are kept"]
     J --> K["Log the restore, show row counts"]
 ```
+
+- **What a restore replaces.** Every application table, including accounts, MFA enrolments, and changed admin passwords. Restoring an older backup therefore brings back accounts deleted since then, with their old passwords. Review **Manage users** straight after a restore.
+- **What a restore keeps.** `pickup_security_events` and `pickup_records_session_activity` are exported in the backup for archiving but never cleared or replaced, so a restore cannot erase the record of what happened before it.
+- **Fresh sign-in.** Backup and restore need a sign-in completed within the last 15 minutes.

@@ -137,12 +137,13 @@ Key variables include:
 | `CONTACT_FROM_EMAIL` | approved sender address for mail transport |
 | `DB_HOST`, `DB_PORT`, `DB_NAME`, `DB_USER`, `DB_PASSWORD` | MySQL connection settings |
 | `PICKUPSHEET_LOCAL_LOGIN_ENABLED` | enables local workforce sign-in |
-| `PICKUPSHEET_LOCAL_MFA_ENABLED` | requires local MFA |
+| `PICKUPSHEET_LOCAL_MFA_ENABLED` | requires local MFA. Production local login is refused unless this is `true` and the key is valid |
 | `PICKUPSHEET_MFA_ENCRYPTION_KEY` | encryption key material for local MFA |
 | `JUMPCLOUD_OIDC_*` | JumpCloud SSO configuration |
 | `CLOUDFLARE_ACCESS_*` | optional Cloudflare Access configuration |
 | `RUN_MIGRATIONS` | explicitly allow migration execution |
 | `PICKUPSHEET_AWB_REUSE_DAYS` | days before DHL may reissue an AWB number; sets the duplicate-check window and tracking-link expiry (default 90) |
+| `SECURITY_PSEUDONYM_KEY` | secret of at least 32 characters for keyed (HMAC) actor and client identifiers. Without it they are plain SHA-256, which can be reversed. After first setting it, run `php bin/rekey-pseudonyms.php --apply` once. Never change or lose it |
 
 Important:
 
@@ -409,9 +410,10 @@ This project is designed with security controls built in:
 - CSRF protection for state-changing requests
 - server-side validation and authoritative recalculation of business data
 - rate limiting and abuse controls
-- local account login and optional MFA
+- local account login, with MFA required in production
 - JumpCloud OIDC and optional Cloudflare Access integration
-- pseudonymous audit logging
+- pseudonymous audit logging, keyed with `SECURITY_PSEUDONYM_KEY`
+- restores that never clear the security log
 - strict session and cookie configuration
 - no secrets in source control or user-facing scripts
 
@@ -424,7 +426,7 @@ Use this checklist before promoting the application to a production environment:
 3. Validate `DB_*` credentials, MySQL availability, and required `pdo_mysql` support.
 4. Ensure `openssl`, `curl`, and the required PHP extensions are enabled in the web runtime.
 5. Set `CONTACT_EMAIL` and `CONTACT_FROM_EMAIL` to approved production addresses.
-6. Configure local login, MFA, and storage keys only if the environment is ready for the required security controls.
+6. Configure local login, MFA, and storage keys only if the environment is ready for the required security controls. Set `SECURITY_PSEUDONYM_KEY`, take a backup, then run `php bin/rekey-pseudonyms.php` (a dry run) followed by `php bin/rekey-pseudonyms.php --apply`. Keep a copy of the key with the backup passphrases.
 7. Configure JumpCloud OIDC and/or Cloudflare Access only after confirming issuer, callback, and RBAC settings.
 8. Set `RUN_MIGRATIONS` only for intentional schema updates; keep it disabled for normal production operation. Back up the database before migration 018, which merges existing CRM profiles whose names are equal under the database collation.
 9. Validate writable permissions for `storage/sessions` and `storage/security`.
@@ -444,7 +446,7 @@ php tests/run.php
 
 This includes the repository's assertion-based checks for application behavior and security-related logic.
 
-Run the MySQL integration checks for the CRM and pickup-sheet SQL against a disposable database. The script drops every table in the target database, so it refuses any database whose name does not end in `_test`, and it skips itself when `TEST_MYSQL_DSN` is not set:
+Run the MySQL integration checks for the CRM, pickup-sheet, and backup-restore SQL against a disposable database. CI runs them against a MySQL 8.4 service on every push. The script drops every table in the target database, so it refuses any database whose name does not end in `_test`, and it skips itself when `TEST_MYSQL_DSN` is not set:
 
 ```bash
 TEST_MYSQL_DSN="mysql:host=127.0.0.1;port=3306;dbname=pickupsheet_test;charset=utf8mb4" TEST_MYSQL_USER=root TEST_MYSQL_PASSWORD=secret php tests/mysql.php
@@ -564,4 +566,6 @@ This README is the developer-facing guide for setup, maintenance, and operationa
 - [docs/design/design-brief.md](docs/design/design-brief.md): design principles, colour, typography, breakpoints, components, and accessibility
 - [docs/plans/implementation-plan.md](docs/plans/implementation-plan.md): delivered phases, unreleased changes, and the prioritised next work
 - [docs/security/iso-27001-application-controls.md](docs/security/iso-27001-application-controls.md): application security controls
+- [docs/security/owasp-review.md](docs/security/owasp-review.md): OWASP Top 10 (2025) review, findings, fixes, and accepted risks
+- [docs/support/support-playbook.md](docs/support/support-playbook.md): severity and escalation, fixes for common support requests, what support cannot do in the app, data requests, incident response, and health checks
 - [docs/uat/admin-dashboard-reporting-uat.md](docs/uat/admin-dashboard-reporting-uat.md): UAT script and sign-off for the administrator dashboard, market analysis and reporting

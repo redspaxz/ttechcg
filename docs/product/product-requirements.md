@@ -4,7 +4,7 @@
 **Owner:** T&Tech Consulting Group
 **Status:** Live. Version 1.0.0 released 2026-10-01, with later changes unreleased (see the [implementation plan](../plans/implementation-plan.md))
 
-Related: [App flows](../architecture/flows.md) · [Technical requirements](../architecture/technical-requirements.md) · [Backend schema](../architecture/backend-schema.md) · [Design brief](../design/design-brief.md)
+Related: [App flows](../architecture/flows.md) · [Technical requirements](../architecture/technical-requirements.md) · [Backend schema](../architecture/backend-schema.md) · [Design brief](../design/design-brief.md) · [OWASP review](../security/owasp-review.md) · [Support playbook](../support/support-playbook.md)
 
 ## Problem
 
@@ -53,7 +53,7 @@ Status: **Done** means it is in production, and **Unreleased** means it is merge
 |---|---|---|
 | PUB-1 | Home, services, products, about, and privacy pages, with office locations in Bamenda and Douala | Done |
 | PUB-2 | Contact form: name, email, optional company, service area, and a 20–2,000 character message, with explicit privacy consent | Done |
-| PUB-3 | Contact abuse protection: captcha, honeypot field, and 10 submissions per hour per client | Done |
+| PUB-3 | Contact abuse protection: an arithmetic question that cannot be answered in under 3 seconds, a honeypot field, and 10 submissions per hour per client. This stops casual scripts, not a targeted bot. See [OWASP review](../security/owasp-review.md) | Done. The 3-second minimum is Unreleased |
 | PUB-4 | Enquiries are stored and emailed to `CONTACT_EMAIL` | Done |
 | PUB-5 | Optional analytics, loaded only after consent | Done |
 
@@ -62,12 +62,13 @@ Status: **Done** means it is in production, and **Unreleased** means it is merge
 | ID | Requirement | Status |
 |---|---|---|
 | AUTH-1 | Local sign-in with username and password, which an admin can switch on or off | Done |
-| AUTH-2 | Two-factor authentication (authenticator app) for local accounts, with one-time recovery codes and admin reset | Done |
+| AUTH-2 | Two-factor authentication (authenticator app) for local accounts, with one-time recovery codes and admin reset. In production, local sign-in is refused unless two-factor authentication is enabled and configured | Done |
 | AUTH-3 | JumpCloud single sign-on with roles from JumpCloud groups, which an admin can switch on or off | Done |
 | AUTH-4 | Optional Cloudflare Access sign-in that skips the login page | Done |
 | AUTH-5 | Three roles (viewer, operator, admin), with each action checked on the server | Done |
 | AUTH-6 | Sessions end after 1 hour idle or 8 hours in total | Done |
 | AUTH-7 | Admins create, edit, deactivate, and delete local viewer and operator accounts. Administrator accounts are defined in the server environment | Done |
+| AUTH-8 | Unknown usernames take as long to refuse as wrong passwords, so sign-in timing does not reveal which accounts exist | Unreleased |
 
 ### Pickup sheets
 
@@ -117,6 +118,8 @@ Status: **Done** means it is in production, and **Unreleased** means it is merge
 | ADM-3 | Encrypted backup download and restore | Done |
 | ADM-4 | A security log of sign-ins, refusals, and every protected action | Done |
 | ADM-5 | A separate Pickupsheet privacy notice in an in-app modal | Unreleased |
+| ADM-6 | A restore never clears or replaces the security log or session activity. It refuses a backup that is missing any application table, and records that it started before changing data | Unreleased |
+| ADM-7 | Actor and client identifiers in records and the security log are keyed with a server secret, so they cannot be reversed from a list of usernames or IP addresses | Unreleased |
 
 ## Non-functional requirements
 
@@ -127,7 +130,8 @@ Status: **Done** means it is in production, and **Unreleased** means it is merge
 | Reliability | Writes fail closed when the database is unavailable. Backup and restore are transactional |
 | Usability | Works on phones from 360px. Every page works without JavaScript |
 | Auditability | Before/after snapshots for edits, payments, receipt changes, deletes, and CRM renames and merges |
-| Maintainability | No framework or runtime dependencies. CI runs lint, a security scan, and tests on every push |
+| Maintainability | No framework or runtime dependencies. CI runs lint, a security scan, application tests, and MySQL integration tests on every push |
+| Supportability | Common requests, limits, and incident steps are in the [support playbook](../support/support-playbook.md) |
 
 ## Success measures
 
@@ -145,3 +149,7 @@ These can be tracked from the dashboard and security log. Targets are for the bu
 2. **Existing names.** Names saved before the uppercase and hyphen-only rule are not rewritten. Decide whether to backfill them (see the implementation plan).
 3. **Contact enquiry retention.** Enquiries are never deleted automatically. A retention period should be set.
 4. **Account names.** Staff first and last names may contain `.` and `'`. Those are removed only when the name is stamped onto a sheet as the checker. Decide whether account names should follow the same rule.
+5. **Consent on pickup sheets.** Staff tick the privacy consent box on the customer's behalf. Confirm with a privacy adviser that this is a valid basis for processing in Cameroon, or whether contract or legitimate interest should be recorded instead.
+6. **DHL branding.** The workspace uses the DHL logo, yellow, and red. Confirm written permission from DHL for this use.
+7. **Undeleting sheets.** A deleted sheet can only be brought back by a database administrator. Decide whether admins need an undelete action.
+8. **Stronger bot protection.** If contact-form spam gets past the 3-second arithmetic question, decide whether to add Cloudflare Turnstile. It needs JavaScript, which conflicts with the rule that every page works without it.

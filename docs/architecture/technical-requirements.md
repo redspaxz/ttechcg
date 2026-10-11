@@ -77,17 +77,17 @@ All Pickupsheet routes are under `/dhl/pickupsheet`. Every `POST` needs a CSRF t
 
 | Area | Requirement |
 |---|---|
-| Passwords | Argon2id (19 MiB memory, time cost 2) where available, otherwise bcrypt cost 12 |
+| Passwords | Argon2id (19 MiB memory, time cost 2) where available, otherwise bcrypt cost 12. An unknown username is checked against a dummy hash made with the same algorithm, so response time does not reveal which accounts exist. HTTP Basic credentials are never accepted |
 | MFA | RFC 6238 TOTP for local accounts when `PICKUPSHEET_LOCAL_MFA_ENABLED=true`. Secrets encrypted with `PICKUPSHEET_MFA_ENCRYPTION_KEY`, recovery codes hashed and single-use, time steps not reusable. Production local login fails closed if MFA is required but not configured |
-| SSO | JumpCloud OIDC with state, nonce, and PKCE (S256). RS256 ID-token signature checked against the published keys. Optional Cloudflare Access JWT, with roles from groups |
+| SSO | JumpCloud OIDC with state, nonce, and PKCE (S256). RS256 ID-token signature checked against the published keys. Optional Cloudflare Access JWT, with roles from groups. The role is fixed at sign-in, so a user removed from a group keeps that role until the session ends (at most 8 hours). See the [support playbook](../support/support-playbook.md#remove-access-now) for revoking access immediately |
 | Sessions | Cookie-only, `HttpOnly`, `SameSite=Lax`, `Secure` over HTTPS. 8 h absolute, 1 h idle, session ID renewed every 15 min and at sign-in |
 | Request integrity | CSRF token on every state-changing form. Cross-site unsafe requests are refused using `Sec-Fetch-Site` and `Origin` |
-| Headers | Content-Security-Policy, HSTS (1 year), `X-Frame-Options: DENY`, `nosniff`, `Referrer-Policy: strict-origin-when-cross-origin`, Permissions-Policy denying camera, microphone, and location. Protected pages are `no-store` and `noindex` |
+| Headers | Content-Security-Policy, `X-Frame-Options: DENY`, `nosniff`, `Referrer-Policy: strict-origin-when-cross-origin`, `Cross-Origin-Opener-Policy` and `Cross-Origin-Resource-Policy: same-origin`, `X-Permitted-Cross-Domain-Policies: none`, an `X-Request-ID`, and a Permissions-Policy denying camera, microphone, and location. HSTS (1 year) is sent only in production. It has no `includeSubDomains`, because other `ttechcg.com` subdomains may be served outside this application. Add it only after confirming every subdomain serves HTTPS. Protected pages are `no-store` and `noindex` |
 | Input | All business data validated on the server (see [data requirements](data-requirements.md#field-rules)). Output escaped with `htmlspecialchars`. SQL uses prepared statements, and `LIKE` wildcards are escaped |
 | Redirects | Return links (`from=`, print back links) accept only same-site Pickupsheet paths |
-| Human checks | Captcha on the contact form. A single-use server question before marking paid or changing a receipt |
-| Logging | Security events are pseudonymous: actors, targets, and resources are 24-character hashes, and clients are 64-character hashes. No passwords, tokens, or secrets are logged |
-| Backups | AES-256-GCM, key from the operator's passphrase via PBKDF2-SHA256 with 210,000 iterations. Restore validates format and version, and is transactional. 12 MiB maximum |
+| Human checks | The contact form has a single-use arithmetic question that is refused if answered within 3 seconds, plus a honeypot field. Marking paid or changing a receipt asks a single-use server question first. That question confirms intent and is not an access control |
+| Logging | Security events are pseudonymous. Actors and targets are 24-character identifiers and clients are 64-character identifiers, both HMAC-SHA256 keyed with `SECURITY_PSEUDONYM_KEY`. Without the key they fall back to plain SHA-256, which anyone with a username list, or by hashing every IPv4 address, can reverse. Resources (sheet references, receipt numbers) are plain SHA-256. No passwords, tokens, or secrets are logged |
+| Backups | AES-256-GCM, key from the operator's passphrase via PBKDF2-SHA256 with 210,000 iterations. Restore validates format, version, and schema, and runs in one transaction. It refuses a file missing any application table. It never clears or replaces `pickup_security_events` or `pickup_records_session_activity`. It writes a `started` event to the security log and the PHP error log before changing data. 12 MiB maximum |
 | Secrets | Only in the server environment, never in source or browser scripts. `bin/security-check.php` scans the repository in CI |
 
 ### Rate limits
@@ -96,7 +96,7 @@ Per client unless stated otherwise. When a limit is hit the server returns `429`
 
 | Action | Limit |
 |---|---|
-| Local login | 10 per 15 min per client, and 15 per 15 min per account |
+| Local login | 10 per 15 min per client, and 15 per 15 min per account. The per-account limit means someone who knows a username can lock that account out for 15 minutes. This trade-off is accepted to stop password guessing spread across many addresses |
 | MFA code | 10 per 15 min per client and account |
 | JumpCloud callback, Cloudflare Access sign-in | 20 per 15 min |
 | Contact form | 10 per hour |
@@ -123,6 +123,6 @@ CI (`.github/workflows/verify.yml`, PHP 8.2) must pass before release:
 - `php -l` on all PHP files
 - `php bin/security-check.php`
 - `php tests/run.php` (application, security, and view assertions)
+- `php tests/mysql.php` against a MySQL 8.4 service (migrations, CRM and pickup-sheet SQL, backup restore)
+- `php bin/rekey-pseudonyms.php`, as a dry run and then with `--apply`, against the migrated test schema
 - `node --check` on browser scripts, plus `tests/analytics-consent.test.js`, `tests/pickup-pagination.test.js`, and `tests/consignor-autocomplete.test.js`
-
-`tests/mysql.php` is not part of CI. Run it by hand against a disposable MySQL database after changing a MySQL repository or a migration.
