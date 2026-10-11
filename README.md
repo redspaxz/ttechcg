@@ -426,7 +426,7 @@ Use this checklist before promoting the application to a production environment:
 3. Validate `DB_*` credentials, MySQL availability, and required `pdo_mysql` support.
 4. Ensure `openssl`, `curl`, and the required PHP extensions are enabled in the web runtime.
 5. Set `CONTACT_EMAIL` and `CONTACT_FROM_EMAIL` to approved production addresses.
-6. Configure local login, MFA, and storage keys only if the environment is ready for the required security controls. Set `SECURITY_PSEUDONYM_KEY`, take a backup, then run `php bin/rekey-pseudonyms.php` (a dry run) followed by `php bin/rekey-pseudonyms.php --apply`. Keep a copy of the key with the backup passphrases.
+6. Configure local login, MFA, and storage keys only if the environment is ready for the required security controls. Set `SECURITY_PSEUDONYM_KEY`, take a backup, then run the rekey script. `bin/` is not deployed to `public_html`, so run it from the cPanel repository clone with `--env` pointing at the deployed file: `php bin/rekey-pseudonyms.php --env=/home/ttecwymc/public_html/.env` (a dry run), then the same with `--apply`. Keep a copy of the key with the backup passphrases.
 7. Configure JumpCloud OIDC and/or Cloudflare Access only after confirming issuer, callback, and RBAC settings.
 8. Set `RUN_MIGRATIONS` only for intentional schema updates; keep it disabled for normal production operation. Back up the database before migration 018, which merges existing CRM profiles whose names are equal under the database collation.
 9. Validate writable permissions for `storage/sessions` and `storage/security`.

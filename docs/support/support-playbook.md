@@ -97,7 +97,7 @@ These need third line, a fresh backup first, and a record in the team log afterw
 |---|---|
 | Undelete a sheet | `UPDATE pickup_sheets SET deleted_at = NULL, deleted_by = NULL WHERE reference_number = '<reference>';` Check that no AWB on it now clashes with a newer sheet. Dashboards and CRM totals pick it up on the next page load |
 | Reset a server-defined admin's MFA | `DELETE FROM pickup_local_mfa WHERE subject_id = 'local-env:<username>';` |
-| Rekey actor identifiers after setting `SECURITY_PSEUDONYM_KEY` | `php bin/rekey-pseudonyms.php`, then `php bin/rekey-pseudonyms.php --apply` |
+| Rekey actor identifiers after setting `SECURITY_PSEUDONYM_KEY` | From the cPanel repository clone (`bin/` is not in `public_html`): `php bin/rekey-pseudonyms.php --env=/home/ttecwymc/public_html/.env`, then the same with `--apply` |
 
 Never edit `pickup_security_events`, the audit tables, or a paid sheet's amount or status in the database.
 

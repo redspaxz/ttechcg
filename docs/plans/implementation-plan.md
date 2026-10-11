@@ -53,7 +53,7 @@ Ordered by priority. Each item lists its steps and the check that shows it is do
 
 1. Generate the key (`openssl rand -base64 32`) and put it in the production `.env`. Store a copy with the backup passphrases and the MFA key.
 2. Take an encrypted backup.
-3. Run `php bin/rekey-pseudonyms.php` and check the counts, then run it again with `--apply`.
+3. In the cPanel terminal, go to the repository clone (its path is shown under Git Version Control), because `bin/` is not deployed to `public_html`. Run `php bin/rekey-pseudonyms.php --env=/home/ttecwymc/public_html/.env` and check the counts, then run it again with `--apply`.
 4. Open the dashboard audit log and check that recent actions still show names.
 
 **Done when:** the production error log no longer reports a missing key, and the audit log names actors.

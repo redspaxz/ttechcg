@@ -9,6 +9,11 @@ declare(strict_types=1);
  *   php bin/rekey-pseudonyms.php           # report what would change
  *   php bin/rekey-pseudonyms.php --apply   # rewrite in one transaction
  *
+ * bin/ is not deployed to the web root, so on cPanel run it from the repository clone and
+ * point it at the deployed configuration:
+ *
+ *   php bin/rekey-pseudonyms.php --env=/home/ttecwymc/public_html/.env
+ *
  * Usernames come from the environment administrators, local accounts, MFA enrolments,
  * changed administrator passwords, and session activity. An identifier whose username
  * is no longer known anywhere stays in the legacy form and shows as an unknown actor.
@@ -22,7 +27,17 @@ use App\Shared\Security\RecordsAccess;
 
 $root = dirname(__DIR__);
 require $root . '/bootstrap/autoload.php';
-Environment::load($root . '/.env');
+$envPath = $root . '/.env';
+foreach (array_slice($argv, 1) as $argument) {
+    if (str_starts_with($argument, '--env=')) {
+        $envPath = substr($argument, strlen('--env='));
+        if (!is_file($envPath) || !is_readable($envPath)) {
+            fwrite(STDERR, "Cannot read the environment file {$envPath}.\n");
+            exit(1);
+        }
+    }
+}
+Environment::load($envPath);
 
 $apply = in_array('--apply', array_slice($argv, 1), true);
 Pseudonym::configure((string) (getenv('SECURITY_PSEUDONYM_KEY') ?: ''));
