@@ -260,6 +260,6 @@ final class RecordsUserService
 
     private function actorId(RecordsPrincipal $actor): string
     {
-        return substr(hash('sha256', $actor->username), 0, 24);
+        return Pseudonym::actorId($actor->username);
     }
 }

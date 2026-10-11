@@ -16,7 +16,20 @@ permissions:
 jobs:
   verify:
     runs-on: ubuntu-latest
-    timeout-minutes: 10
+    timeout-minutes: 15
+    services:
+      mysql:
+        image: mysql:8.4
+        env:
+          MYSQL_ROOT_PASSWORD: ci-only-root
+          MYSQL_DATABASE: pickupsheet_test
+        ports:
+          - 3306:3306
+        options: >-
+          --health-cmd="mysqladmin ping -h 127.0.0.1 -uroot -pci-only-root"
+          --health-interval=5s
+          --health-timeout=5s
+          --health-retries=20
     steps:
       - name: Check out source
         uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
@@ -51,6 +64,26 @@ jobs:
 
       - name: Run application tests
         run: php tests/run.php
+
+      - name: Run MySQL integration tests
+        env:
+          TEST_MYSQL_DSN: "mysql:host=127.0.0.1;port=3306;dbname=pickupsheet_test;charset=utf8mb4"
+          TEST_MYSQL_USER: root
+          TEST_MYSQL_PASSWORD: ci-only-root
+        run: php tests/mysql.php
+
+      - name: Rekey pseudonyms against the migrated test schema
+        env:
+          APP_ENV: testing
+          DB_HOST: 127.0.0.1
+          DB_PORT: "3306"
+          DB_NAME: pickupsheet_test
+          DB_USER: root
+          DB_PASSWORD: ci-only-root
+          SECURITY_PSEUDONYM_KEY: ci-only-pseudonym-key-not-used-anywhere-else
+        run: |
+          php bin/rekey-pseudonyms.php
+          php bin/rekey-pseudonyms.php --apply
 
       - name: Verify browser scripts
         run: |

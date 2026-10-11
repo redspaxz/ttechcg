@@ -10,6 +10,7 @@ use App\Modules\CRM\Domain\CustomerProfile;
 use App\Shared\Http\Request;
 use App\Shared\Http\Response;
 use App\Shared\Security\Csrf;
+use App\Shared\Security\Pseudonym;
 use App\Shared\Security\RateLimiter;
 use App\Shared\Security\RecordsAccess;
 use App\Shared\Security\RecordsPrincipal;
@@ -884,7 +885,7 @@ final class CustomerController
 
     private function actorId(RecordsPrincipal $principal): string
     {
-        return substr(hash('sha256', $principal->username), 0, 24);
+        return Pseudonym::actorId($principal->username);
     }
 
     /** @return array<string, mixed> */
@@ -937,7 +938,7 @@ final class CustomerController
                 foreach ($this->recordsUsers->accounts($principal) as $account) {
                     if ($account->active && in_array($account->role, ['operator', 'admin'], true)) {
                         $name = trim($account->firstName . ' ' . $account->lastName);
-                        $options[substr(hash('sha256', $account->username), 0, 24)] = $name !== '' ? $name : $account->username;
+                        $options[Pseudonym::actorId($account->username)] = $name !== '' ? $name : $account->username;
                     }
                 }
             } catch (RuntimeException|InvalidArgumentException $exception) {

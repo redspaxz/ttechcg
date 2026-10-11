@@ -59,6 +59,7 @@ use App\Shared\Security\Csrf;
 use App\Shared\Security\JumpCloudOidcProvider;
 use App\Shared\Security\LoginMethodSettingsService;
 use App\Shared\Security\LocalMfaService;
+use App\Shared\Security\Pseudonym;
 use App\Shared\Security\RateLimiter;
 use App\Shared\Security\RecordsAccess;
 use App\Shared\Security\RecordsSession;
@@ -76,6 +77,10 @@ $config = require $root . '/config/app.php';
 date_default_timezone_set((string) $config['timezone']);
 AwbReusePolicy::configure((int) ($config['awb_reuse_days'] ?? AwbReusePolicy::DEFAULT_DAYS));
 $isProduction = $config['environment'] === 'production';
+Pseudonym::configure((string) (getenv('SECURITY_PSEUDONYM_KEY') ?: ''));
+if ($isProduction && !Pseudonym::isKeyed()) {
+    error_log('SECURITY_PSEUDONYM_KEY is missing or shorter than 32 characters; actor and client identifiers are unkeyed SHA-256.');
+}
 $applicationUrlParts = parse_url((string) ($config['app_url'] ?? ''));
 if ($isProduction && (!is_array($applicationUrlParts)
     || ($applicationUrlParts['scheme'] ?? null) !== 'https'
@@ -240,7 +245,7 @@ $loginMethodSettings = new LoginMethodSettingsService(
 );
 $recordsUserService = new RecordsUserService($recordsUserRepository, $recordsAccess->environmentUsernames());
 $customerService = new CustomerService($customerRepository);
-$contactCaptcha = new Captcha('contact');
+$contactCaptcha = new Captcha('contact', 3);
 $pickupCaptcha = new Captcha('pickupsheet');
 $siteController = new SiteController($view, $config, $storageMode, $contactOperational);
 $contactController = new ContactController(

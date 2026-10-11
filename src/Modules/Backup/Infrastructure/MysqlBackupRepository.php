@@ -40,6 +40,14 @@ final class MysqlBackupRepository implements BackupRepository
         'pickup_sheets',
         'pickup_shipments',
     ];
+    /**
+     * Security evidence is exported for archiving but never replaced on restore, so a
+     * restore cannot erase the record of what happened before it.
+     */
+    private const PRESERVED_ON_RESTORE = [
+        'pickup_security_events',
+        'pickup_records_session_activity',
+    ];
     private const MAX_ROWS = 250000;
 
     public function __construct(private readonly PDO $connection)
@@ -101,8 +109,17 @@ final class MysqlBackupRepository implements BackupRepository
         $targetColumns = [];
         $totalRows = 0;
         foreach (self::TABLES as $table) {
+            if (in_array($table, self::PRESERVED_ON_RESTORE, true)) {
+                // A null target is neither cleared nor written below.
+                $targetColumns[$table] = null;
+                continue;
+            }
             $targetColumns[$table] = $this->columnsIfExists($table);
             if (!array_key_exists($table, $tables)) {
+                if ($targetColumns[$table] !== null) {
+                    // Restore clears every application table, so a missing table would silently empty it.
+                    throw new InvalidArgumentException('The backup is incomplete: it has no ' . $table . ' data. Restore a backup made by this version of the application.');
+                }
                 continue;
             }
             if ($targetColumns[$table] === null) {

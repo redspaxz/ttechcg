@@ -9,8 +9,8 @@ Related: [Technical requirements](technical-requirements.md) · [App flows](flow
 - **Engine and charset.** InnoDB, `utf8mb4`, `utf8mb4_unicode_ci` on every table. Unique indexes on names therefore ignore case, accents, and trailing spaces.
 - **Time.** `DATETIME` values are written in UTC (`UTC_TIMESTAMP()` or server code) and shown in `APP_TIMEZONE`. `DATE` and `TIME` on sheets are local collection values.
 - **Money.** Whole XAF in `BIGINT UNSIGNED`. There are no decimals.
-- **Actors.** `*_by` and `actor_id` columns hold `CHAR(24)`: the first 24 hex characters of SHA-256 of the username. They are pseudonymous, and names are stored separately only where they are shown (`actor_name`, `assigned_name`).
-- **Customer keys.** `CHAR(64)` hex. The key is the SHA-256 of the lowercased first name of the profile, or SHA-256 of that key plus a UUID when the key was already taken.
+- **Actors.** `*_by`, `actor_id`, and `target_id` columns hold `CHAR(24)`: the first 24 hex characters of HMAC-SHA256 of the username, keyed with `SECURITY_PSEUDONYM_KEY` (`Pseudonym::actorId`). Rows written before the key was set hold plain SHA-256 until `bin/rekey-pseudonyms.php --apply` converts them. Names are stored separately only where they are shown (`actor_name`, `assigned_name`).
+- **Customer keys.** `CHAR(64)` hex. The key is the SHA-256 of the profile's original display name, lowercased and trimmed, or SHA-256 of that key plus a UUID when the key was already taken. It is not keyed, and it never changes on rename.
 - **Soft delete.** Only `pickup_sheets` is soft-deleted (`deleted_at`). Everything else is deleted for real, and child rows are removed by `ON DELETE CASCADE`.
 - **Migrations.** `bin/migrate.php` (or `RUN_MIGRATIONS=true`) applies `database/migrations/*.sql` in filename order and records each in `schema_migrations`. Several repositories also run `CREATE TABLE IF NOT EXISTS` on first use, so a missing table is created on demand. The migrations remain the source of truth.
 
@@ -180,7 +180,7 @@ Single row (`settings_id = 1`): `local_login_enabled`, `jumpcloud_login_enabled`
 
 ### `pickup_records_session_activity`
 
-`activity_id` CHAR(32) PK, `username`, `full_name` VARCHAR(100), `role`, `identity_provider` VARCHAR(32), `logged_in_at`, `last_seen_at`, `logged_out_at` NULL. Indexes: `(username, logged_in_at)`, `(logged_out_at, last_seen_at)`, `logged_in_at`. Pruned after `SESSION_ACTIVITY_RETENTION_DAYS`.
+`activity_id` CHAR(32) PK, `username`, `full_name` VARCHAR(100), `role`, `identity_provider` VARCHAR(32), `logged_in_at`, `last_seen_at`, `logged_out_at` NULL. Indexes: `(username, logged_in_at)`, `(logged_out_at, last_seen_at)`, `logged_in_at`. Pruned after `SESSION_ACTIVITY_RETENTION_DAYS`. Never cleared or replaced by a backup restore.
 
 ### `pickup_security_events`
 
@@ -192,12 +192,12 @@ Single row (`settings_id = 1`): `local_login_enabled`, `jumpcloud_login_enabled`
 | `actor_id`, `target_id`, `resource_id` | CHAR(24) NULL | Hashes |
 | `role`, `identity_provider` | VARCHAR NULL | |
 | `request_id` | VARCHAR(100) | |
-| `client_id` | CHAR(64) | Hashed client identifier |
+| `client_id` | CHAR(64) | HMAC of the client IP address (`Pseudonym::clientId`). Not rekeyed: rows from before the key was set keep plain SHA-256 until retention prunes them |
 | `request_method`, `request_path` | VARCHAR | |
 | `context_json` | LONGTEXT NULL | Non-secret details |
 | `occurred_at` | DATETIME | |
 
-Indexes: `occurred_at`, `(actor_id, occurred_at)`, `(event_name, outcome)`. Pruned after `SECURITY_EVENT_RETENTION_DAYS`.
+Indexes: `occurred_at`, `(actor_id, occurred_at)`, `(event_name, outcome)`. Pruned after `SECURITY_EVENT_RETENTION_DAYS`. Never cleared or replaced by a backup restore.
 
 ## Public site
 

@@ -153,7 +153,9 @@ The server enforces these rules. Browser checks mirror some of them but are not 
 | Value | Rule |
 |---|---|
 | Customer ID | Database ID padded to 6 digits (`000042`). Search also accepts `42` and the legacy `CUS-000042` |
-| Customer key | SHA-256 of the lowercased first name of the profile, or random if that name is taken. It never changes on rename |
+| Customer key | SHA-256 of the profile's original display name (lowercased and trimmed), or random if that key is taken. It never changes on rename |
+| Actor ID | First 24 hex characters of HMAC-SHA256 of the username, keyed with `SECURITY_PSEUDONYM_KEY`. Plain SHA-256 when no key is set |
+| Client ID | HMAC-SHA256 of the client IP address, keyed the same way. Used for rate limits and the security log |
 | Shipment totals | Count, cash, and first/last date over non-deleted sheets |
 | Reward points | `floor(total kg × 10)` plus adjustments. A negative result shows as a shortfall, not a negative balance |
 | Loyalty tier | By lifetime earned points: Bronze under 100, Silver 100+, Gold 250+, Platinum 500+ |
@@ -168,13 +170,14 @@ The server enforces these rules. Browser checks mirror some of them but are not 
 | CRM profiles, activities, aliases, merge snapshots, reward adjustments | Yes | Until an administrator deletes the customer, which removes all of them. Shipments keep the consignor name |
 | Accounts and MFA records | Yes | Until the account is deleted or MFA is reset |
 | Session activity | Yes (username, full name) | `SESSION_ACTIVITY_RETENTION_DAYS`, default 365 |
-| Security events | Pseudonymous hashes only | `SECURITY_EVENT_RETENTION_DAYS`, default 365 |
+| Security events | Pseudonymous keyed identifiers only. Without `SECURITY_PSEUDONYM_KEY` they can be reversed, and count as personal data | `SECURITY_EVENT_RETENTION_DAYS`, default 365 |
 | Contact enquiries | Yes | No automatic pruning |
 
 Security events and session activity are pruned at most once a day. The retention values are bounded to 30–3,650 days.
 
 ## Backup and restore
 
-- An encrypted backup includes every table listed above: application data, audit, users, MFA, settings, security log, and CRM. `pickup_sheets` and `pickup_shipments` must be present.
+- An encrypted backup includes every table listed above: application data, audit, users, MFA, settings, security log, and CRM. That includes password hashes, administrator credential hashes, and encrypted MFA secrets, so treat a backup file and its passphrase as credentials. The `.env` file is not included, so neither the MFA encryption key nor `SECURITY_PSEUDONYM_KEY` is in it. Keep both keys with the passphrase, or the restored MFA enrolments and actor names will not work.
 - The backup is at most 12 MiB and 250,000 rows per table. It is encrypted with AES-256-GCM using a key derived from the operator's passphrase. The passphrase is not stored, so a lost passphrase means the backup cannot be restored.
-- Restore inserts parent tables before dependents inside one transaction, and refuses files with an unknown format or version.
+- Restore inserts parent tables before dependents inside one transaction. It refuses files with an unknown format, version, or schema, and files missing any application table.
+- Restore replaces every application table, including accounts. It never clears or replaces `pickup_security_events` or `pickup_records_session_activity`: the live security record is kept, and the copies in the file are archives only.

@@ -736,7 +736,7 @@ final class MysqlPickupSheetRepository implements PickupSheetRepository
                  INNER JOIN pickup_sheets p ON p.id = ps.pickup_sheet_id
                  WHERE p.deleted_at IS NULL AND TRIM(ps.consignor) <> \'\'
                  GROUP BY LOWER(TRIM(ps.consignor))
-                 ORDER BY LOWER(consignor) ASC, consignor ASC
+                 ORDER BY LOWER(MIN(TRIM(ps.consignor))) ASC, MIN(TRIM(ps.consignor)) ASC
                  LIMIT :limit',
             );
         } else {
@@ -750,7 +750,7 @@ final class MysqlPickupSheetRepository implements PickupSheetRepository
                  WHERE p.deleted_at IS NULL AND TRIM(ps.consignor) <> \'\'
                    AND LEFT(LOWER(TRIM(ps.consignor)), CHAR_LENGTH(LOWER(:query_length))) = LOWER(:query_prefix)
                  GROUP BY LOWER(TRIM(ps.consignor))
-                 ORDER BY relevance_score DESC, LOWER(consignor) ASC, consignor ASC
+                 ORDER BY relevance_score DESC, LOWER(MIN(TRIM(ps.consignor))) ASC, MIN(TRIM(ps.consignor)) ASC
                  LIMIT :limit',
             );
             $statement->bindValue(':query_exact', $normalizedQuery);

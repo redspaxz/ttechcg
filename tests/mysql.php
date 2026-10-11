@@ -11,6 +11,7 @@ declare(strict_types=1);
  *   TEST_MYSQL_USER=root TEST_MYSQL_PASSWORD=secret php tests/mysql.php
  */
 
+use App\Modules\Backup\Infrastructure\MysqlBackupRepository;
 use App\Modules\CRM\Application\CustomerConsignorDirectory;
 use App\Modules\CRM\Application\CustomerService;
 use App\Modules\CRM\Application\DuplicateCustomerException;
@@ -93,9 +94,9 @@ $check($pdo->query("SHOW INDEX FROM pickup_shipments WHERE Key_name = 'pickup_sh
 $mboa = $crm()->existingCustomer('Mboa Logistics')['customer'];
 $crm()->save($mboa->customerKey, ['display_name' => 'Mboa Logistics SARL', 'status' => 'active'], $actor);
 $renamed = array_unique(array_map(static fn ($shipment): string => $shipment->consignor, $pickups->findByReference($spacedRef)->shipments));
-$check($renamed === ['Mboa Logistics SARL'], 'a rename updates every shipment on existing sheets');
+$check($renamed === ['MBOA LOGISTICS SARL'], 'a rename updates every shipment on existing sheets');
 $audit = $pdo->query("SELECT after_snapshot FROM pickup_sheet_edit_audit WHERE after_snapshot LIKE '%crm_customer_rename%'")->fetchColumn();
-$check(is_string($audit) && str_contains($audit, 'Mboa Logistics SARL'), 'a rename writes a pickup-sheet audit entry');
+$check(is_string($audit) && str_contains($audit, 'MBOA LOGISTICS SARL'), 'a rename writes a pickup-sheet audit entry');
 
 // Sync: accent variants in one batch, renamed-key collisions, incremental reads.
 $renamedCustomer = $crm()->save(null, ['display_name' => 'Acme Trading', 'status' => 'active'], $actor);
@@ -163,7 +164,7 @@ try {
     $check(str_contains($exception->getMessage(), 'changed by someone else'), 'a stale save is refused');
 }
 $leadPickups = new PickupSheetService(new MysqlPickupSheetRepository($pdo), new CustomerConsignorDirectory(new MysqlCustomerRepository($pdo)));
-$check(in_array('Lead Only Company', $leadPickups->consignorSuggestions('Lead', 10), true), 'pickup suggestions include CRM customers with no sheets');
+$check(in_array('LEAD ONLY COMPANY', $leadPickups->consignorSuggestions('Lead', 10), true), 'pickup suggestions include CRM customers with no sheets');
 $crm()->delete($shortfall->customerKey, $actor);
 $crm()->synchronize();
 $check($crm()->existingCustomer('Shortfall Traders') === null && (int) $pdo->query("SELECT COUNT(*) FROM pickup_customer_reward_adjustments WHERE reason = 'Recovery'")->fetchColumn() === 0, 'deleting a customer erases it and is not undone by the next sync');
@@ -184,17 +185,48 @@ try {
 } catch (AwbReuseException $exception) {
     $check($exception->awbNumbers() === ['8880000001'], 'an AWB already used within 90 days stops the save');
 }
-$confirmedReference = $pickups->submit([
-    'agent_name' => 'Integration Agent', 'collection_date' => '2026-09-20', 'privacy_consent' => '1',
-    'shipments' => [$line('AWB Window Customer', '8880000002'), $line('AWB Window Customer', '8880000001')],
-    'confirmed_awb_reuse' => '8880000001',
-])->referenceNumber;
-$check($pickups->findByReference($confirmedReference)?->shipmentCount() === 2, 'a confirmed reissued AWB saves');
+try {
+    // An earlier release let staff confirm a reissued AWB; reuse inside the window is now always refused.
+    $pickups->submit([
+        'agent_name' => 'Integration Agent', 'collection_date' => '2026-09-20', 'privacy_consent' => '1',
+        'shipments' => [$line('AWB Window Customer', '8880000002'), $line('AWB Window Customer', '8880000001')],
+        'confirmed_awb_reuse' => '8880000001',
+    ]);
+    $check(false, 'a reused AWB is refused even with a confirmation field');
+} catch (AwbReuseException) {
+    $check(true, 'a reused AWB is refused even with a confirmation field');
+}
 $outside = $pickups->submit([
     'agent_name' => 'Integration Agent', 'collection_date' => '2027-01-15', 'privacy_consent' => '1',
     'shipments' => [$line('AWB Window Customer', '8880000001')],
 ]);
 $check($outside->collectionDate === '2027-01-15', 'an AWB outside the reuse window saves without a warning');
+
+$backups = new MysqlBackupRepository($pdo);
+$recordEvent = static function (string $name) use ($pdo): void {
+    $pdo->prepare(
+        "INSERT INTO pickup_security_events (event_name, outcome, request_id, client_id, request_method, request_path, occurred_at)
+         VALUES (?, 'accepted', 'integration', ?, 'POST', '/integration', UTC_TIMESTAMP())",
+    )->execute([$name, str_repeat('a', 64)]);
+};
+$recordEvent('integration.before_backup');
+$exported = $backups->exportTables();
+$sheetCount = (int) $pdo->query('SELECT COUNT(*) FROM pickup_sheets')->fetchColumn();
+$recordEvent('integration.after_backup');
+$pdo->exec('DELETE FROM pickup_shipments');
+$pdo->exec('DELETE FROM pickup_sheets');
+$backups->restoreTables($exported);
+$check((int) $pdo->query('SELECT COUNT(*) FROM pickup_sheets')->fetchColumn() === $sheetCount, 'a restore brings back the backed-up sheets');
+$check(
+    $pdo->query("SELECT COUNT(*) FROM pickup_security_events WHERE event_name LIKE 'integration.%'")->fetchColumn() == 2,
+    'a restore keeps the live security log, including events after the backup',
+);
+try {
+    $backups->restoreTables(array_intersect_key($exported, ['pickup_sheets' => true, 'pickup_shipments' => true]));
+    $check(false, 'a backup missing application tables is refused');
+} catch (InvalidArgumentException) {
+    $check((int) $pdo->query('SELECT COUNT(*) FROM pickup_customers')->fetchColumn() > 0, 'a backup missing application tables is refused');
+}
 
 echo $failures === 0 ? "All MySQL integration checks passed.\n" : "{$failures} MySQL integration check(s) failed.\n";
 exit($failures === 0 ? 0 : 1);

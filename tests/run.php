@@ -48,6 +48,7 @@ use App\Shared\Security\LoginMethodSettingsService;
 use App\Shared\Security\LocalMfaService;
 use App\Shared\Security\OidcHttpClient;
 use App\Shared\Security\PasswordHasher;
+use App\Shared\Security\Pseudonym;
 use App\Shared\Security\RateLimiter;
 use App\Shared\Security\RecordsAccess;
 use App\Shared\Security\RecordsSession;
@@ -120,6 +121,16 @@ $assert($captchaService->validate($captchaChallenge['nonce'], $captchaAnswer), '
 $assert(!$captchaService->validate($captchaChallenge['nonce'], $captchaAnswer), 'A CAPTCHA challenge should not be reusable.');
 $wrongChallenge = $captchaService->issue();
 $assert(!$captchaService->validate($wrongChallenge['nonce'], '99'), 'An incorrect CAPTCHA response should fail.');
+$timedCaptcha = new Captcha('timed', 3);
+$solve = static function (array $challenge): string {
+    [$left, $operator, $right] = preg_split('/\s+/', $challenge['question']);
+    return (string) ($operator === '+' ? (int) $left + (int) $right : (int) $left - (int) $right);
+};
+$hastyChallenge = $timedCaptcha->issue();
+$assert(!$timedCaptcha->validate($hastyChallenge['nonce'], $solve($hastyChallenge)), 'A timed CAPTCHA answered immediately, as a script would, should fail.');
+$patientChallenge = $timedCaptcha->issue();
+$_SESSION['_captcha_challenge_' . substr(hash('sha256', 'timed'), 0, 12)]['issued_at'] = time() - 4;
+$assert($timedCaptcha->validate($patientChallenge['nonce'], $solve($patientChallenge)), 'A timed CAPTCHA answered after the minimum time should pass.');
 
 $mfaEncryptionKey = base64_encode(str_repeat("\x19", 32));
 $modernPasswordHash = PasswordHasher::hash('modern-password-storage-test');
@@ -475,13 +486,22 @@ $legacyWrite = $unsafeApplication->handle(new Request('POST', '/change'));
 $assert($crossSiteWrite->status() === 403 && $sameSiteSiblingWrite->status() === 403 && $mismatchedOriginWrite->status() === 403, 'Unsafe cross-site, sibling-site, and mismatched-origin writes should fail before routing.');
 $assert(($crossSiteWrite->headers()['Vary'] ?? '') === 'Sec-Fetch-Site, Origin', 'Cross-site request denials should be safe for intermediary caches.');
 $assert($sameOriginWrite->status() === 200 && $legacyWrite->status() === 200, 'Same-origin writes and legacy clients should proceed to mandatory route-level CSRF validation.');
-$basicRequest = new Request('GET', '/protected', [], [], '', [
-    'HTTP_AUTHORIZATION' => 'Basic ' . base64_encode('records-admin:test-password'),
+$cloudflareClientRequest = new Request('GET', '/protected', [], [], '', [
     'HTTP_CF_CONNECTING_IP' => '203.0.113.15',
     'REMOTE_ADDR' => '173.245.48.10',
 ]);
-$assert($basicRequest->basicCredentials() === ['records-admin', 'test-password'], 'Request should safely parse a Basic authorization header.');
-$assert($basicRequest->clientIdentifier() === hash('sha256', '203.0.113.15'), 'Request should hash the validated Cloudflare client address.');
+$assert(!method_exists($cloudflareClientRequest, 'basicCredentials') && !method_exists(RecordsAccess::class, 'authenticate'), 'HTTP Basic credentials should not be an accepted sign-in path.');
+$assert($cloudflareClientRequest->clientIdentifier() === hash('sha256', '203.0.113.15'), 'Without a pseudonym key, Request should hash the validated Cloudflare client address.');
+Pseudonym::configure(str_repeat('k', 32));
+$assert(
+    $cloudflareClientRequest->clientIdentifier() === hash_hmac('sha256', 'client|203.0.113.15', str_repeat('k', 32))
+        && Pseudonym::actorId('records-admin') === substr(hash_hmac('sha256', 'actor|records-admin', str_repeat('k', 32)), 0, 24)
+        && Pseudonym::legacyActorId('records-admin') === substr(hash('sha256', 'records-admin'), 0, 24),
+    'With a pseudonym key, client and actor identifiers should be keyed HMACs that a username or address list cannot reverse.',
+);
+Pseudonym::configure('too-short');
+$assert(!Pseudonym::isKeyed() && Pseudonym::actorId('records-admin') === Pseudonym::legacyActorId('records-admin'), 'A pseudonym key shorter than 32 characters should be ignored rather than weaken the HMAC.');
+Pseudonym::configure('');
 $restoredClientRequest = new Request('GET', '/protected', [], [], '', [
     'REMOTE_ADDR' => '129.0.78.202',
     'PROXY_REMOTE_ADDR' => '173.245.48.10',
@@ -501,9 +521,9 @@ $previousTrustedProxyCidrs = getenv('CLOUDFLARE_TRUSTED_PROXY_CIDRS');
 putenv('CLOUDFLARE_TRUSTED_PROXY_CIDRS=192.0.2.0/24');
 $assert(CloudflareRequestTrust::contains('192.0.2.40'), 'Hosting providers should be able to explicitly allowlist an intermediate trusted reverse proxy CIDR.');
 putenv($previousTrustedProxyCidrs === false ? 'CLOUDFLARE_TRUSTED_PROXY_CIDRS' : 'CLOUDFLARE_TRUSTED_PROXY_CIDRS=' . $previousTrustedProxyCidrs);
-$generatedRequestId = $basicRequest->requestId();
+$generatedRequestId = $cloudflareClientRequest->requestId();
 $assert(preg_match('/^[a-f0-9]{24}$/', $generatedRequestId) === 1, 'Requests without a Cloudflare Ray should receive a pseudorandom correlation identifier.');
-$assert($basicRequest->requestId() === $generatedRequestId, 'A generated request identifier should remain stable for the lifetime of its request object.');
+$assert($cloudflareClientRequest->requestId() === $generatedRequestId, 'A generated request identifier should remain stable for the lifetime of its request object.');
 $assert((new Request('GET', '/basic'))->requestId() !== $generatedRequestId, 'Separate requests should not share a generated correlation identifier.');
 $securityHeaderApplication = new Application($applicationRouter, null, null, new SecurityHeaders(true));
 $securityHeaderResponse = $securityHeaderApplication->handle(new Request('GET', '/dhl/pickupsheet/login'));
@@ -634,24 +654,12 @@ $legacyHashRepository = new DemoRecordsUserRepository();
 $legacyHashAccount = $legacyHashRepository->create('legacy-hash-viewer', 'Legacy', 'Viewer', password_hash('legacy-hash-password', PASSWORD_BCRYPT, ['cost' => 10]), 'viewer', true, str_repeat('d', 24));
 $legacyHashAccess = new RecordsAccess([], $legacyHashRepository);
 $assert($legacyHashAccount->needsPasswordRehash() && $legacyHashAccess->authenticateCredentials('legacy-hash-viewer', 'legacy-hash-password')?->role === 'viewer' && !$legacyHashRepository->findById($legacyHashAccount->id)?->needsPasswordRehash(), 'Successful managed-account login should transparently upgrade a legacy password hash.');
-$recordsServer = [
-    'PHP_AUTH_USER' => $recordsUsername,
-    'PHP_AUTH_PW' => $recordsPassword,
-    'REMOTE_ADDR' => '203.0.113.20',
-];
-$viewerServer = [
-    'PHP_AUTH_USER' => $viewerUsername,
-    'PHP_AUTH_PW' => $viewerPassword,
-    'REMOTE_ADDR' => '203.0.113.24',
-];
-$operatorServer = [
-    'PHP_AUTH_USER' => $operatorUsername,
-    'PHP_AUTH_PW' => $operatorPassword,
-    'REMOTE_ADDR' => '203.0.113.25',
-];
-$adminPrincipal = $recordsAccess->authenticate(new Request('GET', '/protected', [], [], '', $recordsServer));
-$viewerPrincipal = $recordsAccess->authenticate(new Request('GET', '/protected', [], [], '', $viewerServer));
-$operatorPrincipal = $recordsAccess->authenticate(new Request('GET', '/protected', [], [], '', $operatorServer));
+$recordsServer = ['REMOTE_ADDR' => '203.0.113.20'];
+$viewerServer = ['REMOTE_ADDR' => '203.0.113.24'];
+$operatorServer = ['REMOTE_ADDR' => '203.0.113.25'];
+$adminPrincipal = $recordsAccess->authenticateCredentials($recordsUsername, $recordsPassword);
+$viewerPrincipal = $recordsAccess->authenticateCredentials($viewerUsername, $viewerPassword);
+$operatorPrincipal = $recordsAccess->authenticateCredentials($operatorUsername, $operatorPassword);
 $assert($adminPrincipal?->role === 'admin' && $adminPrincipal->can('manage') && $adminPrincipal->can('dashboard') && $adminPrincipal->can('backup'), 'An admin should manage users, backups, and the activity dashboard.');
 $environmentAdministrators = $recordsAccess->environmentAdministrators();
 $assert(count($environmentAdministrators) === 1 && $environmentAdministrators[0]->username === $recordsUsername && $environmentAdministrators[0]->securitySubject() === 'local-env:' . $recordsUsername, 'Server-defined administrators should be available to the protected user directory without exposing credentials.');
@@ -670,10 +678,7 @@ $_SESSION['_pickupsheet_identity']['id_rotated_at'] = time() - 901;
 $recordsSession->principal($recordsAccess);
 $assert((int) ($_SESSION['_pickupsheet_identity']['id_rotated_at'] ?? 0) >= time() - 2, 'Active sessions should renew their identifier server-side every fifteen minutes.');
 $recordsSession->logout();
-$assert($recordsAccess->authenticate(new Request('GET', '/protected', [], [], '', [
-    'PHP_AUTH_USER' => $viewerUsername,
-    'PHP_AUTH_PW' => 'incorrect-password',
-])) === null, 'RBAC authentication should reject an incorrect password.');
+$assert($recordsAccess->authenticateCredentials($viewerUsername, 'incorrect-password') === null, 'RBAC authentication should reject an incorrect password.');
 $reservedManagedUsernameRejected = false;
 try {
     $recordsUserService->create([
@@ -720,10 +725,7 @@ $rogueRecordsUserRepository->create(
     'test-actor',
 );
 $rogueRecordsAccess = new RecordsAccess([], $rogueRecordsUserRepository);
-$assert($rogueRecordsAccess->authenticate(new Request('GET', '/protected', [], [], '', [
-    'PHP_AUTH_USER' => 'database-admin',
-    'PHP_AUTH_PW' => 'database-admin-password',
-])) === null, 'A database role must never be able to escalate itself to administrator.');
+$assert($rogueRecordsAccess->authenticateCredentials('database-admin', 'database-admin-password') === null,'A database role must never be able to escalate itself to administrator.');
 
 $oidcBase64Url = static fn (string $value): string => rtrim(strtr(base64_encode($value), '+/', '-_'), '=');
 $oidcOpenSslConfig = tempnam(sys_get_temp_dir(), 'ttechcg-oidc-');
@@ -1039,20 +1041,14 @@ putenv('PICKUPSHEET_RBAC_USERS=environment.viewer@example.com|viewer|Environment
 putenv('PICKUPSHEET_RECORDS_USER');
 putenv('PICKUPSHEET_RECORDS_PASSWORD_HASH');
 $environmentAccess = RecordsAccess::fromEnvironment();
-$environmentPrincipal = $environmentAccess->authenticate(new Request('GET', '/protected', [], [], '', [
-    'PHP_AUTH_USER' => 'ENVIRONMENT.VIEWER@EXAMPLE.COM',
-    'PHP_AUTH_PW' => 'environment-viewer-password',
-]));
+$environmentPrincipal = $environmentAccess->authenticateCredentials('ENVIRONMENT.VIEWER@EXAMPLE.COM', 'environment-viewer-password');
 $assert($environmentPrincipal?->role === 'viewer' && $environmentPrincipal->fullName() === 'Environment Viewer', 'RBAC accounts should accept a case-insensitive email login ID and names from the server environment.');
 
 putenv('PICKUPSHEET_RBAC_USERS');
 putenv('PICKUPSHEET_RECORDS_USER=legacy-admin');
 putenv('PICKUPSHEET_RECORDS_PASSWORD_HASH=' . password_hash('legacy-admin-password', PASSWORD_DEFAULT));
 $legacyAccess = RecordsAccess::fromEnvironment();
-$legacyPrincipal = $legacyAccess->authenticate(new Request('GET', '/protected', [], [], '', [
-    'PHP_AUTH_USER' => 'legacy-admin',
-    'PHP_AUTH_PW' => 'legacy-admin-password',
-]));
+$legacyPrincipal = $legacyAccess->authenticateCredentials('legacy-admin', 'legacy-admin-password');
 $assert($legacyPrincipal?->role === 'admin' && $legacyPrincipal->can('manage'), 'Legacy records credentials should remain compatible as an admin account.');
 
 foreach ([
@@ -3578,7 +3574,7 @@ $assert(str_contains($pickupMysqlRepository, 'ORDER BY shipment_count DESC, send
 $assert(str_contains($pickupMysqlRepository, 'public function marketAnalysis') && str_contains($pickupMysqlRepository, 'COUNT(DISTINCT LOWER(TRIM(ps.consignor))) AS unique_senders'), 'MySQL market analysis should calculate normalized active-sender counts.');
 $assert(str_contains($pickupMysqlRepository, "COUNT(DISTINCT CASE WHEN p.status = \\'paid\\' THEN p.id END) AS paid_sheet_count") && str_contains($pickupMysqlRepository, 'SUM(sender_shipments.shipment_count > 1)'), 'MySQL market analysis should calculate payment conversion and repeat-sender retention inputs.');
 $assert(str_contains($pickupMysqlRepository, "DATE_FORMAT(p.collection_date, \\'%Y-%m\\') AS activity_month") && str_contains($pickupMysqlRepository, 'ORDER BY shipment_count DESC, total_cash_xaf DESC, destination ASC'), 'MySQL market analysis should provide monthly momentum and deterministic destination ranking.');
-$assert(str_contains($pickupMysqlRepository, 'public function consignorSuggestions') && str_contains($pickupMysqlRepository, 'ORDER BY relevance_score DESC, LOWER(consignor) ASC, consignor ASC'), 'MySQL should rank matching consignors by relevance with deterministic alphabetical ties.');
+$assert(str_contains($pickupMysqlRepository, 'public function consignorSuggestions') && str_contains($pickupMysqlRepository, 'ORDER BY relevance_score DESC, LOWER(MIN(TRIM(ps.consignor))) ASC, MIN(TRIM(ps.consignor)) ASC'), 'MySQL should rank matching consignors by relevance with deterministic alphabetical ties.');
 $assert(str_contains($pickupMysqlRepository, 'LEFT(LOWER(TRIM(ps.consignor)), CHAR_LENGTH(LOWER(:query_length))) = LOWER(:query_prefix)'), 'MySQL consignor autocomplete should enforce a normalized prefix match without wildcard input.');
 $assert(str_contains($pickupMysqlRepository, 'LEAST(COUNT(*), 9999) * 100') && str_contains($pickupMysqlRepository, 'DATEDIFF(UTC_DATE(), MAX(p.collection_date))'), 'MySQL relevance scoring should safely combine exact-match, bounded frequency, and recency signals.');
 $assert(str_contains($pickupMysqlRepository, 'p.deleted_at IS NULL') && str_contains($pickupMysqlRepository, "TRIM(ps.consignor) <> \\'\\'"), 'Consignor suggestions should exclude deleted sheets and blank names.');
@@ -3716,7 +3712,8 @@ $assert(is_string($backupServiceSource) && str_contains($backupServiceSource, "'
 $assert(is_string($backupServiceSource) && !str_contains($backupServiceSource, 'getenv('), 'Backup encryption must never derive its passphrase from stored environment configuration.');
 $assert(is_string($backupRepositorySource) && str_contains($backupRepositorySource, "'pickup_sheets'") && str_contains($backupRepositorySource, "'pickup_customer_reward_adjustments'") && str_contains($backupRepositorySource, "'pickup_customer_aliases'") && str_contains($backupRepositorySource, "'pickup_customer_merges'") && str_contains($backupRepositorySource, "'pickup_customer_activities'") && str_contains($backupRepositorySource, "'pickup_crm_sync_state'") && str_contains($backupRepositorySource, "'pickup_auth_settings'") && str_contains($backupRepositorySource, "'pickup_local_mfa'"), 'The MySQL backup allowlist should include operational, CRM reward, authentication preference, and encrypted 2FA data.');
 $assert(is_string($backupRepositorySource) && str_contains($backupRepositorySource, 'private const REQUIRED_TABLES') && str_contains($backupRepositorySource, 'columnsIfExists') && str_contains($backupRepositorySource, 'Core backup table is unavailable:'), 'Backup export should tolerate absent optional-module tables while requiring the core pickup-sheet data set.');
-$assert(is_string($backupRepositorySource) && str_contains($backupRepositorySource, "if (!array_key_exists(\$table, \$tables))") && str_contains($backupRepositorySource, "\$rows = \$validated[\$table]['rows'] ?? [];"), 'Backup restore should validate supplied allowlisted tables and treat omitted optional modules as empty.');
+$assert(is_string($backupRepositorySource) && str_contains($backupRepositorySource, "if (!array_key_exists(\$table, \$tables))") && str_contains($backupRepositorySource, "\$rows = \$validated[\$table]['rows'] ?? [];") && str_contains($backupRepositorySource, 'The backup is incomplete:'), 'Backup restore should validate supplied allowlisted tables and refuse a file missing a table that exists, rather than emptying it.');
+$assert(is_string($backupRepositorySource) && preg_match("/PRESERVED_ON_RESTORE = \[\s*'pickup_security_events',\s*'pickup_records_session_activity',\s*\]/", $backupRepositorySource) === 1, 'A restore must never clear or replace the security log or session activity.');
 $assert(is_string($backupRepositorySource) && !str_contains($backupRepositorySource, 'schema_migrations') && !str_contains($backupRepositorySource, '.env'), 'Backups should exclude schema bookkeeping and environment secrets.');
 $assert(is_string($backupRepositorySource) && substr_count($backupRepositorySource, 'beginTransaction()') === 2 && substr_count($backupRepositorySource, 'rollBack()') === 2, 'Export should use a consistent snapshot and restore should roll back every partial database change.');
 $assert(is_string($backupControllerSource) && str_contains($backupControllerSource, "!== 'RESTORE'") && str_contains($backupControllerSource, "validate(\$request->input('_token'))"), 'Restore should require exact destructive confirmation and a valid CSRF token.');

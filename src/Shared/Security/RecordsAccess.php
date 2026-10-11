@@ -4,12 +4,12 @@ declare(strict_types=1);
 
 namespace App\Shared\Security;
 
-use App\Shared\Http\Request;
 use Throwable;
 
 final class RecordsAccess
 {
-    private const DUMMY_PASSWORD_HASH = '$2y$10$92IXUNpkjO0rOQ5byMi.Ye4oKoEa3Ro9llC/.og/at2.uheWG/igi';
+    /** Verified against for unknown usernames, built with the live algorithm so timing does not reveal which accounts exist. */
+    private static ?string $dummyPasswordHash = null;
 
     /** @var array<string, array{passwordHash: string, role: string, firstName: string, lastName: string}> */
     private array $users = [];
@@ -91,16 +91,6 @@ final class RecordsAccess
         return new self($users, $repository, $adminCredentialRepository);
     }
 
-    public function authenticate(Request $request): ?RecordsPrincipal
-    {
-        $credentials = $request->basicCredentials();
-        if ($credentials === null) {
-            return null;
-        }
-
-        return $this->authenticateCredentials($credentials[0], $credentials[1]);
-    }
-
     public function authenticateCredentials(string $username, string $password): ?RecordsPrincipal
     {
         $username = strtolower(trim($username));
@@ -108,7 +98,7 @@ final class RecordsAccess
         if ($environmentUser !== null) {
             $passwordHash = $this->environmentPasswordHash($username, $environmentUser['passwordHash']);
             if ($passwordHash === null) {
-                password_verify($password, self::DUMMY_PASSWORD_HASH);
+                password_verify($password, self::dummyPasswordHash());
                 return null;
             }
             if (!password_verify($password, $passwordHash)) {
@@ -134,7 +124,7 @@ final class RecordsAccess
         }
 
         if ($managedAccount === null) {
-            password_verify($password, self::DUMMY_PASSWORD_HASH);
+            password_verify($password, self::dummyPasswordHash());
             return null;
         }
 
@@ -152,7 +142,7 @@ final class RecordsAccess
                     $managedAccount->role,
                     $managedAccount->active,
                     PasswordHasher::hash($password),
-                    substr(hash('sha256', $managedAccount->username), 0, 24),
+                    Pseudonym::actorId($managedAccount->username),
                 );
                 if ($updated !== null) {
                     $managedAccount = $updated;
@@ -300,4 +290,8 @@ final class RecordsAccess
         }
     }
 
+    private static function dummyPasswordHash(): string
+    {
+        return self::$dummyPasswordHash ??= PasswordHasher::hash(bin2hex(random_bytes(16)));
+    }
 }
