@@ -567,5 +567,6 @@ This README is the developer-facing guide for setup, maintenance, and operationa
 - [docs/plans/implementation-plan.md](docs/plans/implementation-plan.md): delivered phases, unreleased changes, and the prioritised next work
 - [docs/security/iso-27001-application-controls.md](docs/security/iso-27001-application-controls.md): application security controls
 - [docs/security/owasp-review.md](docs/security/owasp-review.md): OWASP Top 10 (2025) review, findings, fixes, and accepted risks
+- [docs/accessibility/wcag-review.md](docs/accessibility/wcag-review.md): WCAG 2.2 AA review, keyboard and screen-reader fixes, results, and how to re-check
 - [docs/support/support-playbook.md](docs/support/support-playbook.md): severity and escalation, fixes for common support requests, what support cannot do in the app, data requests, incident response, and health checks
 - [docs/uat/admin-dashboard-reporting-uat.md](docs/uat/admin-dashboard-reporting-uat.md): UAT script and sign-off for the administrator dashboard, market analysis and reporting

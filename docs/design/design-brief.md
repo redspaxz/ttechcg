@@ -44,7 +44,7 @@ Pickupsheet uses the 60-30-10 rule:
   | New customer | Blue `#174a96` on `#e8f0fc` |
 
 - **Links in tables.** AWB tracking links are bold red with no underline. Consignor links are bold, inherit the text colour, and have a soft underline that turns red on hover.
-- **Contrast.** Text and controls must meet WCAG 2.1 AA contrast. Never put red text on yellow.
+- **Contrast.** Text and controls must meet WCAG 2.2 AA contrast: 4.5:1 for body text, 3:1 for large text, controls, and focus rings. Never put red text on yellow. On the dark public site, small red text uses `--copper-light` (`#ff5a63`, 6:1). DHL red (`#d40511`) is only 3.3–3.6:1 there, so keep it for large headings and for buttons with white text. Never fade text with `opacity` to show a disabled or unavailable state. Use a grey of at least `#595959` on light grounds instead.
 
 ## Typography
 
@@ -86,7 +86,16 @@ Pickupsheet uses the 60-30-10 rule:
 ## Accessibility
 
 - Semantic HTML: real `<button>`, `<a>`, `<table>`, `<dialog>`, and labels tied to inputs.
-- Visible focus rings (`:focus-visible`, a 3px red outline at 24% opacity) on every interactive element.
+- **Focus rings.** Every interactive element shows a solid 3px `:focus-visible` outline: dark brown `#241b00` in the workspace (11:1 or better on white, off-white, and DHL yellow) and light red `#ff5a63` on the public site. The rule sits at the end of `styles.css`, so a component may change the offset but not the ring. Never use `outline: none` or translucent rings.
+- **Keyboard.** Everything works with Tab, Shift+Tab, Enter, Space, and Escape, with no traps:
+  - the skip link comes first on every page;
+  - dialogs are modal `<dialog>`s that take focus and return it on close;
+  - tabs use the arrow keys;
+  - the mobile menu closes with Escape;
+  - AJAX pagination keeps focus on the pager.
+- **Focus not obscured.** Focused controls must stay clear of the sticky header and fixed footer. `scroll-padding` on the workspace `html` handles this. Raise it if either bar grows.
+- **Screen readers.** One `h1` per page with no skipped levels, named landmarks and dialogs, labels tied to inputs with `for`/`id`, and live regions for changes made by script (pagination, field filtering, errors). After a failed submit, focus moves to the error message.
+- **Names.** A control's accessible name must contain its visible text (for example "Let's talk: start a conversation"), so speech users can say what they see.
 - `prefers-reduced-motion` turns off transitions and hover movement.
 - Status is never shown by colour alone. Badges carry text, and the AWB "tracking expired" state carries a label.
 - Charts have titles, legends, and a data table, and never use two y-axes.
@@ -100,4 +109,5 @@ Pickupsheet uses the 60-30-10 rule:
 | Keep red for actions and alerts | Use red for decoration or subheadings |
 | Bump `styles.css?v=` / `app.js?v=` after changing assets | Ship CSS or JS changes without a cache version bump |
 | Test at 360px and 1240px, with and without JavaScript | Let a table or chart push the page wider than the screen |
+| Tab through every new screen, and run the axe check in the [WCAG review](../accessibility/wcag-review.md) | Hide focus, rely on hover, or replace focused content without putting focus back |
 | Write sentence-case, specific labels | Use vague labels like "Submit" or "OK" for money actions |

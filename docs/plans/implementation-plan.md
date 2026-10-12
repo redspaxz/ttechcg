@@ -31,6 +31,7 @@ The phases overlapped. Dates are from the first to the last related commit.
   - sign-in timing no longer reveals usernames, and the unused HTTP Basic path is removed (AUTH-8)
   - a 3-second minimum on the contact-form question (PUB-3)
 - MySQL integration tests in CI (formerly next-work item 3)
+- WCAG 2.2 AA fixes from the [WCAG review](../accessibility/wcag-review.md): visible skip link and focus rings, contrast, labelled shipment fields, unobscured focus, pagination focus and announcements, consent-banner focus, error focus, and link names
 - [Support playbook](../support/support-playbook.md)
 
 ## Next work

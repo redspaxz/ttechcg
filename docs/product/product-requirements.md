@@ -129,6 +129,7 @@ Status: **Done** means it is in production, and **Unreleased** means it is merge
 | Privacy | Consent recorded with the notice version. Personal data minimised in logs. Erasure for CRM profiles. Retention in the [data requirements](../architecture/data-requirements.md#personal-data-and-retention) |
 | Reliability | Writes fail closed when the database is unavailable. Backup and restore are transactional |
 | Usability | Works on phones from 360px. Every page works without JavaScript |
+| Accessibility | WCAG 2.2 Level AA: full keyboard operation with visible, unobscured focus, screen-reader names and announcements, 4.5:1 text contrast, and reflow at 320px. See the [WCAG review](../accessibility/wcag-review.md) |
 | Auditability | Before/after snapshots for edits, payments, receipt changes, deletes, and CRM renames and merges |
 | Maintainability | No framework or runtime dependencies. CI runs lint, a security scan, application tests, and MySQL integration tests on every push |
 | Supportability | Common requests, limits, and incident steps are in the [support playbook](../support/support-playbook.md) |
