@@ -3182,9 +3182,9 @@ $partnerSources = $readSource(dirname(__DIR__) . '/public/assets/partners/README
 $assert(is_string($partnerSources) && str_contains($partnerSources, 'www.dhl.com/content/dam/dhl/global/core/images/logos/dhl-logo.svg'), 'The official DHL artwork source should be documented.');
 $assert(!str_contains($home, 'href="/dhl/pickupsheet"'), 'Pickupsheet should not be discoverable from the public site chrome or homepage.');
 $assert(str_contains($home, '© ' . date('Y') . ' T&amp;Tech Consulting Group. All rights reserved.') && !str_contains($home, 'class="pickup-footer"'), 'The public site footer should carry the copyright statement with the current year.');
-$assert(str_contains($home, 'styles.css?v=20261009-consignor-links'), 'Market-performance dashboard styles and prior Pickupsheet refinements should use a cache-safe stylesheet version.');
-$assert(str_contains($home, 'app.js?v=20261009-name-fields'), 'AJAX audit-log accordions and prior OWASP-aligned interactions should use a cache-safe script version.');
-$assert(str_contains($home, 'analytics.js?v=20260825-security-hardening'), 'The current consent-aware Google Analytics loader should render on every page.');
+$assert(str_contains($home, 'styles.css?v=20261012-wcag-aa'), 'Market-performance dashboard styles and prior Pickupsheet refinements should use a cache-safe stylesheet version.');
+$assert(str_contains($home, 'app.js?v=20261012-wcag-aa'), 'AJAX audit-log accordions and prior OWASP-aligned interactions should use a cache-safe script version.');
+$assert(str_contains($home, 'analytics.js?v=20261012-wcag-aa'), 'The current consent-aware Google Analytics loader should render on every page.');
 $assert(str_contains($home, 'data-analytics-accept'), 'The site should offer an explicit analytics acceptance control.');
 $assert(str_contains($home, 'data-analytics-decline'), 'The site should offer an explicit analytics decline control.');
 $assert(str_contains($home, 'data-analytics-settings'), 'Visitors should be able to reopen analytics settings from the footer.');
@@ -3777,5 +3777,22 @@ $assert(is_string($apacheConfig) && str_contains($apacheConfig, 'Options -Indexe
 $assert(is_string($workflow) && str_contains($workflow, 'php bin/security-check.php'), 'Continuous verification should reject tracked secrets and unpinned workflow dependencies.');
 $assert(is_string($environmentLoader) && str_contains($environmentLoader, "'/^[A-Z][A-Z0-9_]{0,127}$/'") && str_contains($environmentLoader, 'strlen($value) > 8192'), 'Environment loading should accept only bounded conventional variable names and values.');
 $assert(is_string($securityPolicy) && str_contains($securityPolicy, 'Reporting a vulnerability') && is_string($isoMapping) && str_contains($isoMapping, 'not an ISO/IEC 27001 certificate'), 'The repository should define private vulnerability reporting and accurately scope its ISO control mapping.');
+
+// WCAG 2.2 AA regressions. The browser checks (axe, keyboard walks, reflow) are in docs/accessibility/wcag-review.md.
+$a11yStyles = (string) $readSource(dirname(__DIR__) . '/public/assets/styles.css');
+$a11yScript = (string) $readSource(dirname(__DIR__) . '/public/assets/app.js');
+$a11yConsentScript = (string) $readSource(dirname(__DIR__) . '/public/assets/analytics.js');
+$a11yPickupView = (string) $readSource(dirname(__DIR__) . '/views/pickupsheet/show.php');
+$a11yEditView = (string) $readSource(dirname(__DIR__) . '/views/pickupsheet/edit.php');
+$assert(str_contains($a11yStyles, '.skip-link { border: 3px solid #d40511; background: #ffffff; color: #111111;'), 'The skip link should keep fixed light colours, because the dark theme turned it into dark text on a dark box.');
+$assert(str_contains($a11yStyles, ':focus-visible { outline-style: solid !important; outline-width: 3px !important; outline-color: #ff5a63 !important; }') && str_contains($a11yStyles, '.pickup-app :focus-visible { outline-color: #241b00 !important; }'), 'Every focus ring should be a solid 3px outline with at least 3:1 contrast on the public and workspace grounds.');
+$assert(str_contains($a11yStyles, 'body:not(.pickup-app) :is(.eyebrow,') && str_contains($a11yStyles, '{ color: var(--copper-light); }'), 'Small red text on the dark public site should use the lighter red that meets 4.5:1.');
+$assert(str_contains($a11yStyles, 'html:has(body.pickup-app) { scroll-padding-top: 120px; scroll-padding-bottom: 84px; }'), 'Focused workspace fields should scroll clear of the sticky header and fixed footer.');
+$assert(substr_count($a11yPickupView, 'data-row-label for="shipment-<?= $index ?>-') === 7 && !str_contains($a11yPickupView, 'data-row-label>') && substr_count($a11yEditView, 'data-row-label for="shipment-<?= $e($index) ?>-') === 8 && !str_contains($a11yEditView, 'data-row-label>'), 'Every shipment field should have a label tied to it with for and id.');
+$assert(str_contains($a11yScript, 'input.id = `shipment-${index}-${field}`;') && str_contains($a11yScript, 'label.htmlFor = input.id;'), 'Added and renumbered shipment rows should keep their label and input ids in step.');
+$assert(str_contains($a11yScript, 'restorePagerFocus(focusKey);') && str_contains($a11yScript, "announcer.setAttribute('aria-live', 'polite');"), 'AJAX pagination should keep keyboard focus on the pager and announce the new page.');
+$assert(str_contains($a11yScript, "const pageLoadError = document.querySelector?.('main .notice-error[role=\"alert\"]');"), 'After a failed submit, focus should move to the error message.');
+$assert(str_contains($a11yConsentScript, "consentPanel.setAttribute?.('tabindex', '-1');") && !str_contains($a11yConsentScript, 'acceptButton?.focus());'), 'The consent banner should take focus itself rather than pre-selecting Accept.');
+$assert(str_contains($home, 'aria-label="Let\'s talk: start a conversation"') && str_contains($home, 'aria-label="T&amp;Tech Consulting Group home"'), 'Link names should contain their visible text so speech users can say what they see.');
 
 echo "All application tests passed.\n";

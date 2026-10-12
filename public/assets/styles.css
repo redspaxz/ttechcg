@@ -3429,3 +3429,31 @@ a.pickup-ref { display: inline-block; max-width: 100%; overflow: hidden; color: 
 .pickup-payment-dialog h2 .pickup-ref { font-size: clamp(0.66rem, 2.85vw, 0.86rem); font-weight: 800; letter-spacing: 0; }
 a.pickup-ref:hover,
 a.pickup-ref:focus-visible { color: #1f1f1f; }
+
+/* Accessibility: WCAG 2.2 AA. Kept last so these rules win over earlier component styles. */
+
+/* 2.4.1 and 2.4.7: the dark inversion made the skip link dark text on a dark box. Fixed colours work on both surfaces. */
+.skip-link { border: 3px solid #d40511; background: #ffffff; color: #111111; font-weight: 750; text-decoration: none; }
+
+/* 1.4.11 and 2.4.7: one focus ring with at least 3:1 contrast against every ground it can sit on.
+   Components keep their own offsets; only the ring itself is enforced. */
+:focus-visible { outline-style: solid !important; outline-width: 3px !important; outline-color: #ff5a63 !important; }
+.pickup-app :focus-visible { outline-color: #241b00 !important; }
+.pickup-app .records-method-switch input:focus-visible + span { outline: 3px solid #241b00; outline-offset: 2px; }
+.pickup-login-reveal:focus-visible { outline-offset: 1px; }
+
+/* 1.4.3: DHL red is 3.3-3.6:1 on the dark public site, below 4.5:1 for small text. The lighter red is 6:1. */
+body:not(.pickup-app) :is(.eyebrow, .signal-label strong, .service-number, .service-detail-grid > span, .values-grid span,
+    .contact-notes span, .form-note a, .consent-field a, .product-kicker, .product-feature-list span,
+    .contact-destination a, .office-card > span) { color: var(--copper-light); }
+
+/* 1.4.3: an unavailable sign-in method was faded to 72% opacity, dropping its text below 4.5:1. */
+.records-login-method-grid article[data-configured="false"] { opacity: 1; }
+.records-login-method-grid article[data-configured="false"] :is(p, code, span, b) { color: #595959; }
+
+/* 2.4.11: keep focused fields clear of the sticky workspace header and the fixed footer when the browser scrolls to them. */
+html:has(body.pickup-app) { scroll-padding-top: 120px; scroll-padding-bottom: 84px; }
+@media (max-width: 900px) { html:has(body.pickup-app) { scroll-padding-top: 76px; scroll-padding-bottom: 96px; } }
+
+/* 2.4.7: content still fading in must not hide the element that has focus. */
+[data-reveal]:focus-within { opacity: 1; transform: none; }

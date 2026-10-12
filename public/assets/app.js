@@ -396,8 +396,12 @@ if (pickupForm) {
             row.querySelectorAll('[data-field]').forEach((input) => {
                 const field = input.dataset.field;
                 input.name = `shipments[${index}][${field}]`;
+                input.id = `shipment-${index}-${field}`;
                 const label = input.closest('td')?.querySelector('[data-row-label]');
-                if (label) label.textContent = `Shipment ${rowNumber} ${fieldLabels[field] ?? field}`;
+                if (label) {
+                    label.textContent = `Shipment ${rowNumber} ${fieldLabels[field] ?? field}`;
+                    if (label.tagName === 'LABEL') label.htmlFor = input.id;
+                }
             });
 
             const removeButton = row.querySelector('[data-remove-shipment]');
@@ -486,6 +490,43 @@ document.querySelectorAll('[data-ajax-pager]').forEach((pager) => {
         content.prepend(notice);
     };
 
+    // Screen readers hear the new page; the announcer sits outside the content that gets replaced.
+    let announcer = null;
+    if (content && typeof content.after === 'function') {
+        announcer = document.createElement('p');
+        announcer.className = 'sr-only';
+        announcer.setAttribute('aria-live', 'polite');
+        content.after(announcer);
+    }
+    const announcePage = () => {
+        const status = content?.querySelector('.pickup-pagination-status');
+        if (announcer && status) announcer.textContent = status.textContent.replace(/\s*·\s*/g, ', ').trim();
+    };
+
+    // Replacing the table destroys the control that had focus. Remember which one it was, so keyboard
+    // users stay on Next, Previous, Last, or the page-size menu instead of being thrown to the page top.
+    const focusedPagerControl = () => {
+        const active = document.activeElement;
+        if (!active || !content?.contains?.(active)) return null;
+        if (active.matches?.('[data-ajax-page-size]')) return '[data-ajax-page-size]';
+        const rel = active.getAttribute?.('rel');
+        if (rel === 'prev' || rel === 'next') return `[data-ajax-page][rel="${rel}"]`;
+        if (active.matches?.('[data-ajax-page]')) return 'last';
+        return 'status';
+    };
+    const restorePagerFocus = (key) => {
+        if (!key || !content) return;
+        let target = key === 'last'
+            ? Array.from(content.querySelectorAll('[data-ajax-page]')).find((link) => link.textContent.trim() === 'Last')
+            : key === 'status' ? null : content.querySelector(key);
+        if (!target) {
+            // The control is gone (for example Next on the last page), so land on the page status instead.
+            target = content.querySelector('.pickup-pagination-status');
+            target?.setAttribute('tabindex', '-1');
+        }
+        target?.focus({ preventScroll: true });
+    };
+
     const pageFromUrl = (url) => {
         const page = Number.parseInt(url.searchParams.get(pageParameter) || '1', 10);
         return Number.isInteger(page) && page > 0 ? page : 1;
@@ -534,8 +575,11 @@ document.querySelectorAll('[data-ajax-pager]').forEach((pager) => {
             }
             if (!response.ok) throw new Error(`Pagination request failed with ${response.status}`);
 
+            const focusKey = focusedPagerControl();
             content.innerHTML = await response.text();
             bindPageSizeControls();
+            restorePagerFocus(focusKey);
+            announcePage();
             const pageState = content.querySelector('[data-ajax-current-page]');
             const actualPage = Number.parseInt(pageState?.dataset.ajaxCurrentPage || String(requestedPage), 10);
             pager.dataset.currentPage = String(Number.isInteger(actualPage) && actualPage > 0 ? actualPage : requestedPage);
@@ -1467,3 +1511,11 @@ const normalizeNameFieldEvent = (event) => {
 document.addEventListener?.('input', normalizeNameFieldEvent, true);
 document.addEventListener?.('consignor-suggestion-selected', normalizeNameFieldEvent, true);
 document.querySelectorAll?.('[data-name-field]').forEach(normalizeNameField);
+
+// 3.3.1 and 4.1.3: a role="alert" that arrives with a page load is often not announced. After a failed
+// submit, move focus to the error so screen readers read it and keyboard users start from it.
+const pageLoadError = document.querySelector?.('main .notice-error[role="alert"]');
+if (pageLoadError && !document.querySelector?.('dialog[open]')) {
+    pageLoadError.setAttribute('tabindex', '-1');
+    pageLoadError.focus({ preventScroll: false });
+}
