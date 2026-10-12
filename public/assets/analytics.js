@@ -34,16 +34,27 @@
         });
     };
 
+    // Focus goes to the banner itself, not to either answer, so a screen reader reads the question first and
+    // neither choice is pre-selected. After a choice, focus returns to where the person was.
+    let panelOpener = null;
+
     const hidePanel = () => {
         if (consentPanel) {
+            const hadFocus = typeof consentPanel.contains === 'function' && consentPanel.contains(document.activeElement);
             consentPanel.hidden = true;
+            if (hadFocus) {
+                (panelOpener ?? document.querySelector('.skip-link'))?.focus?.();
+            }
+            panelOpener = null;
         }
     };
 
-    const showPanel = () => {
+    const showPanel = (event) => {
         if (consentPanel) {
+            panelOpener = event?.currentTarget ?? null;
             consentPanel.hidden = false;
-            window.requestAnimationFrame(() => acceptButton?.focus());
+            consentPanel.setAttribute?.('tabindex', '-1');
+            window.requestAnimationFrame(() => (consentPanel.focus ? consentPanel : acceptButton)?.focus());
         }
     };
 

@@ -14,14 +14,14 @@ $collectionDate = $date instanceof DateTimeImmutable ? $date->format('d/m/Y') : 
 $minimumRows = 22;
 $blankRows = max(0, $minimumRows - $pickupSheet->shipmentCount());
 ?>
-<div class="print-actions">
+<nav class="print-actions" aria-label="Print actions">
     <button type="button" data-print-pickup>Print / Save as PDF</button>
     <?php if (($customerReturnUrl ?? null) !== null): ?>
     <a href="<?= $e($customerReturnUrl) ?>">Back to customer profile</a>
     <?php else: ?>
     <a href="<?= $e($basePath) ?>/dhl/pickupsheet/submissions">Back to submitted sheets</a>
     <?php endif; ?>
-</div>
+</nav>
 
 <main class="print-preview" aria-label="A4 pickup sheet preview">
 <article class="print-sheet">

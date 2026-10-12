@@ -52,10 +52,10 @@ $legend = static function (array $items) use ($e): string {
     return $html . '</ul>';
 };
 ?>
-<div class="print-actions">
+<nav class="print-actions" aria-label="Print actions">
     <button type="button" data-print-pickup data-print-auto>Print / Save as PDF</button>
     <a href="<?= $e($basePath) ?>/dhl/pickupsheet/dashboard?tab=reports">Back to reports</a>
-</div>
+</nav>
 
 <main class="print-preview" aria-label="A4 performance report preview">
 <article class="print-sheet report-sheet">

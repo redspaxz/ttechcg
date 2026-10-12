@@ -21,16 +21,16 @@ $analyticsPageView = $isPickupsheet ? 'disabled' : 'enabled';
     <meta name="robots" content="<?= $e($pageRobots) ?>">
     <title><?= $e($pageTitle ?? 'T&Tech Consulting Group') ?> | T&amp;Tech</title>
     <link rel="icon" href="<?= $e($assetBase) ?>/ttechcg-mark.svg" type="image/svg+xml">
-    <link rel="stylesheet" href="<?= $e($assetBase) ?>/styles.css?v=20261009-consignor-links">
-    <script src="<?= $e($assetBase) ?>/app.js?v=20261009-name-fields" defer></script>
-    <script src="<?= $e($assetBase) ?>/analytics.js?v=20260825-security-hardening" defer></script>
+    <link rel="stylesheet" href="<?= $e($assetBase) ?>/styles.css?v=20261012-wcag-aa">
+    <script src="<?= $e($assetBase) ?>/app.js?v=20261012-wcag-aa" defer></script>
+    <script src="<?= $e($assetBase) ?>/analytics.js?v=20261012-wcag-aa" defer></script>
 </head>
 <body<?= $isPickupsheet ? ' class="pickup-app"' : '' ?>>
     <a class="skip-link" href="#main-content">Skip to content</a>
     <?php if (!$isPickupsheet): ?>
     <header class="site-header" data-site-header>
         <div class="container header-inner">
-            <a class="site-logo" href="<?= $e($url('/')) ?>" aria-label="T and Tech Consulting Group home">
+            <a class="site-logo" href="<?= $e($url('/')) ?>" aria-label="T&amp;Tech Consulting Group home">
                 <span class="company-name">T&amp;Tech Consulting Group</span>
             </a>
 
@@ -66,7 +66,7 @@ $analyticsPageView = $isPickupsheet ? 'disabled' : 'enabled';
                 <span class="eyebrow eyebrow-light">Keep business moving</span>
                 <h2>Reliable networks.<br>Practical solutions.</h2>
             </div>
-            <a class="circle-link" href="<?= $e($url('/contact')) ?>" aria-label="Start a conversation">
+            <a class="circle-link" href="<?= $e($url('/contact')) ?>" aria-label="Let's talk: start a conversation">
                 <span>Let's talk</span><i aria-hidden="true">↗</i>
             </a>
         </div>
