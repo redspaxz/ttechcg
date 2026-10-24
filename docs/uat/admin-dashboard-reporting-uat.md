@@ -28,7 +28,7 @@ Record each result as **Pass**, **Fail** or **Blocked**. For a failure, note wha
 
 | ID | Steps | Expected result | Result | Notes |
 |---|---|---|---|---|
-| A1 | Sign in as admin and open the Activity dashboard. | The header, admin links and the four KPI cards appear at the top. Below them is a row of eight tabs: Market analysis, Cash activity, Top senders, Loyalty, User activity, Audit log, Recent sheets, Reports. **Market analysis** is open. | | |
+| A1 | Sign in as admin and open the Activity dashboard. | The header, admin links and the three KPI cards (Total unpaid sheets, Unpaid shipments, Unpaid balance) appear at the top. Below them is a row of eight tabs: Market analysis, Cash activity, Top senders, Loyalty, User activity, Audit log, Recent sheets, Reports. **Market analysis** is open. | | |
 | A2 | Click each tab in turn. | Only the chosen section shows. The page does not reload, and the page stays short, with no long scroll through every section. | | |
 | A3 | Open **Audit log**, then press F5. | The page reloads with **Audit log** still open. The address bar ends in `?tab=logs`. | | |
 | A4 | Copy the address with the **Loyalty** tab open and paste it into a new browser tab. | The dashboard opens directly on **Loyalty**. | | |

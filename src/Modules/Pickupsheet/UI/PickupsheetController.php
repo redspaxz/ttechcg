@@ -260,7 +260,7 @@ final class PickupsheetController
             return $authorization;
         }
 
-        $summary = ['sheetCount' => 0, 'unpaidSheetCount' => 0, 'shipmentCount' => 0, 'totalCashXaf' => 0, 'unpaidBalanceXaf' => 0, 'latestCreatedAt' => null];
+        $summary = ['sheetCount' => 0, 'unpaidSheetCount' => 0, 'shipmentCount' => 0, 'unpaidShipmentCount' => 0, 'totalCashXaf' => 0, 'unpaidBalanceXaf' => 0, 'latestCreatedAt' => null];
         $activity = [];
         $destinations = [];
         $senders = [];
@@ -285,7 +285,7 @@ final class PickupsheetController
             $summary = $this->service->summary();
             $activity = $this->completeActivity($this->service->activityByDay(14), 14);
             $destinations = $this->service->topDestinations(5);
-            $senders = $this->service->topSenders(12, 10);
+            $senders = $this->service->topSenders(12, 5);
             $accounts = $this->recordsUserService->accounts($authorization);
         } catch (RuntimeException $exception) {
             error_log($exception->__toString());

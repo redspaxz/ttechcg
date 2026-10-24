@@ -386,6 +386,8 @@ $assert(count($topSenders) === 10, 'Sender performance should be limited to the 
 $assert(($topSenders[0]['sender'] ?? '') === 'SENDER 01' && ($topSenders[0]['shipmentCount'] ?? 0) === 4, 'Sender performance should group name casing and rank the most frequent sender first.');
 $assert(($topSenders[1]['sender'] ?? '') === 'SENDER 02' && ($topSenders[1]['shipmentCount'] ?? 0) === 3, 'Sender performance should sort shipment counts from most to least.');
 $assert(!in_array('Legacy Leader', array_column($topSenders, 'sender'), true), 'Sender performance should exclude shipments older than the rolling twelve-month window.');
+$assert(($topSenders[0]['lastSentOn'] ?? '') === (new DateTimeImmutable('today'))->format('Y-m-d'), 'Sender performance should report the most recent collection date per sender.');
+$assert(count($senderPerformanceService->topSenders(12, 5)) === 5, 'The dashboard sender ranking should be limitable to the top five senders.');
 $consignorSuggestions = $senderPerformanceService->consignorSuggestions('', 50);
 $sortedConsignorSuggestions = $consignorSuggestions;
 usort($sortedConsignorSuggestions, static fn (string $left, string $right): int => strcasecmp($left, $right));
@@ -2371,8 +2373,9 @@ $assert(substr_count($adminDashboard->body(), 'class="pickup-activity-axis-label
 $assert(str_contains($adminDashboard->body(), 'pickup-cash-pie-chart') && str_contains($adminDashboard->body(), '<dt>Total cash recorded</dt><dd>14,000 XAF</dd>') && str_contains($adminDashboard->body(), '<dt>Unpaid balance <small>0% of total</small></dt><dd>0 XAF</dd>'), 'The administrator dashboard should chart total recorded cash and the current unpaid balance.');
 $assert(str_contains($adminDashboard->body(), 'stroke-dasharray="0.00 100.00"'), 'A fully settled cash balance should render an empty unpaid pie segment.');
 $assert(str_contains($adminDashboard->body(), 'fill="none" stroke="#168a45" stroke-width="58"') && str_contains($adminDashboard->body(), 'fill="none" stroke="#d40511" stroke-width="58"') && str_contains($adminDashboard->body(), '<dt>Paid cash</dt><dd>14,000 XAF</dd>'), 'The cash pie should retain explicit green paid and red unpaid SVG segments before its stylesheet loads.');
-$assert(str_contains($adminDashboard->body(), 'pickup-sender-chart') && str_contains($adminDashboard->body(), 'Top 10 senders'), 'The administrator dashboard should render the rolling sender performance chart.');
-$assert(str_contains($adminDashboard->body(), 'CONTROLLER CLIENT') && str_contains($adminDashboard->body(), '1 shipment'), 'The sender chart should display shipment frequency for the ranked consignor.');
+$assert(str_contains($adminDashboard->body(), 'pickup-sender-chart') && str_contains($adminDashboard->body(), 'Top 5 senders'), 'The administrator dashboard should render the rolling sender performance chart.');
+$assert(str_contains($adminDashboard->body(), 'CONTROLLER CLIENT') && str_contains($adminDashboard->body(), '1 shipment · Last sent '), 'The sender chart should display shipment frequency and the last sent date for the ranked consignor.');
+$assert(str_contains($adminDashboard->body(), '<span>Total unpaid sheets</span>') && str_contains($adminDashboard->body(), '<span>Unpaid shipments</span>') && !str_contains($adminDashboard->body(), '<span>Total sheets</span>'), 'The dashboard KPIs should count only unpaid sheets and their shipment lines.');
 $assert(str_contains($adminDashboard->body(), 'pickup-loyalty-chart') && str_contains($adminDashboard->body(), 'Top 5 customers by points') && str_contains($adminDashboard->body(), '12 points · Bronze'), 'The administrator dashboard should rank the five highest customer reward balances from highest to lowest.');
 $assert(str_contains($adminDashboard->body(), 'User login frequency') && str_contains($adminDashboard->body(), 'Last 30 days'), 'The administrator dashboard should show per-user login frequency for the documented window.');
 $assert(str_contains($adminDashboard->body(), 'Records Administrator') && str_contains($adminDashboard->body(), 'Active now'), 'The administrator dashboard should identify active user sessions by account name.');
@@ -3182,7 +3185,7 @@ $partnerSources = $readSource(dirname(__DIR__) . '/public/assets/partners/README
 $assert(is_string($partnerSources) && str_contains($partnerSources, 'www.dhl.com/content/dam/dhl/global/core/images/logos/dhl-logo.svg'), 'The official DHL artwork source should be documented.');
 $assert(!str_contains($home, 'href="/dhl/pickupsheet"'), 'Pickupsheet should not be discoverable from the public site chrome or homepage.');
 $assert(str_contains($home, '© ' . date('Y') . ' T&amp;Tech Consulting Group. All rights reserved.') && !str_contains($home, 'class="pickup-footer"'), 'The public site footer should carry the copyright statement with the current year.');
-$assert(str_contains($home, 'styles.css?v=20261012-wcag-aa'), 'Market-performance dashboard styles and prior Pickupsheet refinements should use a cache-safe stylesheet version.');
+$assert(str_contains($home, 'styles.css?v=20261024-unpaid-kpis'), 'Market-performance dashboard styles and prior Pickupsheet refinements should use a cache-safe stylesheet version.');
 $assert(str_contains($home, 'app.js?v=20261012-wcag-aa'), 'AJAX audit-log accordions and prior OWASP-aligned interactions should use a cache-safe script version.');
 $assert(str_contains($home, 'analytics.js?v=20261012-wcag-aa'), 'The current consent-aware Google Analytics loader should render on every page.');
 $assert(str_contains($home, 'data-analytics-accept'), 'The site should offer an explicit analytics acceptance control.');

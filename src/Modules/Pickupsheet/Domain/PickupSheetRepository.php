@@ -23,7 +23,7 @@ interface PickupSheetRepository
 
     public function unpaidBalance(string $search = ''): int;
 
-    /** @return array{sheetCount: int, unpaidSheetCount: int, shipmentCount: int, totalCashXaf: int, unpaidBalanceXaf: int, latestCreatedAt: ?string} */
+    /** @return array{sheetCount: int, unpaidSheetCount: int, shipmentCount: int, unpaidShipmentCount: int, totalCashXaf: int, unpaidBalanceXaf: int, latestCreatedAt: ?string} */
     public function summary(): array;
 
     /** @return list<array{date: string, sheetCount: int, shipmentCount: int, totalCashXaf: int}> */
@@ -32,7 +32,7 @@ interface PickupSheetRepository
     /** @return list<array{destination: string, shipmentCount: int, totalCashXaf: int}> */
     public function topDestinations(int $limit): array;
 
-    /** @return list<array{sender: string, shipmentCount: int}> */
+    /** @return list<array{sender: string, shipmentCount: int, lastSentOn: string}> */
     public function topSenders(int $months, int $limit): array;
 
     /**
