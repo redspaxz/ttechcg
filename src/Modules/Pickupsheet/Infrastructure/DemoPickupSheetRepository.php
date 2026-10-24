@@ -188,6 +188,7 @@ final class DemoPickupSheetRepository implements PickupSheetRepository
             'sheetCount' => count($sheets),
             'unpaidSheetCount' => count(array_filter($sheets, static fn (PickupSheet $sheet): bool => !$sheet->isPaid())),
             'shipmentCount' => array_sum(array_map(static fn (PickupSheet $sheet): int => $sheet->shipmentCount(), $sheets)),
+            'unpaidShipmentCount' => array_sum(array_map(static fn (PickupSheet $sheet): int => $sheet->isPaid() ? 0 : $sheet->shipmentCount(), $sheets)),
             'totalCashXaf' => array_sum(array_map(static fn (PickupSheet $sheet): int => $sheet->totalCashReceivedXaf, $recentSheets)),
             'unpaidBalanceXaf' => array_sum(array_map(
                 static fn (PickupSheet $sheet): int => $sheet->isPaid() ? 0 : $sheet->totalCashReceivedXaf,
@@ -248,8 +249,9 @@ final class DemoPickupSheetRepository implements PickupSheetRepository
             foreach ($sheet->shipments as $shipment) {
                 $sender = trim($shipment->consignor);
                 $senderKey = strtolower($sender);
-                $senders[$senderKey] ??= ['sender' => $sender, 'shipmentCount' => 0];
+                $senders[$senderKey] ??= ['sender' => $sender, 'shipmentCount' => 0, 'lastSentOn' => $sheet->collectionDate];
                 $senders[$senderKey]['shipmentCount']++;
+                $senders[$senderKey]['lastSentOn'] = max($senders[$senderKey]['lastSentOn'], $sheet->collectionDate);
             }
         }
 

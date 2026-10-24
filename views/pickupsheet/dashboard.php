@@ -231,9 +231,8 @@ $auditDetails = static function (array $log): string {
         </nav>
 
         <section class="pickup-kpi-grid" aria-label="Pickupsheet KPIs">
-            <article><span>Total sheets</span><strong><?= $e(number_format((int) ($summary['sheetCount'] ?? 0))) ?></strong><small>Generated records</small></article>
-            <article><span>Shipments</span><strong><?= $e(number_format((int) ($summary['shipmentCount'] ?? 0))) ?></strong><small>Cash shipment lines</small></article>
-            <article><span>Unpaid sheets</span><strong><?= $e(number_format((int) ($summary['unpaidSheetCount'] ?? 0))) ?></strong><small>Open payment records</small></article>
+            <article><span>Total unpaid sheets</span><strong><?= $e(number_format((int) ($summary['unpaidSheetCount'] ?? 0))) ?></strong><small>Open payment records</small></article>
+            <article><span>Unpaid shipments</span><strong><?= $e(number_format((int) ($summary['unpaidShipmentCount'] ?? 0))) ?></strong><small>Shipment lines on unpaid sheets</small></article>
             <article class="pickup-kpi-unpaid"><span>Unpaid balance</span><strong class="pickup-kpi-amount"><?= $e(number_format((int) ($summary['unpaidBalanceXaf'] ?? 0))) ?></strong><small>XAF open in the last 3 months</small></article>
         </section>
 
@@ -399,7 +398,7 @@ $auditDetails = static function (array $log): string {
             <div class="pickup-dashboard-panel" id="dashboard-panel-senders" role="tabpanel" aria-labelledby="dashboard-tab-senders" data-dashboard-panel="senders"<?= $activeDashboardTab === 'senders' ? '' : ' hidden' ?>>
                 <section class="pickup-sender-performance" aria-labelledby="sender-performance-title">
                     <div class="pickup-card-heading">
-                        <div><span>Rolling 12-month performance</span><h2 id="sender-performance-title">Top 10 senders</h2></div>
+                        <div><span>Rolling 12-month performance</span><h2 id="sender-performance-title">Top 5 senders</h2></div>
                         <small>Most to least shipments</small>
                     </div>
                     <?php if ($senders === []): ?>
@@ -407,12 +406,16 @@ $auditDetails = static function (array $log): string {
                     <?php else: ?>
                         <ol class="pickup-sender-chart" aria-label="Top senders ranked by shipment frequency">
                             <?php foreach ($senders as $index => $sender): ?>
-                                <?php $shipmentCount = (int) ($sender['shipmentCount'] ?? 0); ?>
+                                <?php
+                                $shipmentCount = (int) ($sender['shipmentCount'] ?? 0);
+                                $lastSentDate = DateTimeImmutable::createFromFormat('!Y-m-d', (string) ($sender['lastSentOn'] ?? ''));
+                                $lastSentLabel = $lastSentDate instanceof DateTimeImmutable ? $lastSentDate->format('d M Y') : (string) ($sender['lastSentOn'] ?? '');
+                                ?>
                                 <li>
                                     <span class="pickup-sender-rank" aria-label="Rank <?= $e($index + 1) ?>"><?= $e($index + 1) ?></span>
                                     <span class="pickup-sender-name" title="<?= $e($sender['sender'] ?? '') ?>"><?= $e($sender['sender'] ?? '') ?></span>
                                     <progress max="<?= $e($maximumSenderShipments) ?>" value="<?= $e($shipmentCount) ?>" aria-label="<?= $e($sender['sender'] ?? '') ?>: <?= $e($shipmentCount) ?> shipments"><?= $e($shipmentCount) ?></progress>
-                                    <strong><?= $e(number_format($shipmentCount)) ?> <?= $shipmentCount === 1 ? 'shipment' : 'shipments' ?></strong>
+                                    <strong><?= $e(number_format($shipmentCount)) ?> <?= $shipmentCount === 1 ? 'shipment' : 'shipments' ?><?php if ($lastSentLabel !== ''): ?> · Last sent <?= $e($lastSentLabel) ?><?php endif; ?></strong>
                                 </li>
                             <?php endforeach; ?>
                         </ol>

@@ -64,7 +64,7 @@ final class PickupSheetService
         return $this->repository->findByReference($referenceNumber);
     }
 
-    /** @return array{sheetCount: int, unpaidSheetCount: int, shipmentCount: int, totalCashXaf: int, unpaidBalanceXaf: int, latestCreatedAt: ?string} */
+    /** @return array{sheetCount: int, unpaidSheetCount: int, shipmentCount: int, unpaidShipmentCount: int, totalCashXaf: int, unpaidBalanceXaf: int, latestCreatedAt: ?string} */
     public function summary(): array
     {
         return $this->repository->summary();
@@ -82,7 +82,7 @@ final class PickupSheetService
         return $this->repository->topDestinations(max(1, min($limit, 10)));
     }
 
-    /** @return list<array{sender: string, shipmentCount: int}> */
+    /** @return list<array{sender: string, shipmentCount: int, lastSentOn: string}> */
     public function topSenders(int $months = 12, int $limit = 10): array
     {
         return $this->repository->topSenders(

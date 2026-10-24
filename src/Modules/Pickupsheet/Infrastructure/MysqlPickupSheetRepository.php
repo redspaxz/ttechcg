@@ -497,6 +497,7 @@ final class MysqlPickupSheetRepository implements PickupSheetRepository
             'SELECT COUNT(*) AS sheet_count,
                     COALESCE(SUM(CASE WHEN status = \'open\' THEN 1 ELSE 0 END), 0) AS unpaid_sheet_count,
                     COALESCE(SUM(shipment_count), 0) AS shipment_count,
+                    COALESCE(SUM(CASE WHEN status = \'open\' THEN shipment_count ELSE 0 END), 0) AS unpaid_shipment_count,
                     COALESCE(SUM(CASE WHEN created_at >= UTC_DATE() - INTERVAL 3 MONTH THEN total_cash_received_xaf ELSE 0 END), 0) AS total_cash_xaf,
                     COALESCE(SUM(CASE WHEN status = \'open\' AND created_at >= UTC_DATE() - INTERVAL 3 MONTH THEN total_cash_received_xaf ELSE 0 END), 0) AS unpaid_balance_xaf,
                     MAX(created_at) AS latest_created_at
@@ -510,6 +511,7 @@ final class MysqlPickupSheetRepository implements PickupSheetRepository
             'sheetCount' => (int) ($row['sheet_count'] ?? 0),
             'unpaidSheetCount' => (int) ($row['unpaid_sheet_count'] ?? 0),
             'shipmentCount' => (int) ($row['shipment_count'] ?? 0),
+            'unpaidShipmentCount' => (int) ($row['unpaid_shipment_count'] ?? 0),
             'totalCashXaf' => (int) ($row['total_cash_xaf'] ?? 0),
             'unpaidBalanceXaf' => (int) ($row['unpaid_balance_xaf'] ?? 0),
             'latestCreatedAt' => isset($row['latest_created_at']) ? (string) $row['latest_created_at'] : null,
@@ -573,7 +575,8 @@ final class MysqlPickupSheetRepository implements PickupSheetRepository
         $maximumDate = $today->format('Y-m-d');
         $statement = $this->connection->prepare(
             'SELECT MIN(TRIM(ps.consignor)) AS sender,
-                    COUNT(*) AS shipment_count
+                    COUNT(*) AS shipment_count,
+                    MAX(p.collection_date) AS last_sent_on
              FROM pickup_shipments ps
              INNER JOIN pickup_sheets p ON p.id = ps.pickup_sheet_id
              WHERE p.deleted_at IS NULL
@@ -591,6 +594,7 @@ final class MysqlPickupSheetRepository implements PickupSheetRepository
         return array_map(static fn (array $row): array => [
             'sender' => (string) $row['sender'],
             'shipmentCount' => (int) $row['shipment_count'],
+            'lastSentOn' => (string) $row['last_sent_on'],
         ], $statement->fetchAll());
     }
 
